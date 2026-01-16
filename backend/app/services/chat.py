@@ -17,6 +17,7 @@ from ..core.config import (
     CHAT_API_MAX_RETRIES,
     CHAT_API_RETRY_BACKOFF_SECONDS,
     MAX_TOOL_TURNS,
+    MAX_TOOL_OUTPUT_CHARS,
     SYSTEM_PROMPT,
     settings,
 )
@@ -45,6 +46,47 @@ from .tools import (
 )
 
 logger = app_logger
+
+
+def _truncate_tool_text(text: str, *, max_chars: int = MAX_TOOL_OUTPUT_CHARS) -> tuple[str, bool]:
+    """截断过长的工具输出，避免阻塞后续模型调用。"""
+
+    if len(text) <= max_chars:
+        return text, False
+    truncated = text[:max_chars]
+    return f"{truncated}\n\n...[truncated {len(text) - max_chars} chars]", True
+
+
+def _dumps_tool_payload(payload: dict[str, Any]) -> str:
+    """将工具结果序列化为受控大小的 JSON 字符串。"""
+
+    content = json.dumps(payload, ensure_ascii=False)
+    if len(content) <= MAX_TOOL_OUTPUT_CHARS:
+        return content
+
+    results = payload.get("results")
+    if isinstance(results, list):
+        payload = dict(payload)
+        slimmed: list[dict[str, Any]] = []
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            copied = dict(item)
+            text_value = copied.get("text")
+            if isinstance(text_value, str):
+                copied["text"], _ = _truncate_tool_text(text_value, max_chars=1200)
+            slimmed.append(copied)
+            if len(slimmed) >= 5:
+                break
+        payload["results"] = slimmed
+        payload["truncated"] = True
+        content = json.dumps(payload, ensure_ascii=False)
+
+    if len(content) <= MAX_TOOL_OUTPUT_CHARS:
+        return content
+
+    content, _ = _truncate_tool_text(content)
+    return content
 
 
 WEB_SEARCH_TOOL_SCHEMA = {
@@ -592,7 +634,7 @@ def run_chat_conversation(
                     {
                         "role": "tool",
                         "tool_call_id": tool_call_id,
-                        "content": json.dumps(result, ensure_ascii=False),
+                        "content": _dumps_tool_payload(result),
                     }
                 )
                 query_tool_attempts += 1
@@ -754,6 +796,13 @@ def run_chat_conversation(
                         },
                     )
                 code_interpreter_used = True
+
+                tool_output, was_truncated = _truncate_tool_text(tool_output)
+                if was_truncated:
+                    logger.warning(
+                        "Truncated tool output before sending to model",
+                        extra={"tool": tool_name, "tool_call_id": tool_call_id},
+                    )
 
                 messages.append(
                     {

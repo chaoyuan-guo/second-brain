@@ -60,6 +60,13 @@ CHAT_API_MAX_RETRIES = 3
 CHAT_API_RETRY_BACKOFF_SECONDS = 1.0
 RETRYABLE_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 
+# 工具输出过大时会显著拖慢甚至阻塞后续的模型调用。
+# 该值用于限制写入到工具 role 消息的内容长度（日志仍会保存完整输出）。
+MAX_TOOL_OUTPUT_CHARS = 80_000
+
+# OpenAI / Azure OpenAI 请求超时（秒）。
+OPENAI_DEFAULT_TIMEOUT_SECONDS = 120.0
+
 
 def _parse_allowed_origins(raw: str | None) -> List[str]:
     origins = raw or DEFAULT_ALLOWED_ORIGINS
@@ -143,5 +150,7 @@ __all__ = [
     "CHAT_API_MAX_RETRIES",
     "CHAT_API_RETRY_BACKOFF_SECONDS",
     "RETRYABLE_STATUS_CODES",
+    "MAX_TOOL_OUTPUT_CHARS",
+    "OPENAI_DEFAULT_TIMEOUT_SECONDS",
     "is_truthy",
 ]
