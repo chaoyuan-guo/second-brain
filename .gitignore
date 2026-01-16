@@ -1,0 +1,61 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+*.egg
+*.sqlite3
+*.sqlite3-journal
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+ENV/
+.mcp_env/
+mcp_workspace/
+pip-wheel-metadata/
+.python-version
+pyvenv.cfg
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Logs & runtime state
+*.log
+*.pid
+run.log
+backend.log
+frontend.log
+
+# Node / Next.js artifacts
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+.turbo/
+frontend/node_modules/
+frontend/.next/
+frontend/.turbo/
+frontend/out/
+frontend/.vercel/
+
+# Build outputs
+frontend/dist/
+dist/
+build/
+
+# OS / editor clutter
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+runtime/logs/
