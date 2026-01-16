@@ -31,12 +31,20 @@ for directory in (DATA_DIR, NOTES_DIR, INDEX_DIR, RUNTIME_DIR, LOGS_DIR):
     directory.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_API_BASE_URL = "https://space.ai-builders.com/backend/v1"
-DEFAULT_MODEL_NAME = "grok-4-fast"
+DEFAULT_MODEL_NAME = "gpt-5"
 DEFAULT_ALLOWED_ORIGINS = "http://localhost:9080,http://127.0.0.1:9080"
 DEFAULT_MCP_DRIVER = PROJECT_ROOT / ".mcp_env" / "bin" / "python"
 DEFAULT_MCP_COMMAND = PROJECT_ROOT / ".mcp_env" / "bin" / "mcp-python-interpreter"
 DEFAULT_MCP_WORKDIR = RUNTIME_DIR / "mcp_workspace"
 DEFAULT_MCP_ENDPOINT = "http://127.0.0.1:9070/sse/"
+DEFAULT_CONTAINER_MCP_DRIVER = Path("/usr/local/bin/python")
+DEFAULT_CONTAINER_MCP_COMMAND = Path("/usr/local/bin/mcp-python-interpreter")
+
+
+def running_in_container() -> bool:
+    """检测是否运行在 Docker/Koyeb 容器内。"""
+
+    return Path("/.dockerenv").exists()
 SYSTEM_PROMPT = (
     "你是一个多工具的研究型助手。优先使用 query_my_notes 工具从用户的笔记中寻找证据，"
     "并在必要时组合 web_search 和 read_page 来补充公开信息。每当问题与用户刷题经历、算法心得、"
@@ -108,9 +116,11 @@ class Settings(BaseModel):
 def load_settings() -> Settings:
     """构建 Settings 并做必要校验。"""
 
-    api_key = os.getenv("SUPER_MIND_API_KEY")
+    api_key = os.getenv("SUPER_MIND_API_KEY") or os.getenv("AI_BUILDER_TOKEN")
     if not api_key:
-        raise RuntimeError("SUPER_MIND_API_KEY is not set in the environment.")
+        raise RuntimeError(
+            "Missing API token: set SUPER_MIND_API_KEY or rely on AI_BUILDER_TOKEN."
+        )
 
     azure_api_version = os.getenv("azure_api_version") or os.getenv("azure_api-version")
 
@@ -120,7 +130,21 @@ def load_settings() -> Settings:
     command_path = Path(
         os.getenv("MCP_PYTHON_COMMAND", str(DEFAULT_MCP_COMMAND))
     ).expanduser()
+
+    if running_in_container():
+        if not driver_path.exists() and DEFAULT_CONTAINER_MCP_DRIVER.exists():
+            driver_path = DEFAULT_CONTAINER_MCP_DRIVER
+        if not command_path.exists() and DEFAULT_CONTAINER_MCP_COMMAND.exists():
+            command_path = DEFAULT_CONTAINER_MCP_COMMAND
+    if not command_path.exists() and DEFAULT_CONTAINER_MCP_COMMAND.exists():
+        command_path = DEFAULT_CONTAINER_MCP_COMMAND
     workdir_path = Path(os.getenv("MCP_WORKDIR", str(DEFAULT_MCP_WORKDIR))).expanduser()
+
+    mcp_endpoint_env = os.getenv("MCP_SSE_ENDPOINT")
+    if mcp_endpoint_env is None and running_in_container():
+        mcp_endpoint = ""
+    else:
+        mcp_endpoint = mcp_endpoint_env or DEFAULT_MCP_ENDPOINT
 
     return Settings(
         api_key=api_key,
@@ -135,8 +159,8 @@ def load_settings() -> Settings:
         mcp_driver_path=driver_path,
         mcp_command_path=command_path,
         mcp_workdir=workdir_path,
-        mcp_endpoint=os.getenv("MCP_SSE_ENDPOINT", DEFAULT_MCP_ENDPOINT),
-        mcp_python_path=os.getenv("MCP_PYTHON_PATH") or str(DEFAULT_MCP_DRIVER),
+        mcp_endpoint=mcp_endpoint,
+        mcp_python_path=os.getenv("MCP_PYTHON_PATH") or str(driver_path),
     )
 
 

@@ -43,11 +43,15 @@ const inferBrowserApiBase = (): string | null => {
     return null;
   }
 
-  const { protocol, hostname } = window.location;
+  const { protocol, hostname, origin } = window.location;
   const codespaceMatch = hostname.match(/^(\d+)-(.+)$/);
   if (codespaceMatch) {
     const [, , remainder] = codespaceMatch;
     return `${protocol}//${DEFAULT_BACKEND_PORT}-${remainder}`;
+  }
+
+  if (process.env.NODE_ENV !== 'development') {
+    return origin;
   }
 
   const shouldOmitPort =

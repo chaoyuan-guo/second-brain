@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import time
+import shutil
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar
 
@@ -46,6 +47,29 @@ _mcp_workdir = Path(DEFAULT_MCP_WORKDIR)
 _mcp_endpoint = DEFAULT_MCP_ENDPOINT
 
 T = TypeVar("T")
+
+
+def _sync_mcp_workspace() -> None:
+    """在 MCP 工作目录下准备笔记目录。
+
+    本地开发通常由 start_services.sh 负责同步；容器环境下没有该脚本，
+    因此在首次调用解释器前做一次轻量同步，确保解释器能按相对路径
+    访问 data/notes/my_markdowns。
+    """
+
+    source_dir = settings.base_dir / "data" / "notes" / "my_markdowns"
+    if not source_dir.exists():
+        return
+
+    dest_dir = _mcp_workdir / "data" / "notes" / "my_markdowns"
+    if dest_dir.exists():
+        return
+
+    dest_dir.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        dest_dir.symlink_to(source_dir, target_is_directory=True)
+    except OSError:
+        shutil.copytree(source_dir, dest_dir, dirs_exist_ok=True)
 
 
 def looks_like_raw_markdown(text: str | None) -> bool:
@@ -168,6 +192,7 @@ def ensure_mcp_ready() -> None:
             "未找到 mcp-python-interpreter，请确认已在 .mcp_env 中安装。"
         )
     _mcp_workdir.mkdir(parents=True, exist_ok=True)
+    _sync_mcp_workspace()
 
 
 def call_mcp_python_interpreter(payload: dict[str, Any]) -> dict[str, Any]:

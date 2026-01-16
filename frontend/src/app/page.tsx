@@ -19,7 +19,6 @@ import {
 } from './components/icons';
 import { useChatSessions } from './hooks/useChatSessions';
 import {
-  deriveSessionSubtitle,
   deriveSessionTimestamp,
   formatTimestamp,
   isStandaloneUrl,
@@ -29,12 +28,7 @@ import type { ChatSession } from './lib/chat-types';
 
 const urlRegex = /(https?:\/\/[^\s]+)/gi;
 
-const EFFORT_MESSAGES = [
-  '正在拼命分析你的提问…',
-  '正在联系外部工具获取线索…',
-  '正在整理多方信息，请稍候…',
-  '正在打磨回答，马上就好…',
-];
+const PENDING_MESSAGE = '正在生成回答…';
 
 const renderTextWithLinks = (text: string): ReactNode[] => {
   const nodes: ReactNode[] = [];
@@ -76,21 +70,17 @@ export default function HomePage() {
     setActiveSessionId,
     inputValue,
     setInputValue,
-    pendingSessions,
     hydrated,
     isActivePending,
-    isAnyPending,
     createNewSession,
     deleteSession,
     renameSession,
-    clearActiveSession,
     handleSubmit,
     abortSessionRequest,
   } = useChatSessions();
 
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
-  const [effortIndex, setEffortIndex] = useState(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const historyEndRef = useRef<HTMLDivElement | null>(null);
@@ -100,6 +90,9 @@ export default function HomePage() {
   const messages = activeSession?.messages ?? [];
   const hasContent = messages.length > 0;
   const isActivePendingFlag = isActivePending;
+  const lastMessage = messages[messages.length - 1];
+  const showEffortIndicator =
+    isActivePendingFlag && (!lastMessage || !lastMessage.content.trim());
 
   useEffect(() => {
     historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -121,20 +114,7 @@ export default function HomePage() {
     [],
   );
 
-  useEffect(() => {
-    if (!isActivePendingFlag) {
-      setEffortIndex(0);
-      return;
-    }
-    const intervalId = window.setInterval(() => {
-      setEffortIndex((prev) => (prev + 1) % EFFORT_MESSAGES.length);
-    }, 2200);
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [isActivePendingFlag]);
-
-  const effortText = EFFORT_MESSAGES[effortIndex] ?? EFFORT_MESSAGES[0];
+  const effortText = PENDING_MESSAGE;
 
   const beginRename = (session: ChatSession) => {
     setRenamingSessionId(session.id);
@@ -165,13 +145,6 @@ export default function HomePage() {
   const confirmDeleteSession = (sessionId: string) => {
     if (typeof window === 'undefined' || window.confirm('确定删除该会话吗？')) {
       deleteSession(sessionId);
-    }
-  };
-
-  const confirmClearActive = () => {
-    if (!activeSession) return;
-    if (typeof window === 'undefined' || window.confirm('确认清空当前对话吗？')) {
-      clearActiveSession();
     }
   };
 
@@ -213,7 +186,6 @@ export default function HomePage() {
           </div>
           <div className="history-scroll" role="list">
             {sessions.map((session) => {
-              const preview = deriveSessionSubtitle(session);
               const createdAtLabel = hydrated ? deriveSessionTimestamp(session) : '';
               const isActive = session.id === activeSession?.id;
               const isRenaming = renamingSessionId === session.id;
@@ -251,10 +223,7 @@ export default function HomePage() {
                         <p className="session-title" title={session.title}>
                           {session.title}
                         </p>
-                        <div className="session-meta">
-                          {createdAtLabel && <time className="session-time">{createdAtLabel}</time>}
-                          {preview && <p className="session-preview">{preview}</p>}
-                        </div>
+                        {createdAtLabel && <time className="session-time">{createdAtLabel}</time>}
                       </div>
                     )}
                   </div>
@@ -327,24 +296,10 @@ export default function HomePage() {
                   <SparklesIcon />
                 </div>
                 <div className="title-text">
-                  <h1>个人知识库</h1>
-                  {activeSession?.title && (
-                    <p className="title-sub" title={activeSession.title}>
-                      {activeSession.title}
-                    </p>
-                  )}
+                  <h1>Second Brain</h1>
                 </div>
               </div>
               <div className="nav-actions">
-                <button
-                  type="button"
-                  className="ghost-icon"
-                  onClick={confirmClearActive}
-                  aria-label="清空对话"
-                  disabled={!hasContent && !isActivePendingFlag}
-                >
-                  <TrashIcon />
-                </button>
                 {isActivePendingFlag && activeSession && (
                   <button
                     type="button"
@@ -384,77 +339,81 @@ export default function HomePage() {
                             {message.role === 'user' ? <UserIcon /> : <BotIcon />}
                           </div>
                         </div>
-                        <div className="message-bubble">
-                          <div className="message-content">
-                            {segments.map((segment, index) => {
-                              if (segment.type === 'code') {
-                                return (
-                                  <div key={`${message.id}-code-${index}`} className="code-block">
-                                    <div className="code-header">
-                                      <span>{segment.language}</span>
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleCopy(segment.content, `${message.id}-code-${index}`)
-                                        }
-                                        aria-label="复制代码"
-                                      >
-                                        {copiedKey === `${message.id}-code-${index}` ? '已复制' : '复制'}
-                                      </button>
-                                    </div>
-                                    <pre>
-                                      <code>{segment.content}</code>
-                                    </pre>
-                                  </div>
-                                );
-                              }
-
-                              const paragraphs = segment.content.split(/\n{2,}/);
-                              return paragraphs.map((paragraph, paragraphIndex) => {
-                                const trimmed = paragraph.trim();
-                                if (isStandaloneUrl(trimmed)) {
+                        <div className="message-stack">
+                          <div className="message-bubble">
+                            <div className="message-content">
+                              {segments.map((segment, index) => {
+                                if (segment.type === 'code') {
                                   return (
-                                    <LinkCard
-                                      key={`${message.id}-link-${index}-${paragraphIndex}`}
-                                      href={trimmed}
-                                    />
+                                    <div key={`${message.id}-code-${index}`} className="code-block">
+                                      <div className="code-header">
+                                        <span>{segment.language}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleCopy(segment.content, `${message.id}-code-${index}`)
+                                          }
+                                          aria-label="复制代码"
+                                        >
+                                          {copiedKey === `${message.id}-code-${index}`
+                                            ? '已复制'
+                                            : '复制'}
+                                        </button>
+                                      </div>
+                                      <pre>
+                                        <code>{segment.content}</code>
+                                      </pre>
+                                    </div>
                                   );
                                 }
-                                return (
-                                  <p key={`${message.id}-p-${index}-${paragraphIndex}`}>
-                                    {paragraph.split('\n').map((line, lineIndex) => (
-                                      <span
-                                        key={`${message.id}-line-${index}-${paragraphIndex}-${lineIndex}`}
-                                      >
-                                        {renderTextWithLinks(line)}
-                                        {lineIndex < paragraph.split('\n').length - 1 && <br />}
-                                      </span>
-                                    ))}
-                                  </p>
-                                );
-                              });
-                            })}
-                            {!segments.length && showThinking && <span>&nbsp;</span>}
-                            {showThinking && <ThinkingDots />}
+
+                                const paragraphs = segment.content.split(/\n{2,}/);
+                                return paragraphs.map((paragraph, paragraphIndex) => {
+                                  const trimmed = paragraph.trim();
+                                  if (isStandaloneUrl(trimmed)) {
+                                    return (
+                                      <LinkCard
+                                        key={`${message.id}-link-${index}-${paragraphIndex}`}
+                                        href={trimmed}
+                                      />
+                                    );
+                                  }
+                                  return (
+                                    <p key={`${message.id}-p-${index}-${paragraphIndex}`}>
+                                      {paragraph.split('\n').map((line, lineIndex) => (
+                                        <span
+                                          key={`${message.id}-line-${index}-${paragraphIndex}-${lineIndex}`}
+                                        >
+                                          {renderTextWithLinks(line)}
+                                          {lineIndex < paragraph.split('\n').length - 1 && <br />}
+                                        </span>
+                                      ))}
+                                    </p>
+                                  );
+                                });
+                              })}
+                              {!segments.length && showThinking && <span>&nbsp;</span>}
+                              {showThinking && <ThinkingDots />}
+                            </div>
                           </div>
-                        </div>
-                        <div className="message-meta">
-                          <div className="bubble-actions">
-                            <button
-                              type="button"
-                              className="bubble-action"
-                              onClick={() => handleCopy(message.content, message.id)}
-                              disabled={!message.content}
-                              aria-label="复制消息"
-                            >
-                              <CopyIcon />
-                            </button>
+                          <div className="message-meta">
+                            <div className="bubble-actions">
+                              <button
+                                type="button"
+                                className="bubble-action"
+                                onClick={() => handleCopy(message.content, message.id)}
+                                disabled={!message.content}
+                                aria-label="复制消息"
+                              >
+                                <CopyIcon />
+                              </button>
+                            </div>
+                            {timestampLabel && (
+                              <time className="message-time" dateTime={timestampIso}>
+                                {timestampLabel}
+                              </time>
+                            )}
                           </div>
-                          {timestampLabel && (
-                            <time className="message-time" dateTime={timestampIso}>
-                              {timestampLabel}
-                            </time>
-                          )}
                         </div>
                       </article>
                     );
@@ -467,7 +426,7 @@ export default function HomePage() {
                     </button>
                   </div>
                 )}
-                {isActivePendingFlag && <EffortIndicator message={effortText} />}
+                {showEffortIndicator && <EffortIndicator message={effortText} />}
                 <div ref={historyEndRef} />
               </section>
 

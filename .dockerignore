@@ -2,7 +2,6 @@
 node_modules
 frontend/node_modules
 frontend/.next
-frontend/out
 __pycache__
 *.pyc
 .pytest_cache
@@ -14,7 +13,6 @@ __pycache__
 .gitignore
 runtime/logs
 runtime/*.pid
-data/indexes
 backend.log
 frontend.log
 *.env
