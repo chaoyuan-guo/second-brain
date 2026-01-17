@@ -483,8 +483,12 @@ def _request_completion(
     stream_callback: Optional[Callable[[str], None]] = None,
 ) -> dict[str, Any]:
     messages = _apply_system_prompt(messages)
-    if stream_callback:
-        return _request_streaming_completion(messages, stream_callback)
+
+    started_at = time.perf_counter()
+    logger.info(
+        "Calling chat completion",
+        extra={"stream": bool(stream_callback), "message_count": len(messages)},
+    )
 
     completion = call_with_retries(
         lambda: chat_client.chat.completions.create(
@@ -494,16 +498,36 @@ def _request_completion(
         )
     )
 
+    logger.info(
+        "Chat completion returned",
+        extra={
+            "latency_ms": round((time.perf_counter() - started_at) * 1000, 2),
+            "stream": bool(stream_callback),
+        },
+    )
+
     if not completion.choices:
         logger.error("Chat completion returned no choices")
         raise HTTPException(status_code=502, detail="No response from assistant")
 
     message = completion.choices[0].message
+    role = getattr(message, "role", "assistant") or "assistant"
+    content = message.content or ""
+    tool_calls = _normalize_tool_calls(getattr(message, "tool_calls", None))
+
+    if stream_callback and content:
+        # 避免上游 stream=True 迭代器偶发卡死：改为本地切片推送。
+        # 这仍然能让前端收到 delta 更新，同时所有网络超时由非流式请求兜底。
+        chunk_size = 400
+        for start in range(0, len(content), chunk_size):
+            stream_callback(content[start : start + chunk_size])
+
     return {
-        "role": getattr(message, "role", "assistant") or "assistant",
-        "content": message.content or "",
-        "tool_calls": _normalize_tool_calls(getattr(message, "tool_calls", None)),
-        "tool_call_finished": False,
+        "role": role,
+        "content": content,
+        "tool_calls": tool_calls,
+        # 非流式 completion 返回的 tool_calls 已经完整，可以直接执行。
+        "tool_call_finished": bool(tool_calls),
     }
 
 
