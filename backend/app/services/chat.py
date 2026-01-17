@@ -157,6 +157,38 @@ def _dumps_tool_payload(payload: dict[str, Any]) -> str:
     return content
 
 
+def _shrink_mcp_response_for_model(response: dict[str, Any]) -> dict[str, Any]:
+    """压缩 MCP 解释器响应，避免将超大 stdout 送入模型上下文。
+
+    - 完整响应仍会写入 tool_output.log。
+    - 送入模型的 tool role 消息仅保留必要字段与截断后的 content。
+    """
+
+    slim: dict[str, Any] = {
+        "ok": response.get("ok"),
+    }
+
+    content = response.get("content")
+    if isinstance(content, str):
+        max_chars = 6000
+        if len(content) <= max_chars:
+            slim["content"] = content
+            slim["content_truncated"] = False
+        else:
+            head = content[:1000]
+            tail = content[-4000:]
+            slim["content"] = (
+                f"{head}\n\n...[truncated {len(content) - (len(head) + len(tail))} chars]...\n\n{tail}"
+            )
+            slim["content_truncated"] = True
+        slim["content_length"] = len(content)
+
+    # raw 字段通常非常大（包含重复的 result），不发送给模型。
+    if "raw" in response:
+        slim["raw_omitted"] = True
+    return slim
+
+
 WEB_SEARCH_TOOL_SCHEMA = {
     "type": "function",
     "function": {
@@ -956,8 +988,9 @@ def run_chat_conversation(
                     }
                     cleaned_payload = {k: v for k, v in payload.items() if v is not None}
                     response = call_mcp_python_interpreter(cleaned_payload)
-                    tool_output = json.dumps(response, ensure_ascii=False)
-                    interpreter_output = response.get("content", "")
+                    model_payload = _shrink_mcp_response_for_model(response)
+                    tool_output = json.dumps(model_payload, ensure_ascii=False)
+                    interpreter_output = str(model_payload.get("content", ""))
                     if looks_like_raw_markdown(interpreter_output):
                         warning_message = (
                             "系统提示：你刚才的 run_code_interpreter 输出只有 Markdown 原文，"

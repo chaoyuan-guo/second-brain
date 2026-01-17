@@ -40,6 +40,44 @@ def _mcp_mode() -> str:
     return "sse" if _mcp_endpoint else "stdio"
 
 
+def _wrap_code_with_system_exit_guard(code: str) -> str:
+    """为解释器代码包裹 SystemExit 捕获，避免脚本调用 exit() 杀掉 MCP 服务。"""
+
+    stripped = code.strip("\n")
+    if not stripped:
+        return code
+    if stripped.lstrip().startswith("from __future__"):
+        return code
+
+    indented = "\n".join(f"    {line}" for line in stripped.splitlines())
+    return (
+        "try:\n"
+        f"{indented}\n"
+        "except SystemExit as exc:\n"
+        "    print(\"[SystemExit suppressed]\", exc)\n"
+    )
+
+
+def _summarize_code(code: str, max_chars: int = 160) -> str:
+    cleaned = " ".join(code.strip().split())
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return f"{cleaned[:max_chars]}…"
+
+
+def _looks_like_sse_disconnect(detail: str) -> bool:
+    lowered = detail.lower()
+    markers = (
+        "error in sse_reader",
+        "remoteprotocolerror",
+        "incomplete chunked read",
+        "peer closed connection",
+        "connection refused",
+        "connecterror",
+    )
+    return any(marker in lowered for marker in markers)
+
+
 API_BASE_URL = settings.api_base_url
 SEARCH_API_URL = f"{API_BASE_URL}/search/"
 MCP_BRIDGE_SCRIPT = settings.mcp_bridge_script
@@ -227,6 +265,10 @@ def ensure_mcp_ready() -> None:
 def call_mcp_python_interpreter(payload: dict[str, Any]) -> dict[str, Any]:
     ensure_mcp_ready()
 
+    original_code = str(payload.get("code") or "")
+    payload = dict(payload)
+    payload["code"] = _wrap_code_with_system_exit_guard(original_code)
+
     requested_timeout: int
     try:
         requested_timeout = int(payload.get("timeout") or 300)
@@ -238,7 +280,13 @@ def call_mcp_python_interpreter(payload: dict[str, Any]) -> dict[str, Any]:
     process_timeout_seconds = max(60, requested_timeout + 30)
 
     logger.info(
-        "Invoking MCP Python Interpreter",
+        "Invoking MCP Python Interpreter (mode=%s endpoint=%s timeout=%ss process_timeout=%ss session=%s code=%s)",
+        _mcp_mode(),
+        _mcp_endpoint or "",
+        requested_timeout,
+        process_timeout_seconds,
+        payload.get("session_id") or "",
+        _summarize_code(original_code),
         extra={
             "mcp_mode": _mcp_mode(),
             "timeout": requested_timeout,
@@ -288,6 +336,12 @@ def call_mcp_python_interpreter(payload: dict[str, Any]) -> dict[str, Any]:
         max_chars = 4000
         if len(detail) > max_chars:
             detail = f"{detail[:max_chars]}\n...[truncated {len(detail) - max_chars} chars]"
+
+        if _mcp_endpoint and _looks_like_sse_disconnect(detail):
+            logger.warning(
+                "MCP SSE disconnected; the interpreter service may have crashed or restarted",
+                extra={"mcp_endpoint": _mcp_endpoint},
+            )
         raise ToolExecutionError(f"MCP 进程退出异常: {detail}")
 
     stdout_text = process.stdout.decode("utf-8", errors="ignore")
