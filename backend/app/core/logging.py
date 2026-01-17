@@ -8,13 +8,36 @@ from logging.handlers import TimedRotatingFileHandler
 from .config import settings
 
 
+class _ContextFilter(logging.Filter):
+    """为日志记录注入缺省的上下文字段，避免 formatter 缺 KeyError。"""
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: A003
+        defaults = {
+            "trace_id": "-",
+            "turn": "-",
+            "attempt": "-",
+            "tool_call_id": "-",
+            "tool": "-",
+            "stream": "-",
+        }
+        for key, value in defaults.items():
+            if not hasattr(record, key):
+                setattr(record, key, value)
+        return True
+
+
 def _configure_logging() -> tuple[logging.Logger, logging.Logger]:
     """初始化主日志与工具输出日志。"""
 
-    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    context_filter = _ContextFilter()
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s "
+        "[trace_id=%(trace_id)s turn=%(turn)s attempt=%(attempt)s]: %(message)s"
+    )
 
     file_handler = logging.FileHandler(settings.log_path)
     file_handler.setFormatter(formatter)
+    file_handler.addFilter(context_filter)
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
@@ -38,6 +61,7 @@ def _configure_logging() -> tuple[logging.Logger, logging.Logger]:
         encoding="utf-8",
     )
     tool_handler.setFormatter(formatter)
+    tool_handler.addFilter(context_filter)
     if not any(
         isinstance(handler, TimedRotatingFileHandler)
         and getattr(handler, "baseFilename", None) == tool_handler.baseFilename

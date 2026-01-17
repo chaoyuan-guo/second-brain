@@ -18,6 +18,8 @@ from ..core.config import (
     CHAT_API_RETRY_BACKOFF_SECONDS,
     MAX_TOOL_TURNS,
     MAX_TOOL_OUTPUT_CHARS,
+    OPENAI_DEFAULT_TIMEOUT_SECONDS,
+    OPENAI_STREAM_READ_TIMEOUT_SECONDS,
     SYSTEM_PROMPT,
     settings,
 )
@@ -46,6 +48,15 @@ from .tools import (
 )
 
 logger = app_logger
+
+
+def _streaming_timeout() -> httpx.Timeout:
+    """为 OpenAI stream=True 调用提供更严格的 read timeout。"""
+
+    return httpx.Timeout(
+        OPENAI_DEFAULT_TIMEOUT_SECONDS,
+        read=OPENAI_STREAM_READ_TIMEOUT_SECONDS,
+    )
 
 
 def _format_tool_status_message(
@@ -481,13 +492,29 @@ def _apply_system_prompt(messages: List[dict[str, Any]]) -> List[dict[str, Any]]
 def _request_completion(
     messages: List[dict[str, Any]],
     stream_callback: Optional[Callable[[str], None]] = None,
+    *,
+    trace_id: str = "",
+    turn: int = 0,
 ) -> dict[str, Any]:
     messages = _apply_system_prompt(messages)
+
+    if stream_callback:
+        return _request_streaming_completion(
+            messages,
+            stream_callback,
+            trace_id=trace_id,
+            turn=turn,
+        )
 
     started_at = time.perf_counter()
     logger.info(
         "Calling chat completion",
-        extra={"stream": bool(stream_callback), "message_count": len(messages)},
+        extra={
+            "trace_id": trace_id,
+            "turn": turn,
+            "stream": False,
+            "message_count": len(messages),
+        },
     )
 
     completion = call_with_retries(
@@ -501,8 +528,10 @@ def _request_completion(
     logger.info(
         "Chat completion returned",
         extra={
+            "trace_id": trace_id,
+            "turn": turn,
             "latency_ms": round((time.perf_counter() - started_at) * 1000, 2),
-            "stream": bool(stream_callback),
+            "stream": False,
         },
     )
 
@@ -515,13 +544,6 @@ def _request_completion(
     content = message.content or ""
     tool_calls = _normalize_tool_calls(getattr(message, "tool_calls", None))
 
-    if stream_callback and content:
-        # 避免上游 stream=True 迭代器偶发卡死：改为本地切片推送。
-        # 这仍然能让前端收到 delta 更新，同时所有网络超时由非流式请求兜底。
-        chunk_size = 400
-        for start in range(0, len(content), chunk_size):
-            stream_callback(content[start : start + chunk_size])
-
     return {
         "role": role,
         "content": content,
@@ -532,11 +554,27 @@ def _request_completion(
 
 
 def _request_streaming_completion(
-    messages: List[dict[str, Any]], stream_callback: Callable[[str], None]
+    messages: List[dict[str, Any]],
+    stream_callback: Callable[[str], None],
+    *,
+    trace_id: str = "",
+    turn: int = 0,
 ) -> dict[str, Any]:
     last_exception: Optional[Exception] = None
     fallback_due_to_tool = False
     stream_warning_emitted = False
+
+    started_at = time.perf_counter()
+    logger.info(
+        "Calling chat completion (stream)",
+        extra={
+            "trace_id": trace_id,
+            "turn": turn,
+            "stream": True,
+            "message_count": len(messages),
+        },
+    )
+
     for attempt in range(1, CHAT_API_MAX_RETRIES + 1):
         tool_call_in_progress = False
         try:
@@ -546,6 +584,7 @@ def _request_streaming_completion(
                     messages=messages,
                     tools=AVAILABLE_TOOLS,
                     stream=True,
+                    timeout=_streaming_timeout(),
                 )
             )
 
@@ -553,6 +592,8 @@ def _request_streaming_completion(
             tool_calls: Dict[int, dict[str, Any]] = {}
             role = "assistant"
             tool_call_finished = False
+
+            first_delta_at: Optional[float] = None
 
             pending_tool_call_ids: List[str] = []
             for chunk in stream:
@@ -565,6 +606,8 @@ def _request_streaming_completion(
                     role = delta.role
 
                 if delta.content:
+                    if first_delta_at is None:
+                        first_delta_at = time.perf_counter()
                     stream_callback(delta.content)
                     content_parts.append(delta.content)
 
@@ -608,6 +651,22 @@ def _request_streaming_completion(
             )
 
             content = "".join(content_parts)
+            logger.info(
+                "Chat completion stream returned",
+                extra={
+                    "trace_id": trace_id,
+                    "turn": turn,
+                    "latency_ms": round((time.perf_counter() - started_at) * 1000, 2),
+                    "first_delta_ms": (
+                        round((first_delta_at - started_at) * 1000, 2)
+                        if first_delta_at is not None
+                        else None
+                    ),
+                    "content_chars": len(content),
+                    "tool_call_finished": tool_call_finished,
+                    "tool_call_count": len(tool_calls_list) if tool_calls_list else 0,
+                },
+            )
             return {
                 "role": role,
                 "content": content,
@@ -625,14 +684,22 @@ def _request_streaming_completion(
                     "Streaming response interrupted, retrying (attempt=%s)",
                     attempt,
                     exc_info=True,
-                    **log_kwargs,
+                    extra={
+                        **log_kwargs["extra"],
+                        "trace_id": trace_id,
+                        "turn": turn,
+                    },
                 )
                 stream_warning_emitted = True
             else:
                 logger.debug(
                     "Streaming response interrupted, retrying (attempt=%s)",
                     attempt,
-                    **log_kwargs,
+                    extra={
+                        **log_kwargs["extra"],
+                        "trace_id": trace_id,
+                        "turn": turn,
+                    },
                 )
             time.sleep(CHAT_API_RETRY_BACKOFF_SECONDS * attempt)
         except APIError as exc:
@@ -646,26 +713,42 @@ def _request_streaming_completion(
                     "Streaming API error, retrying (attempt=%s)",
                     attempt,
                     exc_info=True,
-                    **log_kwargs,
+                    extra={
+                        **log_kwargs["extra"],
+                        "trace_id": trace_id,
+                        "turn": turn,
+                    },
                 )
                 stream_warning_emitted = True
             else:
                 logger.debug(
                     "Streaming API error, retrying (attempt=%s)",
                     attempt,
-                    **log_kwargs,
+                    extra={
+                        **log_kwargs["extra"],
+                        "trace_id": trace_id,
+                        "turn": turn,
+                    },
                 )
             time.sleep(CHAT_API_RETRY_BACKOFF_SECONDS * attempt)
 
     if fallback_due_to_tool:
         logger.warning(
             "Streaming aborted mid tool call, falling back to non-streaming",
-            extra={"error": str(last_exception) if last_exception else None},
+            extra={
+                "trace_id": trace_id,
+                "turn": turn,
+                "error": str(last_exception) if last_exception else None,
+            },
         )
     else:
         logger.error(
             "Streaming failed after retries, falling back to non-streaming",
-            extra={"error": str(last_exception) if last_exception else None},
+            extra={
+                "trace_id": trace_id,
+                "turn": turn,
+                "error": str(last_exception) if last_exception else None,
+            },
         )
     completion = call_with_retries(
         lambda: chat_client.chat.completions.create(
@@ -682,11 +765,13 @@ def _request_streaming_completion(
     fallback_content = message.content or ""
     if fallback_content:
         stream_callback(fallback_content)
+
+    fallback_tool_calls = _normalize_tool_calls(getattr(message, "tool_calls", None))
     return {
         "role": getattr(message, "role", "assistant") or "assistant",
         "content": fallback_content,
-        "tool_calls": _normalize_tool_calls(getattr(message, "tool_calls", None)),
-        "tool_call_finished": False,
+        "tool_calls": fallback_tool_calls,
+        "tool_call_finished": bool(fallback_tool_calls),
     }
 
 
@@ -696,10 +781,26 @@ def run_chat_conversation(
     event_callback: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> ChatResponse:
     messages = _normalize_client_messages(payload)
+    trace_id = uuid.uuid4().hex[:12]
     tool_invocations = 0
     query_tool_attempts = 0
     code_interpreter_used = False
     agentic_hint_inserted = False
+
+    last_user = messages[-1].get("content") if messages else ""
+    last_user_prefix = ""
+    if isinstance(last_user, str):
+        last_user_prefix = " ".join(last_user.split())[:200]
+
+    logger.info(
+        "Chat request received",
+        extra={
+            "trace_id": trace_id,
+            "message_count": len(messages),
+            "last_user_prefix": last_user_prefix,
+            "stream": bool(stream_callback),
+        },
+    )
 
     if event_callback:
         try:
@@ -708,6 +809,7 @@ def run_chat_conversation(
                     "type": "status",
                     "phase": "thinking",
                     "message": "正在思考…",
+                    "trace_id": trace_id,
                     "ts": time.time(),
                 }
             )
@@ -715,21 +817,33 @@ def run_chat_conversation(
             logger.debug("Failed to emit status event", exc_info=True)
 
     for turn in range(MAX_TOOL_TURNS + 1):
-        assistant_message = _request_completion(messages, stream_callback=stream_callback)
+        try:
+            assistant_message = _request_completion(
+                messages,
+                stream_callback=stream_callback,
+                trace_id=trace_id,
+                turn=turn + 1,
+            )
+        except TypeError:
+            assistant_message = _request_completion(messages, stream_callback=stream_callback)
         tool_calls = assistant_message.get("tool_calls")
         tool_call_finished = assistant_message.get("tool_call_finished")
 
         if not tool_calls:
             content = assistant_message.get("content")
             if content:
-                logger.info("[Agent] 最终答案：'%s'", content)
+                logger.info(
+                    "[Agent] 最终答案：'%s'",
+                    content,
+                    extra={"trace_id": trace_id, "turn": turn + 1},
+                )
                 return ChatResponse(
                     response=content,
                     tool_calls=_tool_calls_to_models(tool_calls),
                 )
             logger.warning(
                 "Assistant response without content or tool calls",
-                extra={"turn": turn + 1},
+                extra={"trace_id": trace_id, "turn": turn + 1},
             )
             continue
 
@@ -749,7 +863,7 @@ def run_chat_conversation(
             if not tool_call_id:
                 logger.error(
                     "Assistant tool call missing id",
-                    extra={"tool_call": call},
+                    extra={"trace_id": trace_id, "turn": turn + 1, "tool_call": call},
                 )
                 continue
 
@@ -772,6 +886,7 @@ def run_chat_conversation(
                             "tool_name": tool_name,
                             "tool_call_id": tool_call_id,
                             "tool_count": tool_count,
+                            "trace_id": trace_id,
                             "message": _format_tool_status_message(
                                 tool_name=tool_name,
                                 tool_index=tool_count,
@@ -920,6 +1035,8 @@ def run_chat_conversation(
                     logger.info(
                         "[System] read_page 完成",
                         extra={
+                            "trace_id": trace_id,
+                            "turn": turn + 1,
                             "tool_call_id": tool_call_id,
                             "tool_latency_ms": round(
                                 (time.perf_counter() - tool_started_at) * 1000, 2
@@ -933,6 +1050,8 @@ def run_chat_conversation(
                     logger.error(
                         "[System] read_page 异常",
                         extra={
+                            "trace_id": trace_id,
+                            "turn": turn + 1,
                             "tool_call_id": tool_call_id,
                             "error": tool_output,
                             "tool_latency_ms": round(
@@ -1051,6 +1170,8 @@ def run_chat_conversation(
                         "[System] MCP 工具异常: %s",
                         tool_error_detail,
                         extra={
+                            "trace_id": trace_id,
+                            "turn": turn + 1,
                             "tool_call_id": tool_call_id,
                             "error": tool_output,
                             "tool_latency_ms": round(
@@ -1082,6 +1203,8 @@ def run_chat_conversation(
                     logger.info(
                         "[System] run_code_interpreter 完成",
                         extra={
+                            "trace_id": trace_id,
+                            "turn": turn + 1,
                             "tool_call_id": tool_call_id,
                             "tool_latency_ms": round(
                                 (time.perf_counter() - tool_started_at) * 1000, 2
@@ -1100,6 +1223,7 @@ def run_chat_conversation(
                                 "tool_name": tool_name,
                                 "tool_call_id": tool_call_id,
                                 "tool_count": tool_count,
+                                "trace_id": trace_id,
                                 "latency_ms": round(
                                     (time.perf_counter() - tool_started_at) * 1000, 2
                                 ),
@@ -1121,7 +1245,12 @@ def run_chat_conversation(
                 if was_truncated:
                     logger.warning(
                         "Truncated tool output before sending to model",
-                        extra={"tool": tool_name, "tool_call_id": tool_call_id},
+                        extra={
+                            "trace_id": trace_id,
+                            "turn": turn + 1,
+                            "tool": tool_name,
+                            "tool_call_id": tool_call_id,
+                        },
                     )
 
                 messages.append(
@@ -1136,7 +1265,10 @@ def run_chat_conversation(
                     messages.extend(post_tool_messages)
                 continue
 
-            logger.error("Unknown tool requested", extra={"tool_name": tool_name})
+            logger.error(
+                "Unknown tool requested",
+                extra={"trace_id": trace_id, "turn": turn + 1, "tool_name": tool_name},
+            )
             tool_output = json.dumps(
                 {"error": f"Unknown tool: {tool_name}"}, ensure_ascii=False
             )
@@ -1158,6 +1290,7 @@ def run_chat_conversation(
                             "tool_name": tool_name,
                             "tool_call_id": tool_call_id,
                             "tool_count": tool_count,
+                            "trace_id": trace_id,
                             "message": _format_tool_status_message(
                                 tool_name=tool_name,
                                 tool_index=tool_count,
@@ -1199,6 +1332,7 @@ def run_chat_conversation(
                         "phase": "synthesize",
                         "message": "正在整理工具结果并继续生成…",
                         "tool_invocations": tool_invocations,
+                        "trace_id": trace_id,
                         "ts": time.time(),
                     }
                 )

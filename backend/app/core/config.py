@@ -75,6 +75,10 @@ MAX_TOOL_OUTPUT_CHARS = 80_000
 # OpenAI / Azure OpenAI 请求超时（秒）。
 OPENAI_DEFAULT_TIMEOUT_SECONDS = 120.0
 
+# 流式输出时单次读取的超时（秒）。
+# 该值过大可能导致上游 stream=True 偶发卡住时前端长期无输出。
+OPENAI_STREAM_READ_TIMEOUT_SECONDS = 30.0
+
 
 def _parse_allowed_origins(raw: str | None) -> List[str]:
     origins = raw or DEFAULT_ALLOWED_ORIGINS
@@ -176,5 +180,6 @@ __all__ = [
     "RETRYABLE_STATUS_CODES",
     "MAX_TOOL_OUTPUT_CHARS",
     "OPENAI_DEFAULT_TIMEOUT_SECONDS",
+    "OPENAI_STREAM_READ_TIMEOUT_SECONDS",
     "is_truthy",
 ]
