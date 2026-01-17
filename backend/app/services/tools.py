@@ -32,6 +32,13 @@ from .exceptions import ToolExecutionError
 
 logger = app_logger
 
+_mcp_config_logged = False
+_mcp_stdio_warning_logged = False
+
+
+def _mcp_mode() -> str:
+    return "sse" if _mcp_endpoint else "stdio"
+
 
 API_BASE_URL = settings.api_base_url
 SEARCH_API_URL = f"{API_BASE_URL}/search/"
@@ -187,6 +194,28 @@ def read_page(url: str) -> str:
 
 
 def ensure_mcp_ready() -> None:
+    global _mcp_config_logged, _mcp_stdio_warning_logged
+
+    if not _mcp_config_logged:
+        logger.info(
+            "MCP config loaded",
+            extra={
+                "mcp_mode": _mcp_mode(),
+                "mcp_endpoint": _mcp_endpoint,
+                "mcp_command": str(_mcp_command),
+                "mcp_driver": str(settings.mcp_driver_path),
+                "mcp_workdir": str(_mcp_workdir),
+            },
+        )
+        _mcp_config_logged = True
+
+    if not _mcp_stdio_warning_logged and not _mcp_endpoint:
+        logger.warning(
+            "MCP is running in stdio mode; prefer setting MCP_SSE_ENDPOINT to use the persistent server",
+            extra={"mcp_workdir": str(_mcp_workdir), "mcp_command": str(_mcp_command)},
+        )
+        _mcp_stdio_warning_logged = True
+
     if not _mcp_command.exists():
         raise ToolExecutionError(
             "未找到 mcp-python-interpreter，请确认已在 .mcp_env 中安装。"
@@ -204,7 +233,20 @@ def call_mcp_python_interpreter(payload: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError):
         requested_timeout = 300
     requested_timeout = max(requested_timeout, 1)
-    process_timeout_seconds = max(420, requested_timeout + 60)
+    # Bridge 脚本的 --process-timeout 控制整个 MCP 调用的等待上限。
+    # 这里按 payload.timeout + buffer 对齐，避免默认 420s 导致前端长时间卡住。
+    process_timeout_seconds = max(60, requested_timeout + 30)
+
+    logger.info(
+        "Invoking MCP Python Interpreter",
+        extra={
+            "mcp_mode": _mcp_mode(),
+            "timeout": requested_timeout,
+            "process_timeout": process_timeout_seconds,
+            "execution_mode": payload.get("execution_mode"),
+            "session_id": payload.get("session_id"),
+        },
+    )
 
     cmd: list[str] = [
         str(settings.mcp_driver_path),
@@ -241,9 +283,12 @@ def call_mcp_python_interpreter(payload: dict[str, Any]) -> dict[str, Any]:
     if process.returncode != 0:
         stderr_output = process.stderr.decode("utf-8", errors="ignore")
         stdout_output = process.stdout.decode("utf-8", errors="ignore")
-        raise ToolExecutionError(
-            f"MCP 进程退出异常: {stderr_output or stdout_output or 'unknown error'}"
-        )
+        detail = stderr_output or stdout_output or "unknown error"
+        detail = detail.strip()
+        max_chars = 4000
+        if len(detail) > max_chars:
+            detail = f"{detail[:max_chars]}\n...[truncated {len(detail) - max_chars} chars]"
+        raise ToolExecutionError(f"MCP 进程退出异常: {detail}")
 
     stdout_text = process.stdout.decode("utf-8", errors="ignore")
     try:
@@ -253,6 +298,16 @@ def call_mcp_python_interpreter(payload: dict[str, Any]) -> dict[str, Any]:
 
     if not response.get("ok"):
         raise ToolExecutionError(response.get("error", "MCP 执行失败"))
+
+    logger.info(
+        "MCP call succeeded",
+        extra={
+            "mcp_mode": _mcp_mode(),
+            "timeout": requested_timeout,
+            "process_timeout": process_timeout_seconds,
+            "content_length": len(str(response.get("content", ""))),
+        },
+    )
     return response
 
 

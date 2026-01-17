@@ -361,7 +361,8 @@ start_backend() {
   stop_service "后端服务" "$BACKEND_PID_FILE" "$BACKEND_PORT" "uvicorn backend.app.main:app --port $BACKEND_PORT"
   : > "$BACKEND_LOG"
   cd "$PROJECT_ROOT"
-  nohup uvicorn backend.app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" >> "$BACKEND_LOG" 2>&1 &
+  MCP_SSE_ENDPOINT="${MCP_SSE_ENDPOINT:-$MCP_ENDPOINT}" \
+    nohup uvicorn backend.app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" >> "$BACKEND_LOG" 2>&1 &
   local pid=$!
   echo "$pid" > "$BACKEND_PID_FILE"
   echo "后端服务已启动 (PID $pid) 日志: $BACKEND_LOG"
