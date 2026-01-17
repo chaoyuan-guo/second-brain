@@ -7,6 +7,11 @@
 ## Build, Test, and Development Commands
 - Python 依赖需在虚拟环境中手动安装：`python -m venv .venv && source .venv/bin/activate && pip install fastapi uvicorn httpx beautifulsoup4 python-dotenv openai`，随后使用 `uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 9000` 作为本地后端入口。 Set up a venv, install the listed packages, then run `uvicorn backend.app.main:app` for hot reload.
 - 前端工作流：`cd frontend && npm install && npm run dev` 提供本地调试，`npm run build` 生成产物供 `npm run start` 或静态部署使用。Use `start_services.sh` when you need both tiers plus synchronized log files.
+- Docker 镜像构建与容器启动（不读取项目 `.env`、不挂载 `data/runtime`，token 走当前 shell 环境变量）：
+  - 构建镜像：`docker build -t second_brain:local .`
+  - 启动容器（宿主机 18000 → 容器 8000）：`docker rm -f second_brain_18000 2>/dev/null || true && docker run -d --name second_brain_18000 --restart unless-stopped -p 18000:8000 -e AI_BUILDER_TOKEN second_brain:local`
+  - 验证：`curl "http://127.0.0.1:18000/hello?input=test"`
+  - 日志/停止：`docker logs -f second_brain_18000` / `docker stop second_brain_18000`
 
 ## Coding Style & Naming Conventions
 - 后端遵循 PEP 8 与类型注解优先原则，保持 4 空格缩进、短小协程、集中式异常 `ToolExecutionError`；配置项放在 `BASE_DIR` 旁的常量里，新增工具函数时请以 `snake_case` 命名并补充 docstring。 Backend code should remain type-hinted, 4-space indented, and keep tool helpers in snake_case with docstrings and cohesive logging keys.
