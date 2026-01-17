@@ -197,11 +197,20 @@ def ensure_mcp_ready() -> None:
 
 def call_mcp_python_interpreter(payload: dict[str, Any]) -> dict[str, Any]:
     ensure_mcp_ready()
+
+    requested_timeout: int
+    try:
+        requested_timeout = int(payload.get("timeout") or 300)
+    except (TypeError, ValueError):
+        requested_timeout = 300
+    requested_timeout = max(requested_timeout, 1)
+    process_timeout_seconds = max(420, requested_timeout + 60)
+
     cmd: list[str] = [
         str(settings.mcp_driver_path),
         str(MCP_BRIDGE_SCRIPT),
         "--process-timeout",
-        "420",
+        str(process_timeout_seconds),
     ]
     if _mcp_endpoint:
         cmd += ["--endpoint", _mcp_endpoint]
@@ -220,9 +229,14 @@ def call_mcp_python_interpreter(payload: dict[str, Any]) -> dict[str, Any]:
             input=json.dumps(payload).encode("utf-8"),
             capture_output=True,
             check=False,
+            timeout=process_timeout_seconds + 30,
         )
     except FileNotFoundError as exc:
         raise ToolExecutionError("无法执行 MCP 解释器脚本") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ToolExecutionError(
+            f"MCP 调用超时（{process_timeout_seconds}s），请检查脚本是否卡住或 MCP 服务是否可用。"
+        ) from exc
 
     if process.returncode != 0:
         stderr_output = process.stderr.decode("utf-8", errors="ignore")

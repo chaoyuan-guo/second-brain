@@ -48,6 +48,7 @@ frontend/.vercel/
 
 # Build outputs
 frontend/dist/
+frontend/out/
 dist/
 build/
 

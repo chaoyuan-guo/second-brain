@@ -6,9 +6,32 @@ export interface ChatMessage {
   content: string;
   isThinking?: boolean;
   isError?: boolean;
+  statusText?: string;
   tool_call_id?: string;
   timestamp?: number;
 }
+
+export type StreamEvent =
+  | { type: 'delta'; delta: string; ts?: number }
+  | {
+      type: 'status';
+      phase?: 'thinking' | 'synthesize' | string;
+      message: string;
+      tool_invocations?: number;
+      ts?: number;
+    }
+  | {
+      type: 'tool';
+      stage: 'start' | 'end' | 'error';
+      tool_name: string;
+      tool_call_id?: string;
+      tool_count?: number;
+      latency_ms?: number;
+      message: string;
+      error?: string | null;
+      ts?: number;
+    }
+  | { type: 'done'; ts?: number };
 
 export type ApiRole = 'system' | 'user' | 'assistant' | 'tool' | 'developer';
 

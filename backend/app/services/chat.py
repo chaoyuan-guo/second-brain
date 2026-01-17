@@ -48,6 +48,74 @@ from .tools import (
 logger = app_logger
 
 
+def _format_tool_status_message(
+    *,
+    tool_name: str,
+    tool_index: int,
+    tool_count: int,
+    arguments: dict[str, Any],
+    stage: str,
+) -> str:
+    """为前端流式状态栏生成可解释的工具调用文案。"""
+
+    tool_label = tool_name
+    if tool_name == "query_my_notes":
+        tool_label = "笔记检索"
+    elif tool_name == "web_search":
+        tool_label = "联网搜索"
+    elif tool_name == "read_page":
+        tool_label = "网页读取"
+    elif tool_name == "run_code_interpreter":
+        tool_label = "代码执行"
+
+    prefix = f"[{tool_index}] {tool_label}（第 {tool_count} 次）"
+
+    if tool_name in {"query_my_notes", "web_search"}:
+        query = str(arguments.get("query") or "").strip()
+        query_hint = query[:60] + ("…" if len(query) > 60 else "")
+        if query_hint:
+            prefix += f"：{query_hint}"
+
+    if tool_name == "read_page":
+        url = str(arguments.get("url") or "").strip()
+        if url:
+            prefix += f"：{url}"
+
+    if tool_name == "run_code_interpreter":
+        mode = str(arguments.get("execution_mode") or "inline")
+        timeout = arguments.get("timeout")
+        details: list[str] = []
+        if mode:
+            details.append(f"mode={mode}")
+        if isinstance(timeout, int):
+            details.append(f"timeout={timeout}s")
+        if details:
+            prefix += f"（{' '.join(details)}）"
+
+    if stage == "start":
+        return f"正在调用 {prefix}…"
+    if stage == "end":
+        return f"已完成 {prefix}"
+    if stage == "error":
+        return f"调用失败 {prefix}"
+    return prefix
+
+
+def _is_tool_error_output(output: str) -> bool:
+    """判断工具输出是否为 error JSON。"""
+
+    cleaned = output.strip()
+    if not cleaned:
+        return False
+    if not cleaned.startswith("{"):
+        return False
+    try:
+        payload = json.loads(cleaned)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(payload, dict) and "error" in payload
+
+
 def _truncate_tool_text(text: str, *, max_chars: int = MAX_TOOL_OUTPUT_CHARS) -> tuple[str, bool]:
     """截断过长的工具输出，避免阻塞后续模型调用。"""
 
@@ -567,13 +635,28 @@ def _request_streaming_completion(
 
 
 def run_chat_conversation(
-    payload: ChatRequest, stream_callback: Optional[Callable[[str], None]] = None
+    payload: ChatRequest,
+    stream_callback: Optional[Callable[[str], None]] = None,
+    event_callback: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> ChatResponse:
     messages = _normalize_client_messages(payload)
     tool_invocations = 0
     query_tool_attempts = 0
     code_interpreter_used = False
     agentic_hint_inserted = False
+
+    if event_callback:
+        try:
+            event_callback(
+                {
+                    "type": "status",
+                    "phase": "thinking",
+                    "message": "正在思考…",
+                    "ts": time.time(),
+                }
+            )
+        except Exception:
+            logger.debug("Failed to emit status event", exc_info=True)
 
     for turn in range(MAX_TOOL_TURNS + 1):
         assistant_message = _request_completion(messages, stream_callback=stream_callback)
@@ -623,13 +706,61 @@ def run_chat_conversation(
                 logger.exception("Invalid tool arguments", extra={"tool": tool_name})
                 continue
 
+            tool_count = tool_invocations + 1
+            if event_callback and tool_name:
+                try:
+                    event_callback(
+                        {
+                            "type": "tool",
+                            "stage": "start",
+                            "tool_name": tool_name,
+                            "tool_call_id": tool_call_id,
+                            "tool_count": tool_count,
+                            "message": _format_tool_status_message(
+                                tool_name=tool_name,
+                                tool_index=tool_count,
+                                tool_count=tool_count,
+                                arguments=arguments,
+                                stage="start",
+                            ),
+                            "ts": time.time(),
+                        }
+                    )
+                except Exception:
+                    logger.debug("Failed to emit tool start event", exc_info=True)
+
             post_tool_messages: List[dict[str, Any]] = []
 
             if tool_name == "query_my_notes":
-                result = query_my_notes(
-                    query=arguments.get("query", ""),
-                    top_k=int(arguments.get("top_k", 5)),
-                )
+                try:
+                    result = query_my_notes(
+                        query=arguments.get("query", ""),
+                        top_k=int(arguments.get("top_k", 5)),
+                    )
+                except Exception as exc:
+                    result = {"error": str(exc)}
+                    if event_callback:
+                        try:
+                            event_callback(
+                                {
+                                    "type": "tool",
+                                    "stage": "error",
+                                    "tool_name": tool_name,
+                                    "tool_call_id": tool_call_id,
+                                    "tool_count": tool_count,
+                                    "message": _format_tool_status_message(
+                                        tool_name=tool_name,
+                                        tool_index=tool_count,
+                                        tool_count=tool_count,
+                                        arguments=arguments,
+                                        stage="error",
+                                    ),
+                                    "error": str(exc),
+                                    "ts": time.time(),
+                                }
+                            )
+                        except Exception:
+                            logger.debug("Failed to emit tool error event", exc_info=True)
                 messages.append(
                     {
                         "role": "tool",
@@ -639,6 +770,27 @@ def run_chat_conversation(
                 )
                 query_tool_attempts += 1
                 tool_invocations += 1
+                if event_callback:
+                    try:
+                        event_callback(
+                            {
+                                "type": "tool",
+                                "stage": "end",
+                                "tool_name": tool_name,
+                                "tool_call_id": tool_call_id,
+                                "tool_count": tool_count,
+                                "message": _format_tool_status_message(
+                                    tool_name=tool_name,
+                                    tool_index=tool_count,
+                                    tool_count=tool_count,
+                                    arguments=arguments,
+                                    stage="end",
+                                ),
+                                "ts": time.time(),
+                            }
+                        )
+                    except Exception:
+                        logger.debug("Failed to emit tool end event", exc_info=True)
                 continue
 
             if tool_name == "web_search":
@@ -646,7 +798,32 @@ def run_chat_conversation(
                 if not query:
                     logger.warning("web_search called without query")
                     continue
-                result = web_search(query)
+                try:
+                    result = web_search(query)
+                except Exception as exc:
+                    result = {"error": str(exc)}
+                    if event_callback:
+                        try:
+                            event_callback(
+                                {
+                                    "type": "tool",
+                                    "stage": "error",
+                                    "tool_name": tool_name,
+                                    "tool_call_id": tool_call_id,
+                                    "tool_count": tool_count,
+                                    "message": _format_tool_status_message(
+                                        tool_name=tool_name,
+                                        tool_index=tool_count,
+                                        tool_count=tool_count,
+                                        arguments=arguments,
+                                        stage="error",
+                                    ),
+                                    "error": str(exc),
+                                    "ts": time.time(),
+                                }
+                            )
+                        except Exception:
+                            logger.debug("Failed to emit tool error event", exc_info=True)
                 messages.append(
                     {
                         "role": "tool",
@@ -655,6 +832,27 @@ def run_chat_conversation(
                     }
                 )
                 tool_invocations += 1
+                if event_callback:
+                    try:
+                        event_callback(
+                            {
+                                "type": "tool",
+                                "stage": "end",
+                                "tool_name": tool_name,
+                                "tool_call_id": tool_call_id,
+                                "tool_count": tool_count,
+                                "message": _format_tool_status_message(
+                                    tool_name=tool_name,
+                                    tool_index=tool_count,
+                                    tool_count=tool_count,
+                                    arguments=arguments,
+                                    stage="end",
+                                ),
+                                "ts": time.time(),
+                            }
+                        )
+                    except Exception:
+                        logger.debug("Failed to emit tool end event", exc_info=True)
                 continue
 
             if tool_name == "read_page":
@@ -697,6 +895,31 @@ def run_chat_conversation(
                             ensure_ascii=False,
                         )
                     )
+                if event_callback:
+                    try:
+                        stage = "end" if not _is_tool_error_output(tool_output) else "error"
+                        event_callback(
+                            {
+                                "type": "tool",
+                                "stage": stage,
+                                "tool_name": tool_name,
+                                "tool_call_id": tool_call_id,
+                                "tool_count": tool_count,
+                                "latency_ms": round(
+                                    (time.perf_counter() - tool_started_at) * 1000, 2
+                                ),
+                                "message": _format_tool_status_message(
+                                    tool_name=tool_name,
+                                    tool_index=tool_count,
+                                    tool_count=tool_count,
+                                    arguments=arguments,
+                                    stage=stage,
+                                ),
+                                "ts": time.time(),
+                            }
+                        )
+                    except Exception:
+                        logger.debug("Failed to emit tool end event", exc_info=True)
                 messages.append(
                     {
                         "role": "tool",
@@ -714,6 +937,7 @@ def run_chat_conversation(
                 session_id = arguments.get("session_id")
                 timeout = arguments.get("timeout", 300)
                 tool_started_at = time.perf_counter()
+                tool_error_detail: str | None = None
                 logger.info(
                     "[Agent] 决定调用工具：'run_code_interpreter'",
                     extra={
@@ -764,9 +988,11 @@ def run_chat_conversation(
                             {"role": "system", "content": warning_message}
                         )
                 except ToolExecutionError as exc:
+                    tool_error_detail = str(exc)
                     tool_output = json.dumps({"error": str(exc)}, ensure_ascii=False)
                     logger.error(
-                        "[System] MCP 工具异常",
+                        "[System] MCP 工具异常: %s",
+                        tool_error_detail,
                         extra={
                             "tool_call_id": tool_call_id,
                             "error": tool_output,
@@ -774,6 +1000,16 @@ def run_chat_conversation(
                                 (time.perf_counter() - tool_started_at) * 1000, 2
                             ),
                         },
+                    )
+                    tool_output_logger.info(
+                        json.dumps(
+                            {
+                                "tool_call_id": tool_call_id,
+                                "tool": tool_name,
+                                "error": tool_error_detail,
+                            },
+                            ensure_ascii=False,
+                        )
                     )
                 else:
                     tool_output_logger.info(
@@ -796,6 +1032,33 @@ def run_chat_conversation(
                         },
                     )
                 code_interpreter_used = True
+
+                if event_callback:
+                    try:
+                        stage = "end" if not _is_tool_error_output(tool_output) else "error"
+                        event_callback(
+                            {
+                                "type": "tool",
+                                "stage": stage,
+                                "tool_name": tool_name,
+                                "tool_call_id": tool_call_id,
+                                "tool_count": tool_count,
+                                "latency_ms": round(
+                                    (time.perf_counter() - tool_started_at) * 1000, 2
+                                ),
+                                "message": _format_tool_status_message(
+                                    tool_name=tool_name,
+                                    tool_index=tool_count,
+                                    tool_count=tool_count,
+                                    arguments=arguments,
+                                    stage=stage,
+                                ),
+                                "error": tool_error_detail if stage == "error" else None,
+                                "ts": time.time(),
+                            }
+                        )
+                    except Exception:
+                        logger.debug("Failed to emit tool end event", exc_info=True)
 
                 tool_output, was_truncated = _truncate_tool_text(tool_output)
                 if was_truncated:
@@ -829,6 +1092,29 @@ def run_chat_conversation(
             )
             tool_invocations += 1
 
+            if event_callback and tool_name:
+                try:
+                    event_callback(
+                        {
+                            "type": "tool",
+                            "stage": "error",
+                            "tool_name": tool_name,
+                            "tool_call_id": tool_call_id,
+                            "tool_count": tool_count,
+                            "message": _format_tool_status_message(
+                                tool_name=tool_name,
+                                tool_index=tool_count,
+                                tool_count=tool_count,
+                                arguments=arguments,
+                                stage="error",
+                            ),
+                            "error": f"Unknown tool: {tool_name}",
+                            "ts": time.time(),
+                        }
+                    )
+                except Exception:
+                    logger.debug("Failed to emit tool error event", exc_info=True)
+
         if (
             not agentic_hint_inserted
             and not code_interpreter_used
@@ -848,30 +1134,81 @@ def run_chat_conversation(
                 extra={"query_attempts": query_tool_attempts},
             )
 
+        if event_callback:
+            try:
+                event_callback(
+                    {
+                        "type": "status",
+                        "phase": "synthesize",
+                        "message": "正在整理工具结果并继续生成…",
+                        "tool_invocations": tool_invocations,
+                        "ts": time.time(),
+                    }
+                )
+            except Exception:
+                logger.debug("Failed to emit synthesize status", exc_info=True)
+
     logger.error("Agent loop terminated without final answer")
     return ChatResponse(response="抱歉，暂时无法得出答案，请稍后重试。")
 
 
 async def execute_chat(
-    payload: ChatRequest, stream_callback: Optional[Callable[[str], None]] = None
+    payload: ChatRequest,
+    stream_callback: Optional[Callable[[str], None]] = None,
+    event_callback: Optional[Callable[[dict[str, Any]], None]] = None,
 ) -> ChatResponse:
-    return await asyncio.to_thread(run_chat_conversation, payload, stream_callback)
+    return await asyncio.to_thread(
+        run_chat_conversation,
+        payload,
+        stream_callback,
+        event_callback,
+    )
 
 
-async def stream_chat_response(payload: ChatRequest) -> StreamingResponse:
+async def stream_chat_response(payload: ChatRequest, *, want_ndjson: bool = False) -> StreamingResponse:
     async def streamer():
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
         chat_response: Optional[ChatResponse] = None
 
-        def _enqueue(chunk: str) -> None:
-            asyncio.run_coroutine_threadsafe(queue.put(chunk), loop)
+        def _queue_put(value: Optional[str]) -> None:
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                running_loop = None
+
+            if running_loop is loop:
+                queue.put_nowait(value)
+                return
+
+            asyncio.run_coroutine_threadsafe(queue.put(value), loop)
+
+        def _enqueue_plain(chunk: str) -> None:
+            _queue_put(chunk)
+
+        def _enqueue_json(event: dict[str, Any]) -> None:
+            try:
+                payload_json = json.dumps(event, ensure_ascii=False)
+            except TypeError:
+                payload_json = json.dumps(
+                    {"type": "status", "message": str(event)}, ensure_ascii=False
+                )
+            _queue_put(payload_json + "\n")
+
+        def _enqueue_delta(chunk: str) -> None:
+            _enqueue_json({"type": "delta", "delta": chunk, "ts": time.time()})
 
         async def _run_chat() -> None:
             nonlocal chat_response
             try:
-                chat_response = await execute_chat(payload, stream_callback=_enqueue)
+                chat_response = await execute_chat(
+                    payload,
+                    stream_callback=_enqueue_delta if want_ndjson else _enqueue_plain,
+                    event_callback=_enqueue_json if want_ndjson else None,
+                )
             finally:
+                if want_ndjson:
+                    _enqueue_json({"type": "done", "ts": time.time()})
                 await queue.put(None)
 
         task = asyncio.create_task(_run_chat())
@@ -884,9 +1221,19 @@ async def stream_chat_response(payload: ChatRequest) -> StreamingResponse:
             yield chunk
         await task
         if not streamed and chat_response and chat_response.response:
-            yield chat_response.response
+            if want_ndjson:
+                yield json.dumps(
+                    {"type": "delta", "delta": chat_response.response, "ts": time.time()},
+                    ensure_ascii=False,
+                )
+                yield "\n"
+                yield json.dumps({"type": "done", "ts": time.time()}, ensure_ascii=False)
+                yield "\n"
+            else:
+                yield chat_response.response
 
-    return StreamingResponse(streamer(), media_type="text/plain; charset=utf-8")
+    media_type = "application/x-ndjson" if want_ndjson else "text/plain; charset=utf-8"
+    return StreamingResponse(streamer(), media_type=media_type)
 
 
 __all__ = [

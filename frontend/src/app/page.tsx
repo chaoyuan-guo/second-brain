@@ -28,8 +28,6 @@ import type { ChatSession } from './lib/chat-types';
 
 const urlRegex = /(https?:\/\/[^\s]+)/gi;
 
-const PENDING_MESSAGE = '正在生成回答…';
-
 const renderTextWithLinks = (text: string): ReactNode[] => {
   const nodes: ReactNode[] = [];
   let lastIndex = 0;
@@ -90,9 +88,6 @@ export default function HomePage() {
   const messages = activeSession?.messages ?? [];
   const hasContent = messages.length > 0;
   const isActivePendingFlag = isActivePending;
-  const lastMessage = messages[messages.length - 1];
-  const showEffortIndicator =
-    isActivePendingFlag && (!lastMessage || !lastMessage.content.trim());
 
   useEffect(() => {
     historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -113,8 +108,6 @@ export default function HomePage() {
     },
     [],
   );
-
-  const effortText = PENDING_MESSAGE;
 
   const beginRename = (session: ChatSession) => {
     setRenamingSessionId(session.id);
@@ -300,15 +293,6 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="nav-actions">
-                {isActivePendingFlag && activeSession && (
-                  <button
-                    type="button"
-                    className="pill-btn subtle"
-                    onClick={() => abortSessionRequest(activeSession.id)}
-                  >
-                    <StopIcon /> 停止生成
-                  </button>
-                )}
               </div>
             </nav>
 
@@ -325,7 +309,10 @@ export default function HomePage() {
                     }
 
                     const showThinking = message.role === 'assistant' && message.isThinking;
-                    const segments = parseMessageSegments(message.content);
+                    const hasTextContent = Boolean(message.content.trim());
+                    const segments = hasTextContent ? parseMessageSegments(message.content) : [];
+                    const shouldRenderBubble =
+                      message.role !== 'assistant' || hasTextContent || (showThinking && !message.statusText);
                     const timestampLabel = hydrated ? formatTimestamp(message.timestamp) : '';
                     const timestampIso =
                       message.timestamp && !Number.isNaN(message.timestamp)
@@ -340,62 +327,70 @@ export default function HomePage() {
                           </div>
                         </div>
                         <div className="message-stack">
-                          <div className="message-bubble">
-                            <div className="message-content">
-                              {segments.map((segment, index) => {
-                                if (segment.type === 'code') {
-                                  return (
-                                    <div key={`${message.id}-code-${index}`} className="code-block">
-                                      <div className="code-header">
-                                        <span>{segment.language}</span>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            handleCopy(segment.content, `${message.id}-code-${index}`)
-                                          }
-                                          aria-label="复制代码"
-                                        >
-                                          {copiedKey === `${message.id}-code-${index}`
-                                            ? '已复制'
-                                            : '复制'}
-                                        </button>
-                                      </div>
-                                      <pre>
-                                        <code>{segment.content}</code>
-                                      </pre>
-                                    </div>
-                                  );
-                                }
-
-                                const paragraphs = segment.content.split(/\n{2,}/);
-                                return paragraphs.map((paragraph, paragraphIndex) => {
-                                  const trimmed = paragraph.trim();
-                                  if (isStandaloneUrl(trimmed)) {
+                          {shouldRenderBubble && (
+                            <div className="message-bubble">
+                              <div className="message-content">
+                                {segments.map((segment, index) => {
+                                  if (segment.type === 'code') {
                                     return (
-                                      <LinkCard
-                                        key={`${message.id}-link-${index}-${paragraphIndex}`}
-                                        href={trimmed}
-                                      />
+                                      <div key={`${message.id}-code-${index}`} className="code-block">
+                                        <div className="code-header">
+                                          <span>{segment.language}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleCopy(segment.content, `${message.id}-code-${index}`)
+                                            }
+                                            aria-label="复制代码"
+                                          >
+                                            {copiedKey === `${message.id}-code-${index}`
+                                              ? '已复制'
+                                              : '复制'}
+                                          </button>
+                                        </div>
+                                        <pre>
+                                          <code>{segment.content}</code>
+                                        </pre>
+                                      </div>
                                     );
                                   }
-                                  return (
-                                    <p key={`${message.id}-p-${index}-${paragraphIndex}`}>
-                                      {paragraph.split('\n').map((line, lineIndex) => (
-                                        <span
-                                          key={`${message.id}-line-${index}-${paragraphIndex}-${lineIndex}`}
-                                        >
-                                          {renderTextWithLinks(line)}
-                                          {lineIndex < paragraph.split('\n').length - 1 && <br />}
-                                        </span>
-                                      ))}
-                                    </p>
-                                  );
-                                });
-                              })}
-                              {!segments.length && showThinking && <span>&nbsp;</span>}
-                              {showThinking && <ThinkingDots />}
+
+                                  const paragraphs = segment.content.split(/\n{2,}/);
+                                  return paragraphs.map((paragraph, paragraphIndex) => {
+                                    const trimmed = paragraph.trim();
+                                    if (isStandaloneUrl(trimmed)) {
+                                      return (
+                                        <LinkCard
+                                          key={`${message.id}-link-${index}-${paragraphIndex}`}
+                                          href={trimmed}
+                                        />
+                                      );
+                                    }
+                                    return (
+                                      <p key={`${message.id}-p-${index}-${paragraphIndex}`}>
+                                        {paragraph.split('\n').map((line, lineIndex) => (
+                                          <span
+                                            key={`${message.id}-line-${index}-${paragraphIndex}-${lineIndex}`}
+                                          >
+                                            {renderTextWithLinks(line)}
+                                            {lineIndex < paragraph.split('\n').length - 1 && <br />}
+                                          </span>
+                                        ))}
+                                      </p>
+                                    );
+                                  });
+                                })}
+                                {!segments.length && showThinking && <span>&nbsp;</span>}
+                                {showThinking && !message.statusText && <ThinkingDots />}
+                              </div>
                             </div>
-                          </div>
+                          )}
+                          {message.statusText && (
+                            <div className="message-status" role="status" aria-live="polite">
+                              <span className="status-spinner" aria-hidden />
+                              <span>{message.statusText}</span>
+                            </div>
+                          )}
                           <div className="message-meta">
                             <div className="bubble-actions">
                               <button
@@ -426,7 +421,6 @@ export default function HomePage() {
                     </button>
                   </div>
                 )}
-                {showEffortIndicator && <EffortIndicator message={effortText} />}
                 <div ref={historyEndRef} />
               </section>
 
@@ -442,15 +436,27 @@ export default function HomePage() {
                     onKeyDown={handleInputKey}
                     disabled={isActivePendingFlag && !inputValue}
                   />
-                  <button
-                    type="submit"
-                    className="send-btn"
-                    data-ready={Boolean(inputValue.trim()) && !isActivePendingFlag}
-                    disabled={!inputValue.trim() || isActivePendingFlag}
-                    aria-label="发送"
-                  >
-                    <SendIcon />
-                  </button>
+                  {isActivePendingFlag && activeSession ? (
+                    <button
+                      type="button"
+                      className="send-btn stop-btn"
+                      onClick={() => abortSessionRequest(activeSession.id)}
+                      aria-label="停止生成"
+                      title="停止生成"
+                    >
+                      <StopIcon />
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      className="send-btn"
+                      data-ready={Boolean(inputValue.trim()) && !isActivePendingFlag}
+                      disabled={!inputValue.trim() || isActivePendingFlag}
+                      aria-label="发送"
+                    >
+                      <SendIcon />
+                    </button>
+                  )}
                 </div>
               </form>
             </div>
@@ -467,11 +473,4 @@ const ThinkingDots = () => (
     <span className="thinking-dot" />
     <span className="thinking-dot" />
   </span>
-);
-
-const EffortIndicator = ({ message }: { message: string }) => (
-  <div className="effort-indicator" role="status" aria-live="polite">
-    <div className="effort-spinner" aria-hidden />
-    <p>{message}</p>
-  </div>
 );

@@ -5,6 +5,7 @@ import {
   type ApiMessagePayload,
   type ChatMessage,
   type ChatSession,
+  type StreamEvent,
   STORAGE_KEY,
   STREAM_ENDPOINT,
   TITLE_ENDPOINT,
@@ -254,6 +255,51 @@ export function useChatSessions(): UseChatSessionsResult {
     [upsertSession],
   );
 
+  const parseNdjsonStream = useCallback(
+    async (
+      reader: ReadableStreamDefaultReader<Uint8Array>,
+      onEvent: (event: StreamEvent) => void,
+    ) => {
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        if (!value) {
+          continue;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        let newlineIndex = buffer.indexOf('\n');
+        while (newlineIndex !== -1) {
+          const line = buffer.slice(0, newlineIndex).trim();
+          buffer = buffer.slice(newlineIndex + 1);
+          if (line) {
+            try {
+              onEvent(JSON.parse(line) as StreamEvent);
+            } catch {
+              // ignore malformed chunks
+            }
+          }
+          newlineIndex = buffer.indexOf('\n');
+        }
+      }
+
+      buffer += decoder.decode();
+      const tail = buffer.trim();
+      if (tail) {
+        try {
+          onEvent(JSON.parse(tail) as StreamEvent);
+        } catch {
+          // ignore
+        }
+      }
+    },
+    [],
+  );
+
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -300,7 +346,8 @@ export function useChatSessions(): UseChatSessionsResult {
         id: createId(),
         role: 'assistant',
         content: '',
-        isThinking: true,
+        isThinking: false,
+        statusText: '',
         timestamp: Date.now(),
       };
 
@@ -316,14 +363,39 @@ export function useChatSessions(): UseChatSessionsResult {
       const controller = new AbortController();
       streamControllersRef.current.set(targetSessionId, controller);
 
+      let thinkingTimer: number | undefined;
+      let statusTimer: number | undefined;
+
       try {
         const baseUrl = apiBaseUrlRef.current || getApiBaseUrl();
         apiBaseUrlRef.current = baseUrl;
+
+        // 轻量等待：避免短请求闪烁
+        thinkingTimer = window.setTimeout(() => {
+          updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
+            ...prev,
+            isThinking: true,
+          }));
+        }, 300);
+
+        // 复杂场景：若迟迟无文本输出，则展示状态文案
+        let latestStatusText = '';
+        let statusVisible = false;
+        statusTimer = window.setTimeout(() => {
+          statusVisible = true;
+          updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
+            ...prev,
+            isThinking: true,
+            statusText: prev.statusText || latestStatusText || '正在思考…',
+          }));
+        }, 700);
 
         const response = await fetch(`${baseUrl}${STREAM_ENDPOINT}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-Stream-Format': 'ndjson',
+            Accept: 'application/x-ndjson',
           },
           body: JSON.stringify({ messages: payloadMessages }),
           signal: controller.signal,
@@ -332,6 +404,64 @@ export function useChatSessions(): UseChatSessionsResult {
         if (!response.ok) {
           const errorText = await response.text();
           throw new Error(errorText || `请求失败: ${response.status}`);
+        }
+
+        const contentType = response.headers.get('content-type') ?? '';
+        if (!contentType.includes('application/x-ndjson')) {
+          const reader = response.body?.getReader();
+          if (!reader) {
+            const fallbackText = (await response.text()).trim() || '助手暂时没有回复。';
+            updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
+              ...prev,
+              content: fallbackText,
+              isThinking: false,
+              statusText: '',
+              timestamp: Date.now(),
+            }));
+            triggerTitleUpdate(fallbackText);
+            return;
+          }
+
+          const decoder = new TextDecoder('utf-8');
+          let aggregated = '';
+          let receivedFirstChunk = false;
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (!value) continue;
+            if (!receivedFirstChunk) {
+              receivedFirstChunk = true;
+              if (thinkingTimer) {
+                window.clearTimeout(thinkingTimer);
+                thinkingTimer = undefined;
+              }
+              if (statusTimer) {
+                window.clearTimeout(statusTimer);
+                statusTimer = undefined;
+              }
+            }
+            const chunk = decoder.decode(value, { stream: true });
+            if (!chunk) continue;
+            aggregated += chunk;
+            updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
+              ...prev,
+              content: aggregated,
+              isThinking: true,
+              statusText: '',
+              timestamp: prev.timestamp ?? Date.now(),
+            }));
+          }
+          aggregated += decoder.decode();
+          const finalText = (aggregated || '助手暂时没有回复。').trim();
+          updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
+            ...prev,
+            content: finalText,
+            isThinking: false,
+            statusText: '',
+            timestamp: Date.now(),
+          }));
+          triggerTitleUpdate(finalText);
+          return;
         }
 
         if (!response.body) {
@@ -347,44 +477,73 @@ export function useChatSessions(): UseChatSessionsResult {
         }
 
         const reader = response.body.getReader();
-        const decoder = new TextDecoder('utf-8');
         let aggregated = '';
+        let hasDelta = false;
 
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) {
-            break;
-          }
-          if (value) {
-            const chunk = decoder.decode(value, { stream: true });
-            if (!chunk) {
-              continue;
+        await parseNdjsonStream(reader, (event) => {
+          if (event.type === 'delta') {
+            hasDelta = true;
+            statusVisible = false;
+            if (thinkingTimer) {
+              window.clearTimeout(thinkingTimer);
+              thinkingTimer = undefined;
             }
-            aggregated += chunk;
+            if (statusTimer) {
+              window.clearTimeout(statusTimer);
+              statusTimer = undefined;
+            }
+            aggregated += event.delta;
             updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
               ...prev,
               content: aggregated,
               isThinking: true,
+              statusText: '',
               timestamp: prev.timestamp ?? Date.now(),
             }));
+            return;
           }
-        }
 
-        aggregated += decoder.decode();
-        const finalText = (aggregated || '助手暂时没有回复。').trim();
+          if (event.type === 'tool' || event.type === 'status') {
+            latestStatusText = event.message;
+            const shouldShow = event.type === 'tool' || (statusVisible && !hasDelta);
+            if (!shouldShow) {
+              return;
+            }
+            if (thinkingTimer) {
+              window.clearTimeout(thinkingTimer);
+              thinkingTimer = undefined;
+            }
+            updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
+              ...prev,
+              isThinking: true,
+              statusText: event.message,
+              timestamp: prev.timestamp ?? Date.now(),
+            }));
+            return;
+          }
+
+          if (event.type === 'done') {
+            return;
+          }
+        });
+
+        const finalText = (aggregated || (hasDelta ? '' : '助手暂时没有回复。')).trim();
         updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
           ...prev,
           content: finalText,
           isThinking: false,
+          statusText: '',
           timestamp: Date.now(),
         }));
         triggerTitleUpdate(finalText);
       } catch (error) {
+        // 确保定时器被清理
         if ((error as DOMException)?.name === 'AbortError') {
           updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
             ...prev,
             content: prev.content || '（请求已取消）',
             isThinking: false,
+            statusText: '',
             timestamp: Date.now(),
           }));
           return;
@@ -395,9 +554,12 @@ export function useChatSessions(): UseChatSessionsResult {
           content: errorText,
           isThinking: false,
           isError: true,
+          statusText: '',
           timestamp: Date.now(),
         }));
       } finally {
+        if (thinkingTimer) window.clearTimeout(thinkingTimer);
+        if (statusTimer) window.clearTimeout(statusTimer);
         const storedController = streamControllersRef.current.get(targetSessionId);
         if (storedController === controller) {
           streamControllersRef.current.delete(targetSessionId);

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 
 from ..core.config import settings
@@ -25,8 +25,11 @@ async def chat_completion(payload: ChatRequest) -> ChatResponse:
 
 
 @router.post("/chat/stream", response_class=StreamingResponse)
-async def chat_completion_stream(payload: ChatRequest) -> StreamingResponse:
-    return await stream_chat_response(payload)
+async def chat_completion_stream(request: Request, payload: ChatRequest) -> StreamingResponse:
+    stream_format = request.headers.get("x-stream-format")
+    accept = request.headers.get("accept", "")
+    want_ndjson = stream_format == "ndjson" or "application/x-ndjson" in accept
+    return await stream_chat_response(payload, want_ndjson=want_ndjson)
 
 
 @router.post("/chat/title")
