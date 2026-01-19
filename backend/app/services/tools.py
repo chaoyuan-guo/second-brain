@@ -6,6 +6,7 @@ import json
 import subprocess
 import time
 import shutil
+import os
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar
 
@@ -23,21 +24,45 @@ from ..core.config import (
     CHAT_API_MAX_RETRIES,
     CHAT_API_RETRY_BACKOFF_SECONDS,
     RETRYABLE_STATUS_CODES,
+    is_truthy,
+    running_in_container,
     settings,
 )
 from ..core.logging import app_logger
 from ..repositories.notes import load_index, load_metadata
 from .clients import chat_client, client, chat_model_name
 from .exceptions import ToolExecutionError
+from .embedded_interpreter import embedded_python_interpreter
 
 logger = app_logger
 
 _mcp_config_logged = False
 _mcp_stdio_warning_logged = False
+_embedded_interpreter_logged = False
 
 
 def _mcp_mode() -> str:
     return "sse" if _mcp_endpoint else "stdio"
+
+
+def _use_embedded_interpreter() -> bool:
+    """判断是否走进程内解释器。
+
+    - 容器部署默认启用（满足单端口/单进程且高频调用更快）。
+    - 可通过 MCP_INTERPRETER_BACKEND 覆盖：
+      - embedded: 强制进程内
+      - mcp/sse/bridge: 强制沿用 MCP bridge（stdio 或 SSE）
+    """
+
+    forced = os.getenv("MCP_INTERPRETER_BACKEND")
+    if forced:
+        lowered = forced.strip().lower()
+        if lowered in {"embedded", "inprocess", "in-process"}:
+            return True
+        if lowered in {"mcp", "sse", "bridge", "stdio"}:
+            return False
+
+    return running_in_container()
 
 
 def _wrap_code_with_system_exit_guard(code: str) -> str:
@@ -232,7 +257,9 @@ def read_page(url: str) -> str:
 
 
 def ensure_mcp_ready() -> None:
-    global _mcp_config_logged, _mcp_stdio_warning_logged
+    global _mcp_config_logged, _mcp_stdio_warning_logged, _embedded_interpreter_logged
+
+    using_embedded = _use_embedded_interpreter()
 
     if not _mcp_config_logged:
         logger.info(
@@ -247,14 +274,21 @@ def ensure_mcp_ready() -> None:
         )
         _mcp_config_logged = True
 
-    if not _mcp_stdio_warning_logged and not _mcp_endpoint:
+    if using_embedded and not _embedded_interpreter_logged:
+        logger.info(
+            "Embedded interpreter enabled",
+            extra={"mcp_workdir": str(_mcp_workdir)},
+        )
+        _embedded_interpreter_logged = True
+
+    if not _mcp_stdio_warning_logged and not _mcp_endpoint and not using_embedded:
         logger.warning(
             "MCP is running in stdio mode; prefer setting MCP_SSE_ENDPOINT to use the persistent server",
             extra={"mcp_workdir": str(_mcp_workdir), "mcp_command": str(_mcp_command)},
         )
         _mcp_stdio_warning_logged = True
 
-    if not _mcp_command.exists():
+    if not using_embedded and not _mcp_command.exists():
         raise ToolExecutionError(
             "未找到 mcp-python-interpreter，请确认已在 .mcp_env 中安装。"
         )
@@ -268,6 +302,43 @@ def call_mcp_python_interpreter(payload: dict[str, Any]) -> dict[str, Any]:
     original_code = str(payload.get("code") or "")
     payload = dict(payload)
     payload["code"] = _wrap_code_with_system_exit_guard(original_code)
+
+    if _use_embedded_interpreter():
+        requested_timeout: int
+        try:
+            requested_timeout = int(payload.get("timeout") or 300)
+        except (TypeError, ValueError):
+            requested_timeout = 300
+        requested_timeout = max(requested_timeout, 1)
+
+        execution_mode = str(payload.get("execution_mode") or "inline")
+        session_id = str(payload.get("session_id") or "default")
+        allow_system_access = is_truthy(os.getenv("MCP_ALLOW_SYSTEM_ACCESS"))
+
+        logger.info(
+            "Invoking embedded interpreter (timeout=%ss session=%s code=%s)",
+            requested_timeout,
+            session_id,
+            _summarize_code(original_code),
+            extra={
+                "mcp_mode": "embedded",
+                "timeout": requested_timeout,
+                "execution_mode": execution_mode,
+                "session_id": session_id,
+            },
+        )
+
+        response = embedded_python_interpreter.run(
+            code=str(payload["code"]),
+            session_id=session_id,
+            execution_mode=execution_mode,
+            timeout=requested_timeout,
+            workdir=_mcp_workdir,
+            allow_system_access=allow_system_access,
+        )
+        if not response.get("ok"):
+            raise ToolExecutionError(response.get("error", "MCP 执行失败"))
+        return response
 
     requested_timeout: int
     try:

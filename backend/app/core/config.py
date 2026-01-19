@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import sys
 from pathlib import Path
 from typing import List
 
@@ -39,6 +41,13 @@ DEFAULT_MCP_WORKDIR = RUNTIME_DIR / "mcp_workspace"
 DEFAULT_MCP_ENDPOINT = "http://127.0.0.1:9070/sse/"
 DEFAULT_CONTAINER_MCP_DRIVER = Path("/usr/local/bin/python")
 DEFAULT_CONTAINER_MCP_COMMAND = Path("/usr/local/bin/mcp-python-interpreter")
+
+
+def _which(executable: str) -> Path | None:
+    resolved = shutil.which(executable)
+    if not resolved:
+        return None
+    return Path(resolved)
 
 
 def running_in_container() -> bool:
@@ -135,11 +144,26 @@ def load_settings() -> Settings:
         os.getenv("MCP_PYTHON_COMMAND", str(DEFAULT_MCP_COMMAND))
     ).expanduser()
 
+    if not driver_path.exists() and sys.executable:
+        executable_path = Path(sys.executable)
+        if executable_path.exists():
+            driver_path = executable_path
+
     if running_in_container():
         if not driver_path.exists() and DEFAULT_CONTAINER_MCP_DRIVER.exists():
             driver_path = DEFAULT_CONTAINER_MCP_DRIVER
         if not command_path.exists() and DEFAULT_CONTAINER_MCP_COMMAND.exists():
             command_path = DEFAULT_CONTAINER_MCP_COMMAND
+
+    if not driver_path.exists():
+        candidate = _which("python") or _which("python3")
+        if candidate is not None and candidate.exists():
+            driver_path = candidate
+
+    if not command_path.exists():
+        candidate = _which("mcp-python-interpreter")
+        if candidate is not None and candidate.exists():
+            command_path = candidate
     if not command_path.exists() and DEFAULT_CONTAINER_MCP_COMMAND.exists():
         command_path = DEFAULT_CONTAINER_MCP_COMMAND
     workdir_path = Path(os.getenv("MCP_WORKDIR", str(DEFAULT_MCP_WORKDIR))).expanduser()

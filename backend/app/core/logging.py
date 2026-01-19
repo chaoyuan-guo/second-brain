@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+import os
+import sys
 from logging.handlers import TimedRotatingFileHandler
 
-from .config import settings
+from .config import is_truthy, running_in_container, settings
 
 
 class _ContextFilter(logging.Filter):
@@ -35,9 +37,27 @@ def _configure_logging() -> tuple[logging.Logger, logging.Logger]:
         "[trace_id=%(trace_id)s turn=%(turn)s attempt=%(attempt)s]: %(message)s"
     )
 
-    file_handler = logging.FileHandler(settings.log_path)
+    file_handler = TimedRotatingFileHandler(
+        settings.log_path,
+        when="midnight",
+        backupCount=6,
+        encoding="utf-8",
+    )
     file_handler.setFormatter(formatter)
     file_handler.addFilter(context_filter)
+
+    stdout_env = os.getenv("LOG_TO_STDOUT")
+    if stdout_env is None:
+        # 默认策略：容器内 / 交互终端输出到 stdout。
+        # 避免在 start_services.sh 的 nohup 重定向场景下重复写同一份文件。
+        stdout_enabled = running_in_container() or sys.stdout.isatty()
+    else:
+        stdout_enabled = is_truthy(stdout_env)
+    stream_handler = None
+    if stdout_enabled:
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setFormatter(formatter)
+        stream_handler.addFilter(context_filter)
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
@@ -48,6 +68,13 @@ def _configure_logging() -> tuple[logging.Logger, logging.Logger]:
     ):
         root_logger.addHandler(file_handler)
 
+    if stream_handler is not None and not any(
+        isinstance(handler, logging.StreamHandler)
+        and getattr(handler, "stream", None) is sys.stdout
+        for handler in root_logger.handlers
+    ):
+        root_logger.addHandler(stream_handler)
+
     app_logger = logging.getLogger("super-mind-app")
 
     tool_output_logger = logging.getLogger("super-mind-tool-output")
@@ -57,7 +84,7 @@ def _configure_logging() -> tuple[logging.Logger, logging.Logger]:
     tool_handler = TimedRotatingFileHandler(
         settings.tool_log_path,
         when="midnight",
-        backupCount=30,
+        backupCount=6,
         encoding="utf-8",
     )
     tool_handler.setFormatter(formatter)
