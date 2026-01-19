@@ -25,6 +25,7 @@ import sysconfig
 import threading
 import time
 import traceback
+from functools import lru_cache
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
@@ -50,12 +51,24 @@ def _resolve_within_workdir(
     if allow_system_access:
         return resolved
 
+    workdir_resolved = workdir.resolve()
     try:
-        resolved.relative_to(workdir.resolve())
-    except ValueError as exc:
-        raise PermissionError(
-            f"Access denied: path must be under workdir ({workdir})."
-        ) from exc
+        resolved.relative_to(workdir_resolved)
+        return resolved
+    except ValueError:
+        pass
+
+    for root in _readonly_roots():
+        try:
+            resolved.relative_to(root)
+            return resolved
+        except ValueError:
+            continue
+
+    raise PermissionError(
+        f"Access denied: path must be under workdir ({workdir}) "
+        "or an allowed readonly root."
+    )
     return resolved
 
 
@@ -69,7 +82,14 @@ def _make_restricted_open(
         # 兼容 open(fd, ...) 场景（整数文件描述符不做路径限制）。
         if isinstance(file, int):
             return original_open(file, *args, **kwargs)
+        mode = "r"
+        if args:
+            mode = args[0]
+        elif "mode" in kwargs:
+            mode = kwargs["mode"]
         resolved = _resolve_within_workdir(workdir, file, allow_system_access)
+        if _is_readonly_path(resolved, workdir) and _mode_wants_write(str(mode)):
+            raise PermissionError("Readonly path: write access denied.")
         return original_open(resolved, *args, **kwargs)
 
     return _open
@@ -118,6 +138,42 @@ def _is_stdlib_module(module_name: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+@lru_cache(maxsize=1)
+def _readonly_roots() -> tuple[Path, ...]:
+    env = os.getenv("MCP_READONLY_PATHS", "")
+    roots: list[Path] = []
+    for raw in env.split(","):
+        candidate = raw.strip()
+        if not candidate:
+            continue
+        roots.append(Path(candidate).expanduser().resolve())
+    if not roots:
+        default_root = Path("/app/data/notes")
+        if default_root.exists():
+            roots.append(default_root.resolve())
+    return tuple(roots)
+
+
+def _is_readonly_path(resolved: Path, workdir: Path) -> bool:
+    workdir_resolved = workdir.resolve()
+    try:
+        resolved.relative_to(workdir_resolved)
+        return False
+    except ValueError:
+        pass
+    for root in _readonly_roots():
+        try:
+            resolved.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _mode_wants_write(mode: str) -> bool:
+    return any(flag in mode for flag in ("w", "a", "x", "+"))
 
 
 def _make_restricted_import() -> Callable[..., Any]:
