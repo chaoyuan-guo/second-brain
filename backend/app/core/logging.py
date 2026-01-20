@@ -97,7 +97,7 @@ def _configure_logging() -> tuple[logging.Logger, logging.Logger]:
 
     tool_output_logger = logging.getLogger("super-mind-tool-output")
     tool_output_logger.setLevel(logging.INFO)
-    tool_output_logger.propagate = not file_enabled
+    tool_output_logger.propagate = False
     tool_handler = TimedRotatingFileHandler(
         settings.tool_log_path,
         when="midnight",

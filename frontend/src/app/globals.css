@@ -33,7 +33,7 @@
   --header-text: #111322;
   --sidebar-bg: #fbfbfd;
   --sidebar-border: rgba(15, 23, 42, 0.1);
-  --content-max: 760px;
+  --content-max: 920px;
 }
 
 * {
@@ -535,7 +535,7 @@ button {
   border: 1px solid rgba(15, 23, 42, 0.08);
   color: var(--text-muted);
   font-weight: 600;
-  max-width: min(84%, var(--content-max));
+  max-width: min(90%, var(--content-max));
 }
 
 .message-status span:last-child {
@@ -543,7 +543,7 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 640px;
+  max-width: 760px;
 }
 
 .status-spinner {
@@ -574,7 +574,7 @@ button {
 
 .message-error {
   width: 100%;
-  max-width: 880px;
+  max-width: var(--content-max);
   margin: 0 auto;
   padding: 12px 16px;
   border-radius: 12px;
@@ -668,7 +668,7 @@ button {
   display: inline-flex;
   flex-direction: column;
   width: fit-content;
-  max-width: min(84%, var(--content-max));
+  max-width: min(90%, var(--content-max));
   min-width: 0;
   box-shadow: none;
 }

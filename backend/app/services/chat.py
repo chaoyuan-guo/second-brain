@@ -143,6 +143,50 @@ def _truncate_tool_text(text: str, *, max_chars: int = MAX_TOOL_OUTPUT_CHARS) ->
     return f"{truncated}\n\n...[truncated {len(text) - max_chars} chars]", True
 
 
+def _truncate_for_log(text: str, *, max_chars: int = 400) -> str:
+    if len(text) <= max_chars:
+        return text
+    return f"{text[:max_chars]}...[truncated {len(text) - max_chars} chars]"
+
+
+def _stringify_for_log(value: Any, *, max_chars: int = 400) -> str:
+    if isinstance(value, str):
+        return _truncate_for_log(value, max_chars=max_chars)
+    try:
+        text = json.dumps(value, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        text = str(value)
+    return _truncate_for_log(text, max_chars=max_chars)
+
+
+def _log_tool_summary(
+    *,
+    tool_name: str | None,
+    tool_call_id: str,
+    arguments: dict[str, Any],
+    output: Any,
+    trace_id: str,
+    turn: int,
+    status: str,
+) -> None:
+    args_text = _stringify_for_log(arguments, max_chars=300)
+    output_text = _stringify_for_log(output, max_chars=400)
+    logger.info(
+        "[Tool] %s name=%s id=%s args=%s output=%s",
+        status,
+        tool_name or "-",
+        tool_call_id,
+        args_text,
+        output_text,
+        extra={
+            "trace_id": trace_id,
+            "turn": turn + 1,
+            "tool_call_id": tool_call_id,
+            "tool": tool_name or "-",
+        },
+    )
+
+
 def _dumps_tool_payload(payload: dict[str, Any]) -> str:
     """将工具结果序列化为受控大小的 JSON 字符串。"""
 
@@ -972,6 +1016,16 @@ def run_chat_conversation(
                             )
                         except Exception:
                             logger.debug("Failed to emit tool error event", exc_info=True)
+                status = "error" if isinstance(result, dict) and "error" in result else "ok"
+                _log_tool_summary(
+                    tool_name=tool_name,
+                    tool_call_id=tool_call_id,
+                    arguments=arguments,
+                    output=result,
+                    trace_id=trace_id,
+                    turn=turn,
+                    status=status,
+                )
                 messages.append(
                     {
                         "role": "tool",
@@ -1035,6 +1089,16 @@ def run_chat_conversation(
                             )
                         except Exception:
                             logger.debug("Failed to emit tool error event", exc_info=True)
+                status = "error" if isinstance(result, dict) and "error" in result else "ok"
+                _log_tool_summary(
+                    tool_name=tool_name,
+                    tool_call_id=tool_call_id,
+                    arguments=arguments,
+                    output=result,
+                    trace_id=trace_id,
+                    turn=turn,
+                    status=status,
+                )
                 messages.append(
                     {
                         "role": "tool",
@@ -1071,20 +1135,8 @@ def run_chat_conversation(
                 tool_started_at = time.perf_counter()
                 try:
                     content = read_page(url)
-                    snippet = content[:200]
-                    logger.info(
-                        "[System] read_page 完成",
-                        extra={
-                            "trace_id": trace_id,
-                            "turn": turn + 1,
-                            "tool_call_id": tool_call_id,
-                            "tool_latency_ms": round(
-                                (time.perf_counter() - tool_started_at) * 1000, 2
-                            ),
-                            "snippet": snippet,
-                        },
-                    )
                     tool_output = content
+                    summary_status = "ok"
                 except ToolExecutionError as exc:
                     tool_output = json.dumps({"error": str(exc)}, ensure_ascii=False)
                     logger.error(
@@ -1099,6 +1151,7 @@ def run_chat_conversation(
                             ),
                         },
                     )
+                    summary_status = "error"
                 else:
                     tool_output_logger.info(
                         json.dumps(
@@ -1110,6 +1163,15 @@ def run_chat_conversation(
                             ensure_ascii=False,
                         )
                     )
+                _log_tool_summary(
+                    tool_name=tool_name,
+                    tool_call_id=tool_call_id,
+                    arguments=arguments,
+                    output=tool_output,
+                    trace_id=trace_id,
+                    turn=turn,
+                    status=summary_status,
+                )
                 if event_callback:
                     try:
                         stage = "end" if not _is_tool_error_output(tool_output) else "error"
@@ -1156,20 +1218,8 @@ def run_chat_conversation(
                         offset=offset,
                         limit_chars=limit_chars,
                     )
-                    snippet = result.get("content", "")[:200]
-                    logger.info(
-                        "[System] read_note_file 完成",
-                        extra={
-                            "trace_id": trace_id,
-                            "turn": turn + 1,
-                            "tool_call_id": tool_call_id,
-                            "tool_latency_ms": round(
-                                (time.perf_counter() - tool_started_at) * 1000, 2
-                            ),
-                            "snippet": snippet,
-                        },
-                    )
                     tool_output = _dumps_tool_payload(result)
+                    summary_status = "ok"
                 except (ToolExecutionError, ValueError) as exc:
                     tool_output = json.dumps({"error": str(exc)}, ensure_ascii=False)
                     logger.error(
@@ -1184,6 +1234,7 @@ def run_chat_conversation(
                             ),
                         },
                     )
+                    summary_status = "error"
                 else:
                     tool_output_logger.info(
                         json.dumps(
@@ -1195,6 +1246,15 @@ def run_chat_conversation(
                             ensure_ascii=False,
                         )
                     )
+                _log_tool_summary(
+                    tool_name=tool_name,
+                    tool_call_id=tool_call_id,
+                    arguments=arguments,
+                    output=result if summary_status == "ok" else tool_output,
+                    trace_id=trace_id,
+                    turn=turn,
+                    status=summary_status,
+                )
                 if event_callback:
                     try:
                         stage = "end" if not _is_tool_error_output(tool_output) else "error"
@@ -1259,6 +1319,7 @@ def run_chat_conversation(
                     model_payload = _shrink_mcp_response_for_model(response)
                     tool_output = json.dumps(model_payload, ensure_ascii=False)
                     interpreter_output = str(model_payload.get("content", ""))
+                    summary_output: Any = model_payload
                     if looks_like_raw_markdown(interpreter_output):
                         warning_message = (
                             "系统提示：你刚才的 run_code_interpreter 输出只有 Markdown 原文，"
@@ -1291,6 +1352,7 @@ def run_chat_conversation(
                 except ToolExecutionError as exc:
                     tool_error_detail = str(exc)
                     tool_output = json.dumps({"error": str(exc)}, ensure_ascii=False)
+                    summary_output = {"error": tool_error_detail}
                     logger.error(
                         "[System] MCP 工具异常: %s",
                         tool_error_detail,
@@ -1337,6 +1399,15 @@ def run_chat_conversation(
                         },
                     )
                 code_interpreter_used = True
+                _log_tool_summary(
+                    tool_name=tool_name,
+                    tool_call_id=tool_call_id,
+                    arguments=arguments,
+                    output=summary_output,
+                    trace_id=trace_id,
+                    turn=turn,
+                    status="error" if tool_error_detail else "ok",
+                )
 
                 if event_callback:
                     try:
