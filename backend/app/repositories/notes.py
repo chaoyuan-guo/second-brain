@@ -45,5 +45,13 @@ def load_metadata() -> List[dict[str, Any]]:
     return _metadata
 
 
-__all__ = ["load_index", "load_metadata"]
+def reset_notes_cache() -> None:
+    """Clear cached index and metadata for hot reload."""
 
+    global _faiss_index, _metadata
+    with _lock:
+        _faiss_index = None
+        _metadata = None
+
+
+__all__ = ["load_index", "load_metadata", "reset_notes_cache"]

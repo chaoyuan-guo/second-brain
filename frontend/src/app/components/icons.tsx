@@ -140,3 +140,11 @@ export const StopIcon = () => (
     <rect x="6" y="6" width="12" height="12" rx="2" />
   </IconSvg>
 );
+
+export const UploadIcon = () => (
+  <IconSvg>
+    <path d="M12 16V4" />
+    <path d="M8 8l4-4 4 4" />
+    <path d="M4 20h16" />
+  </IconSvg>
+);

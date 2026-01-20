@@ -28,6 +28,28 @@ class _ContextFilter(logging.Filter):
         return True
 
 
+def _resolve_log_sinks() -> tuple[bool, bool]:
+    """解析日志输出渠道配置（文件/标准输出）。"""
+
+    stdout_env = os.getenv("LOG_TO_STDOUT")
+    file_env = os.getenv("LOG_TO_FILE")
+
+    if stdout_env is None:
+        stdout_enabled = running_in_container() or sys.stdout.isatty()
+    else:
+        stdout_enabled = is_truthy(stdout_env)
+
+    if file_env is not None:
+        file_enabled = is_truthy(file_env)
+    elif stdout_env is not None:
+        # 显式启用 stdout 时默认关闭文件，避免同一份日志被重定向重复写入。
+        file_enabled = not is_truthy(stdout_env)
+    else:
+        file_enabled = not running_in_container()
+
+    return file_enabled, stdout_enabled
+
+
 def _configure_logging() -> tuple[logging.Logger, logging.Logger]:
     """初始化主日志与工具输出日志。"""
 
@@ -37,22 +59,18 @@ def _configure_logging() -> tuple[logging.Logger, logging.Logger]:
         "[trace_id=%(trace_id)s turn=%(turn)s attempt=%(attempt)s]: %(message)s"
     )
 
-    file_handler = TimedRotatingFileHandler(
-        settings.log_path,
-        when="midnight",
-        backupCount=6,
-        encoding="utf-8",
-    )
-    file_handler.setFormatter(formatter)
-    file_handler.addFilter(context_filter)
+    file_enabled, stdout_enabled = _resolve_log_sinks()
+    file_handler = None
+    if file_enabled:
+        file_handler = TimedRotatingFileHandler(
+            settings.log_path,
+            when="midnight",
+            backupCount=6,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(formatter)
+        file_handler.addFilter(context_filter)
 
-    stdout_env = os.getenv("LOG_TO_STDOUT")
-    if stdout_env is None:
-        # 默认策略：容器内 / 交互终端输出到 stdout。
-        # 避免在 start_services.sh 的 nohup 重定向场景下重复写同一份文件。
-        stdout_enabled = running_in_container() or sys.stdout.isatty()
-    else:
-        stdout_enabled = is_truthy(stdout_env)
     stream_handler = None
     if stdout_enabled:
         stream_handler = logging.StreamHandler(sys.stdout)
@@ -61,7 +79,7 @@ def _configure_logging() -> tuple[logging.Logger, logging.Logger]:
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
-    if not any(
+    if file_handler is not None and not any(
         isinstance(handler, logging.FileHandler)
         and getattr(handler, "baseFilename", None) == file_handler.baseFilename
         for handler in root_logger.handlers
@@ -79,22 +97,24 @@ def _configure_logging() -> tuple[logging.Logger, logging.Logger]:
 
     tool_output_logger = logging.getLogger("super-mind-tool-output")
     tool_output_logger.setLevel(logging.INFO)
-    tool_output_logger.propagate = False
-
-    tool_handler = TimedRotatingFileHandler(
-        settings.tool_log_path,
-        when="midnight",
-        backupCount=6,
-        encoding="utf-8",
-    )
-    tool_handler.setFormatter(formatter)
-    tool_handler.addFilter(context_filter)
-    if not any(
-        isinstance(handler, TimedRotatingFileHandler)
-        and getattr(handler, "baseFilename", None) == tool_handler.baseFilename
-        for handler in tool_output_logger.handlers
-    ):
-        tool_output_logger.addHandler(tool_handler)
+    if file_enabled:
+        tool_output_logger.propagate = False
+        tool_handler = TimedRotatingFileHandler(
+            settings.tool_log_path,
+            when="midnight",
+            backupCount=6,
+            encoding="utf-8",
+        )
+        tool_handler.setFormatter(formatter)
+        tool_handler.addFilter(context_filter)
+        if not any(
+            isinstance(handler, TimedRotatingFileHandler)
+            and getattr(handler, "baseFilename", None) == tool_handler.baseFilename
+            for handler in tool_output_logger.handlers
+        ):
+            tool_output_logger.addHandler(tool_handler)
+    else:
+        tool_output_logger.propagate = True
 
     return app_logger, tool_output_logger
 

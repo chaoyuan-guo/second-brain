@@ -51,6 +51,17 @@ class ChatTitleResponse(BaseModel):
     title: str
 
 
+class NoteUploadResponse(BaseModel):
+    """上传笔记后的响应."""
+
+    message: str
+    file_name: str
+    chunks_added: int
+    replaced: bool
+    removed_vectors: int
+    total_vectors: int
+
+
 __all__ = [
     "ConversationMessage",
     "ChatRequest",
@@ -58,4 +69,5 @@ __all__ = [
     "ToolCall",
     "ChatResponse",
     "ChatTitleResponse",
+    "NoteUploadResponse",
 ]

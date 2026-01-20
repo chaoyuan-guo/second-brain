@@ -103,3 +103,4 @@ export const getApiBaseUrl = (): string => {
 export const STORAGE_KEY = 'second_brain_sessions_v1';
 export const STREAM_ENDPOINT = '/chat/stream';
 export const TITLE_ENDPOINT = '/chat/title';
+export const UPLOAD_ENDPOINT = '/notes/upload';

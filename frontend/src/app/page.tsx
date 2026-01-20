@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyboardEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, KeyboardEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 
 import { LinkCard } from './components/LinkCard';
 import {
@@ -15,6 +15,7 @@ import {
   SparklesIcon,
   StopIcon,
   TrashIcon,
+  UploadIcon,
   UserIcon,
 } from './components/icons';
 import { useChatSessions } from './hooks/useChatSessions';
@@ -24,7 +25,7 @@ import {
   isStandaloneUrl,
   parseMessageSegments,
 } from './lib/chat-helpers';
-import type { ChatSession } from './lib/chat-types';
+import { getApiBaseUrl, UPLOAD_ENDPOINT, type ChatSession } from './lib/chat-types';
 
 const urlRegex = /(https?:\/\/[^\s]+)/gi;
 
@@ -81,9 +82,16 @@ export default function HomePage() {
   const [renameDraft, setRenameDraft] = useState('');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<{
+    tone: 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const historyEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const copyTimerRef = useRef<number | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadTimerRef = useRef<number | null>(null);
 
   const messages = activeSession?.messages ?? [];
   const hasContent = messages.length > 0;
@@ -104,6 +112,9 @@ export default function HomePage() {
     () => () => {
       if (copyTimerRef.current) {
         window.clearTimeout(copyTimerRef.current);
+      }
+      if (uploadTimerRef.current) {
+        window.clearTimeout(uploadTimerRef.current);
       }
     },
     [],
@@ -157,6 +168,68 @@ export default function HomePage() {
         console.error('复制失败', error);
       });
   }, []);
+
+  const showUploadStatus = useCallback((tone: 'success' | 'error', message: string) => {
+    setUploadStatus({ tone, message });
+    if (uploadTimerRef.current) {
+      window.clearTimeout(uploadTimerRef.current);
+    }
+    const timeout = tone === 'error' ? 8000 : 4500;
+    uploadTimerRef.current = window.setTimeout(() => setUploadStatus(null), timeout);
+  }, []);
+
+  const handleUploadClick = () => {
+    uploadInputRef.current?.click();
+  };
+
+  const handleUploadChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.md')) {
+      showUploadStatus('error', '仅支持上传 .md 文件');
+      event.target.value = '';
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`${getApiBaseUrl()}${UPLOAD_ENDPOINT}`, {
+        method: 'POST',
+        body: formData,
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            message?: string;
+            detail?: string;
+            file_name?: string;
+            chunks_added?: number;
+            removed_vectors?: number;
+          }
+        | null;
+      if (!response.ok) {
+        throw new Error(payload?.detail || `上传失败: ${response.status}`);
+      }
+      const fileLabel = payload?.file_name ?? file.name;
+      const chunkLabel =
+        typeof payload?.chunks_added === 'number' ? `，新增 ${payload.chunks_added} chunks` : '';
+      const removedLabel =
+        typeof payload?.removed_vectors === 'number' && payload.removed_vectors > 0
+          ? `，移除 ${payload.removed_vectors} 条旧向量`
+          : '';
+      const message = `上传成功：${fileLabel}${chunkLabel}${removedLabel}`;
+      showUploadStatus('success', message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '上传失败，请稍后重试';
+      showUploadStatus('error', message);
+    } finally {
+      setIsUploading(false);
+      event.target.value = '';
+    }
+  };
 
   const handleInputKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     const isComposing = (event.nativeEvent as KeyboardEvent['nativeEvent'])?.isComposing;
@@ -426,6 +499,27 @@ export default function HomePage() {
 
               <form className="composer" onSubmit={handleSubmit}>
                 <div className="composer-field">
+                  <div className="composer-tools">
+                    <input
+                      ref={uploadInputRef}
+                      className="file-input"
+                      type="file"
+                      accept=".md"
+                      onChange={handleUploadChange}
+                      aria-hidden="true"
+                      tabIndex={-1}
+                    />
+                    <button
+                      type="button"
+                      className="upload-btn"
+                      onClick={handleUploadClick}
+                      disabled={isUploading}
+                      aria-label="上传 Markdown 文档"
+                      title="上传 Markdown 文档"
+                    >
+                      <UploadIcon />
+                    </button>
+                  </div>
                   <textarea
                     ref={textareaRef}
                     placeholder={
@@ -458,6 +552,11 @@ export default function HomePage() {
                     </button>
                   )}
                 </div>
+                {uploadStatus && (
+                  <div className={`composer-status ${uploadStatus.tone}`} role="status">
+                    <span>{uploadStatus.message}</span>
+                  </div>
+                )}
               </form>
             </div>
           </div>

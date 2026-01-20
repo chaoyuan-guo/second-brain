@@ -901,6 +901,9 @@ button {
   background: linear-gradient(to top, var(--page-bg) 70%, rgba(248, 250, 252, 0));
   display: flex;
   justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   width: 100%;
 }
 
@@ -916,6 +919,43 @@ button {
   position: relative;
   width: 100%;
   max-width: var(--content-max);
+}
+
+.composer-tools {
+  display: flex;
+  align-items: flex-end;
+  align-self: stretch;
+}
+
+.file-input {
+  display: none;
+}
+
+.upload-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.04);
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.upload-btn:hover {
+  color: var(--text-strong);
+  border-color: var(--accent);
+}
+
+.upload-btn:active {
+  transform: translateY(1px);
+}
+
+.upload-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .composer-field:focus-within {
@@ -989,6 +1029,54 @@ button {
 .send-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.composer-status {
+  width: 100%;
+  max-width: var(--content-max);
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 107, 255, 0.2);
+  background: rgba(79, 107, 255, 0.08);
+  color: var(--accent);
+  font-size: 0.78rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  word-break: break-word;
+  animation: status-in 0.2s ease;
+}
+
+.composer-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.9;
+}
+
+.composer-status.success {
+  border-color: rgba(79, 107, 255, 0.2);
+  background: rgba(79, 107, 255, 0.08);
+  color: var(--accent);
+}
+
+.composer-status.error {
+  border-color: rgba(220, 38, 38, 0.2);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+@keyframes status-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .history-scroll,
@@ -1091,6 +1179,12 @@ nextjs-portal {
 
   .composer-field {
     flex-direction: column;
+  }
+
+  .upload-btn {
+    width: 100%;
+    height: 44px;
+    border-radius: var(--radius-md);
   }
 
   .send-btn {

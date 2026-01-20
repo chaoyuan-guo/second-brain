@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+import asyncio
+
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 
 from ..core.config import settings
-from ..models.schemas import ChatRequest, ChatResponse, ChatTitleResponse
+from ..models.schemas import ChatRequest, ChatResponse, ChatTitleResponse, NoteUploadResponse
+from ..services.notes_index import update_notes_index_from_upload
+from ..services.exceptions import ToolExecutionError
 from ..services.chat import execute_chat, generate_title, stream_chat_response
 
 router = APIRouter()
@@ -35,6 +39,27 @@ async def chat_completion_stream(request: Request, payload: ChatRequest) -> Stre
 @router.post("/chat/title")
 async def chat_title(payload: ChatRequest) -> ChatTitleResponse:
     return await generate_title(payload)
+
+
+@router.post("/notes/upload")
+async def upload_note(file: UploadFile = File(...)) -> NoteUploadResponse:
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Missing filename.")
+    if not file.filename.lower().endswith(".md"):
+        raise HTTPException(status_code=400, detail="Only .md files are supported.")
+
+    raw_bytes = await file.read()
+    if not raw_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    try:
+        result = await asyncio.to_thread(update_notes_index_from_upload, file.filename, raw_bytes)
+    except ToolExecutionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # pragma: no cover - unexpected upload failure
+        raise HTTPException(status_code=500, detail="Failed to process upload.") from exc
+
+    return NoteUploadResponse(**result)
 
 
 @router.get("/", include_in_schema=False)
