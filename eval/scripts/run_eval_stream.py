@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
 import time
 from datetime import datetime
 from pathlib import Path
@@ -122,6 +123,8 @@ def run_eval(
                 answer = chat_once(url, payload, timeout, headers)
             else:
                 answer = stream_chat(url, payload, timeout, headers)
+        except (TimeoutError, socket.timeout):
+            answer = "[timeout]"
         except urlerror.HTTPError as exc:
             answer = f"[http_error] {exc.code} {exc.reason}"
         except urlerror.URLError as exc:
