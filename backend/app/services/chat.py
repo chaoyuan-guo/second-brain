@@ -43,6 +43,7 @@ from .tools import (
     looks_like_interpreter_error,
     looks_like_raw_markdown,
     query_my_notes,
+    read_note_file,
     read_page,
     web_search,
 )
@@ -76,6 +77,8 @@ def _format_tool_status_message(
         tool_label = "联网搜索"
     elif tool_name == "read_page":
         tool_label = "网页读取"
+    elif tool_name == "read_note_file":
+        tool_label = "笔记读取"
     elif tool_name == "run_code_interpreter":
         tool_label = "代码执行"
 
@@ -91,6 +94,10 @@ def _format_tool_status_message(
         url = str(arguments.get("url") or "").strip()
         if url:
             prefix += f"：{url}"
+    if tool_name == "read_note_file":
+        path = str(arguments.get("path") or "").strip()
+        if path:
+            prefix += f"：{path}"
 
     if tool_name == "run_code_interpreter":
         mode = str(arguments.get("execution_mode") or "inline")
@@ -238,6 +245,38 @@ READ_PAGE_TOOL_SCHEMA = {
 }
 
 
+READ_NOTE_FILE_TOOL_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "read_note_file",
+        "description": "Read a local note file under data/notes/my_markdowns with optional chunking.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Relative path under data/notes/my_markdowns or full path within it.",
+                },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Character offset to start reading from.",
+                },
+                "limit_chars": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 60000,
+                    "default": 60000,
+                    "description": "Maximum number of characters to read in this chunk.",
+                },
+            },
+            "required": ["path"],
+        },
+    },
+}
+
+
 QUERY_MY_NOTES_TOOL_SCHEMA = {
     "type": "function",
     "function": {
@@ -300,6 +339,7 @@ AVAILABLE_TOOLS = [
     QUERY_MY_NOTES_TOOL_SCHEMA,
     WEB_SEARCH_TOOL_SCHEMA,
     READ_PAGE_TOOL_SCHEMA,
+    READ_NOTE_FILE_TOOL_SCHEMA,
     MCP_CODE_INTERPRETER_SCHEMA,
 ]
 
@@ -1066,6 +1106,91 @@ def run_chat_conversation(
                                 "tool_call_id": tool_call_id,
                                 "tool": tool_name,
                                 "output": content,
+                            },
+                            ensure_ascii=False,
+                        )
+                    )
+                if event_callback:
+                    try:
+                        stage = "end" if not _is_tool_error_output(tool_output) else "error"
+                        event_callback(
+                            {
+                                "type": "tool",
+                                "stage": stage,
+                                "tool_name": tool_name,
+                                "tool_call_id": tool_call_id,
+                                "tool_count": tool_count,
+                                "latency_ms": round(
+                                    (time.perf_counter() - tool_started_at) * 1000, 2
+                                ),
+                                "message": _format_tool_status_message(
+                                    tool_name=tool_name,
+                                    tool_index=tool_count,
+                                    tool_count=tool_count,
+                                    arguments=arguments,
+                                    stage=stage,
+                                ),
+                                "ts": time.time(),
+                            }
+                        )
+                    except Exception:
+                        logger.debug("Failed to emit tool end event", exc_info=True)
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": tool_output,
+                    }
+                )
+                tool_invocations += 1
+                continue
+
+            if tool_name == "read_note_file":
+                path = arguments.get("path")
+                offset = arguments.get("offset", 0)
+                limit_chars = arguments.get("limit_chars", 60000)
+                tool_started_at = time.perf_counter()
+                try:
+                    result = read_note_file(
+                        path,
+                        offset=offset,
+                        limit_chars=limit_chars,
+                    )
+                    snippet = result.get("content", "")[:200]
+                    logger.info(
+                        "[System] read_note_file 完成",
+                        extra={
+                            "trace_id": trace_id,
+                            "turn": turn + 1,
+                            "tool_call_id": tool_call_id,
+                            "tool_latency_ms": round(
+                                (time.perf_counter() - tool_started_at) * 1000, 2
+                            ),
+                            "snippet": snippet,
+                        },
+                    )
+                    tool_output = _dumps_tool_payload(result)
+                except (ToolExecutionError, ValueError) as exc:
+                    tool_output = json.dumps({"error": str(exc)}, ensure_ascii=False)
+                    logger.error(
+                        "[System] read_note_file 异常",
+                        extra={
+                            "trace_id": trace_id,
+                            "turn": turn + 1,
+                            "tool_call_id": tool_call_id,
+                            "error": tool_output,
+                            "tool_latency_ms": round(
+                                (time.perf_counter() - tool_started_at) * 1000, 2
+                            ),
+                        },
+                    )
+                else:
+                    tool_output_logger.info(
+                        json.dumps(
+                            {
+                                "tool_call_id": tool_call_id,
+                                "tool": tool_name,
+                                "output": result,
                             },
                             ensure_ascii=False,
                         )

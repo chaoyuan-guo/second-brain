@@ -97,24 +97,21 @@ def _configure_logging() -> tuple[logging.Logger, logging.Logger]:
 
     tool_output_logger = logging.getLogger("super-mind-tool-output")
     tool_output_logger.setLevel(logging.INFO)
-    if file_enabled:
-        tool_output_logger.propagate = False
-        tool_handler = TimedRotatingFileHandler(
-            settings.tool_log_path,
-            when="midnight",
-            backupCount=6,
-            encoding="utf-8",
-        )
-        tool_handler.setFormatter(formatter)
-        tool_handler.addFilter(context_filter)
-        if not any(
-            isinstance(handler, TimedRotatingFileHandler)
-            and getattr(handler, "baseFilename", None) == tool_handler.baseFilename
-            for handler in tool_output_logger.handlers
-        ):
-            tool_output_logger.addHandler(tool_handler)
-    else:
-        tool_output_logger.propagate = True
+    tool_output_logger.propagate = not file_enabled
+    tool_handler = TimedRotatingFileHandler(
+        settings.tool_log_path,
+        when="midnight",
+        backupCount=6,
+        encoding="utf-8",
+    )
+    tool_handler.setFormatter(formatter)
+    tool_handler.addFilter(context_filter)
+    if not any(
+        isinstance(handler, TimedRotatingFileHandler)
+        and getattr(handler, "baseFilename", None) == tool_handler.baseFilename
+        for handler in tool_output_logger.handlers
+    ):
+        tool_output_logger.addHandler(tool_handler)
 
     return app_logger, tool_output_logger
 

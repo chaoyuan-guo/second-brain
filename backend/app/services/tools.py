@@ -256,6 +256,81 @@ def read_page(url: str) -> str:
     return cleaned
 
 
+def read_note_file(
+    path: str,
+    *,
+    offset: int = 0,
+    limit_chars: int = 60000,
+) -> dict[str, Any]:
+    """读取指定笔记文件的文本片段（按字符偏移）。"""
+
+    if not path:
+        raise ValueError("Path must be provided")
+
+    base_dir = (settings.base_dir / "data" / "notes" / "my_markdowns").resolve()
+    raw_path = Path(path)
+    if raw_path.is_absolute():
+        resolved = raw_path.resolve()
+    else:
+        candidate = raw_path
+        if str(candidate).startswith("data/notes/my_markdowns"):
+            candidate = settings.base_dir / candidate
+        else:
+            candidate = base_dir / candidate
+        resolved = candidate.resolve()
+
+    if resolved != base_dir and base_dir not in resolved.parents:
+        raise ToolExecutionError("只允许读取 data/notes/my_markdowns/ 下的文件。")
+    if not resolved.exists():
+        raise ToolExecutionError(f"文件不存在: {resolved}")
+    if resolved.is_dir():
+        raise ToolExecutionError(f"路径是目录，无法读取: {resolved}")
+
+    try:
+        offset_value = int(offset)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("offset must be an integer") from exc
+    if offset_value < 0:
+        raise ValueError("offset must be >= 0")
+
+    try:
+        limit_value = int(limit_chars)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("limit_chars must be an integer") from exc
+    if limit_value <= 0:
+        raise ValueError("limit_chars must be > 0")
+    if limit_value > 60000:
+        limit_value = 60000
+
+    text = resolved.read_text(encoding="utf-8")
+    total_chars = len(text)
+    start = min(offset_value, total_chars)
+    end = min(start + limit_value, total_chars)
+    content = text[start:end]
+    next_offset = end if end < total_chars else None
+
+    logger.info(
+        "Note file read",
+        extra={
+            "path": str(resolved),
+            "offset": start,
+            "limit_chars": limit_value,
+            "total_chars": total_chars,
+            "returned_chars": len(content),
+        },
+    )
+
+    return {
+        "source_file": str(resolved),
+        "offset": start,
+        "limit_chars": limit_value,
+        "total_chars": total_chars,
+        "next_offset": next_offset,
+        "done": end >= total_chars,
+        "content": content,
+    }
+
+
 def ensure_mcp_ready() -> None:
     global _mcp_config_logged, _mcp_stdio_warning_logged, _embedded_interpreter_logged
 
@@ -537,6 +612,7 @@ def is_retryable_status(status_code: int | None) -> bool:
 __all__ = [
     "web_search",
     "read_page",
+    "read_note_file",
     "ensure_mcp_ready",
     "call_mcp_python_interpreter",
     "build_embedding",
