@@ -35,17 +35,14 @@ def _resolve_log_sinks() -> tuple[bool, bool]:
     file_env = os.getenv("LOG_TO_FILE")
 
     if stdout_env is None:
-        stdout_enabled = running_in_container() or sys.stdout.isatty()
+        stdout_enabled = running_in_container()
     else:
         stdout_enabled = is_truthy(stdout_env)
 
-    if file_env is not None:
-        file_enabled = is_truthy(file_env)
-    elif stdout_env is not None:
-        # 显式启用 stdout 时默认关闭文件，避免同一份日志被重定向重复写入。
-        file_enabled = not is_truthy(stdout_env)
-    else:
+    if file_env is None:
         file_enabled = not running_in_container()
+    else:
+        file_enabled = is_truthy(file_env)
 
     return file_enabled, stdout_enabled
 
@@ -97,21 +94,24 @@ def _configure_logging() -> tuple[logging.Logger, logging.Logger]:
 
     tool_output_logger = logging.getLogger("super-mind-tool-output")
     tool_output_logger.setLevel(logging.INFO)
-    tool_output_logger.propagate = False
-    tool_handler = TimedRotatingFileHandler(
-        settings.tool_log_path,
-        when="midnight",
-        backupCount=6,
-        encoding="utf-8",
-    )
-    tool_handler.setFormatter(formatter)
-    tool_handler.addFilter(context_filter)
-    if not any(
-        isinstance(handler, TimedRotatingFileHandler)
-        and getattr(handler, "baseFilename", None) == tool_handler.baseFilename
-        for handler in tool_output_logger.handlers
-    ):
-        tool_output_logger.addHandler(tool_handler)
+    if file_enabled:
+        tool_output_logger.propagate = False
+        tool_handler = TimedRotatingFileHandler(
+            settings.tool_log_path,
+            when="midnight",
+            backupCount=6,
+            encoding="utf-8",
+        )
+        tool_handler.setFormatter(formatter)
+        tool_handler.addFilter(context_filter)
+        if not any(
+            isinstance(handler, TimedRotatingFileHandler)
+            and getattr(handler, "baseFilename", None) == tool_handler.baseFilename
+            for handler in tool_output_logger.handlers
+        ):
+            tool_output_logger.addHandler(tool_handler)
+    else:
+        tool_output_logger.propagate = True
 
     return app_logger, tool_output_logger
 

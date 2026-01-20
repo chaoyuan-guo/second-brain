@@ -13,6 +13,11 @@
   - 验证：`curl "http://127.0.0.1:18000/hello?input=test"`
   - 日志/停止：`docker logs -f second_brain_18000` / `docker stop second_brain_18000`
 
+## Logging Guidelines
+- 本地开发仅写日志文件：后端 `runtime/logs/backend.log`、前端 `runtime/logs/frontend.log`、工具输出 `runtime/logs/tool_output.log`。
+- 容器部署仅输出 stdout（供 `docker logs`），后端/工具不写 `runtime/logs/*.log`；如需在容器运行前端，同样保持 stdout 输出。
+- 后端/工具输出可用 `LOG_TO_STDOUT` 与 `LOG_TO_FILE` 覆盖默认行为；如显式启用双写，请确保 stdout 不再重定向回同一文件，避免重复。
+
 ## Coding Style & Naming Conventions
 - 后端遵循 PEP 8 与类型注解优先原则，保持 4 空格缩进、短小协程、集中式异常 `ToolExecutionError`；配置项放在 `BASE_DIR` 旁的常量里，新增工具函数时请以 `snake_case` 命名并补充 docstring。 Backend code should remain type-hinted, 4-space indented, and keep tool helpers in snake_case with docstrings and cohesive logging keys.
 - 前端使用 TypeScript + Next.js App Router，组件命名采用 `PascalCase`，hooks/工具使用 `camelCase`；尽量将 UI 状态封装为客户端组件，网络请求统一调用 `/api` 代理或现有 FastAPI 端点。 Keep styles colocated via CSS modules or inline Tailwind classes for consistency.
