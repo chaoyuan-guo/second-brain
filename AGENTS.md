@@ -27,9 +27,8 @@
 - 前端建议在 `frontend/src/__tests__/` 下采用 React Testing Library；新增 `npm run test`（映射至 `next test` 或 `vitest run`）后，命名遵循 `<Component>.test.tsx`，同时通过 `npm run lint`（Next 自带）保证 JSX/TS 规范。 Snapshot tests should be paired with meaningful interaction assertions.
 
 ## Evaluation Guidelines
-- 评估相关内容集中在 `eval/` 下，评估集与模板在 `eval/testsets/`，脚本在 `eval/scripts/`，报告建议输出到 `eval/reports/`。
-- 运行自动评分：`python eval/scripts/grade_testset_v2.py --answers path/to/answers.json`；如需指定评估集或输出报告，可用 `--testset eval/testsets/testset_v2.json --output eval/reports/report.json`。
-- 运行在线评估（默认流式 `/chat/stream`）：`python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000 --report eval/reports/report.json`，默认输出 `eval/reports/answers.json`。
+- 评估相关内容集中在 `eval/` 下，评估集与模板在 `eval/testsets/`，脚本在 `eval/scripts/`，输出建议放在 `eval/reports/`。
+- 运行在线评估（默认流式 `/chat/stream`）：`python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000`，默认输出 `eval/reports/answers.json`。
 - 如需非流式接口：`--mode chat --endpoint /chat`（当前评估无需鉴权）。
 
 ## Commit & Pull Request Guidelines

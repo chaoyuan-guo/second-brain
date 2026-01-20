@@ -4,7 +4,6 @@
 Usage:
   python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000
   python eval/scripts/run_eval_stream.py --testset eval/testsets/testset_v2.json --out eval/reports/answers.json
-  python eval/scripts/run_eval_stream.py --report eval/reports/report.json
 """
 
 from __future__ import annotations
@@ -144,7 +143,6 @@ def main() -> None:
     parser.add_argument("--limit", type=int)
     parser.add_argument("-H", "--header", action="append", default=[], help="Extra header, e.g. 'Authorization: Bearer x'")
     parser.add_argument("--out", default="eval/reports/answers.json")
-    parser.add_argument("--report", help="Optional report JSON path; runs grader after answering")
     args = parser.parse_args()
 
     questions = load_testset(Path(args.testset))
@@ -165,28 +163,10 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(answers, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    if args.report:
-        import subprocess
-
-        report_path = Path(args.report)
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            [
-                "python",
-                "eval/scripts/grade_testset_v2.py",
-                "--answers",
-                str(out_path),
-                "--output",
-                str(report_path),
-            ],
-            check=False,
-        )
-
     print(
         json.dumps(
             {
                 "out": str(out_path),
-                "report": args.report or "",
                 "mode": args.mode,
                 "endpoint": args.endpoint,
                 "base_url": args.base_url,
