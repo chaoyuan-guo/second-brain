@@ -1,0 +1,1645 @@
+{
+  "meta": {
+    "name": "agentic_rag_eval_v2",
+    "version": "v2",
+    "language": "zh",
+    "notes_dir": "data/notes/my_markdowns",
+    "total_questions": 34
+  },
+  "questions": [
+    {
+      "id": "S01_BFS_max_level_sum",
+      "title": "BFS 最大层和：层序与 level_size",
+      "query": "复盘力扣1161 最大层和：为什么 BFS/层序遍历最自然？level_size 的作用是什么？给出时间与空间复杂度。",
+      "sources": [
+        "data/notes/my_markdowns/BFS求二叉树最大层和.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "说明 BFS 层序遍历天然按层统计",
+        "解释 level_size 表示当前层节点数量",
+        "时间复杂度 O(n)",
+        "空间复杂度与树宽度相关（最坏 O(n)）"
+      ],
+      "optional_desc": [
+        "提到队列只存一层节点"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "BFS",
+            "层序",
+            "层序遍历"
+          ]
+        },
+        {
+          "any_of": [
+            "level_size",
+            "队列长度",
+            "当前层节点数",
+            "当前层大小"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "O\\(n\\)"
+          ]
+        },
+        {
+          "any_of": [
+            "宽度",
+            "width",
+            "最宽",
+            "一层节点"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "队列",
+            "一层"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S02_rotting_oranges_multi_source",
+      "title": "腐烂橘子多源 BFS 初始化",
+      "query": "力扣 994 腐烂橘子：多源 BFS 初始化需要做哪些事？fresh 如何使用？循环何时结束、最终返回值怎么定？",
+      "sources": [
+        "data/notes/my_markdowns/BFS练习题 II.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "遍历网格：腐烂橘子入队，新鲜橘子计数 fresh（fresh==0 可直接返回 0）",
+        "BFS 按层扩散，每层代表 1 分钟，感染新鲜橘子时 fresh--",
+        "队列空或 fresh==0 时停止；fresh==0 返回分钟数，否则 -1"
+      ],
+      "optional_desc": [
+        "提到四方向扩散"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "多源",
+            "所有腐烂",
+            "腐烂橘子入队",
+            "fresh",
+            "新鲜橘子计数"
+          ]
+        },
+        {
+          "any_of": [
+            "每层",
+            "每分钟",
+            "level_size",
+            "分钟+1"
+          ]
+        },
+        {
+          "any_of": [
+            "fresh==0",
+            "新鲜为0",
+            "返回-1",
+            "队列空"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "四方向",
+            "上下左右"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S03_backtrack_tree_height",
+      "title": "回溯递归树高度口径",
+      "query": "n 位二进制回溯题里，递归树按边数/按节点数高度分别是多少？时间与空间复杂度如何描述？",
+      "sources": [
+        "data/notes/my_markdowns/DFS&回溯算法.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "按边计高度为 n，按节点计为 n+1",
+        "时间复杂度 O(n·2^n)，空间复杂度 O(n)"
+      ],
+      "optional_desc": [
+        "说明高度口径差异可忽略在 O(n) 级别"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "高度为n",
+            "树高n",
+            "边数",
+            "n 条边"
+          ]
+        },
+        {
+          "any_of": [
+            "n+1",
+            "节点数"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "O\\(n.*2\\^n\\)",
+            "O\\(n·2\\^n\\)",
+            "O\\(n\\*2\\*\\*n\\)"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "O\\(n\\)"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "口径",
+            "等价"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S04_max_consecutive_ones_error",
+      "title": "最大连续 1 个数 III 错误更新",
+      "query": "复盘最大连续 1 的个数 III 的错误提交：res 更新语句错在哪？正确写法是什么？",
+      "sources": [
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "错误写法含 right-left+1-zero_count",
+        "正确写法是窗口长度 right-left+1（不减 zero_count）"
+      ],
+      "optional_desc": [
+        "指出该题是滑动窗口"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "right - left + 1 - zero_count",
+            "right-left+1-zero_count"
+          ]
+        },
+        {
+          "any_of": [
+            "right - left + 1",
+            "right-left+1"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "滑动窗口",
+            "window"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S05_max_product_subarray",
+      "title": "乘积最大子数组双状态",
+      "query": "为什么乘积最大子数组需要同时维护 max_prod 和 min_prod？遇到负数时如何更新？",
+      "sources": [
+        "data/notes/my_markdowns/乘积最大子数组题目讲解.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "负数会翻转大小关系，需要同时维护最大/最小乘积",
+        "遇到负数先交换 max_prod 与 min_prod",
+        "用 max(x, max_prod*x) / min(x, min_prod*x) 更新"
+      ],
+      "optional_desc": [
+        "提到 0 会自然重置"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "max_prod",
+            "min_prod",
+            "最大乘积",
+            "最小乘积"
+          ]
+        },
+        {
+          "any_of": [
+            "负数",
+            "交换",
+            "swap"
+          ]
+        },
+        {
+          "any_of": [
+            "max(x",
+            "min(x",
+            "max_prod*x",
+            "min_prod*x"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "0",
+            "重置"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S06_tree_type_definitions",
+      "title": "Perfect/Complete/Full 定义",
+      "query": "简洁说明 Perfect / Complete / Full 二叉树的定义，并给出 Full 树中叶子与内部节点数量关系。",
+      "sources": [
+        "data/notes/my_markdowns/二叉树 Perfect Complete Full 区别.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "Perfect：各层填满、叶子同层（节点数公式可选）",
+        "Complete：除最后一层外全满，最后一层靠左对齐",
+        "Full：节点要么 0 孩子要么 2 孩子",
+        "Full 树满足 叶子数 = 内部节点数 + 1"
+      ],
+      "optional_desc": [
+        "提到 Perfect 节点数 2^{h+1}-1"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "Perfect",
+            "完美",
+            "层层填满",
+            "叶子同层"
+          ]
+        },
+        {
+          "any_of": [
+            "Complete",
+            "完全",
+            "靠左",
+            "左对齐"
+          ]
+        },
+        {
+          "any_of": [
+            "Full",
+            "0个孩子",
+            "2个孩子",
+            "无单孩子"
+          ]
+        },
+        {
+          "any_of": [
+            "叶子数",
+            "内部节点",
+            "+1",
+            "2*叶子-1"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "2^{h+1}-1",
+            "2^h"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S07_zigzag_tree_parent",
+      "title": "之字形寻路父节点公式",
+      "query": "力扣 1104 之字形寻路：父节点标签公式是什么？start/end 如何定义？",
+      "sources": [
+        "data/notes/my_markdowns/二叉树Z字形寻路题讲解.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "父节点公式：parent = (start + end - label) // 2",
+        "start = 2^level，end = 2^{level+1}-1"
+      ],
+      "optional_desc": [
+        "说明正常编号与之字形编号左右镜像"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "start + end - label",
+            "start+end-label"
+          ]
+        },
+        {
+          "any_of": [
+            "2^level",
+            "1<<level",
+            "2^{level+1}-1",
+            "(1<<(level+1))-1"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "镜像",
+            "翻转",
+            "左右对称"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S08_distance_k_nodes",
+      "title": "距离为 K 的节点：树转图",
+      "query": "力扣 863：如何把二叉树转成图并求距离为 K 的节点？visited 的作用是什么？",
+      "sources": [
+        "data/notes/my_markdowns/二叉树距离为K节点解析.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "把父子关系转成双向边（树转无向图）",
+        "从 target 做 BFS，按层到第 K 层收集",
+        "visited 防止回到父节点造成重复/死循环"
+      ],
+      "optional_desc": [
+        "可提到 DFS 也可行但 BFS 更直观"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "建图",
+            "双向",
+            "父节点",
+            "无向图"
+          ]
+        },
+        {
+          "any_of": [
+            "BFS",
+            "按层",
+            "第K层"
+          ]
+        },
+        {
+          "any_of": [
+            "visited",
+            "去重",
+            "死循环"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "DFS"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S09_zigzag_level_order",
+      "title": "锯齿形层序遍历",
+      "query": "力扣 103 锯齿形层序遍历：核心流程是什么？如何控制左右方向？复杂度如何？",
+      "sources": [
+        "data/notes/my_markdowns/二叉树锯齿形层序遍历解析.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "普通 BFS 层序遍历，按 level_size 处理一层",
+        "用 left_to_right 标志位控制，必要时反转该层",
+        "时间 O(n)，空间 O(n)"
+      ],
+      "optional_desc": [
+        "可提到用 deque appendleft 优化反转"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "level_size",
+            "队列长度",
+            "按层"
+          ]
+        },
+        {
+          "any_of": [
+            "left_to_right",
+            "反转",
+            "reverse",
+            "方向"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "O\\(n\\)"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "deque",
+            "appendleft"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S10_binary_matrix_shortest_path",
+      "title": "二进制矩阵最短路径",
+      "query": "力扣 1091：起点/终点为 1 时怎么办？BFS 如何走 8 个方向？路径长度为什么从 1 开始？",
+      "sources": [
+        "data/notes/my_markdowns/二进制矩阵最短路径题讲解.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "起点或终点为 1 直接返回 -1（n==1 且为 0 返回 1）",
+        "BFS 扫 8 个方向",
+        "路径长度包含起点，初始 dist=1"
+      ],
+      "optional_desc": [
+        "用 grid 复用标记访问"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "起点",
+            "终点",
+            "为1返回-1",
+            "障碍"
+          ]
+        },
+        {
+          "any_of": [
+            "8",
+            "八个方向",
+            "对角线"
+          ]
+        },
+        {
+          "any_of": [
+            "包含起点",
+            "dist=1",
+            "起点为1步"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "grid标记",
+            "改成1"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S11_search_matrix_74",
+      "title": "搜索二维矩阵（74）",
+      "query": "矩阵满足行有序且行首 > 上一行末：如何等价成一维数组并做二分？mid 如何映射行列？",
+      "sources": [
+        "data/notes/my_markdowns/力扣74搜索二维矩阵讲解.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "按行展开为一维有序数组",
+        "row = mid // n, col = mid % n",
+        "时间复杂度 O(log(m*n))"
+      ],
+      "optional_desc": [
+        "提到空间 O(1)"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "一维",
+            "展开",
+            "有序数组"
+          ]
+        },
+        {
+          "any_of": [
+            "mid//n",
+            "mid % n",
+            "row",
+            "col"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "O\\(log",
+            "log\\(m\\*n\\)",
+            "log\\(mn\\)"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "O(1)",
+            "常数空间"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S12_even_odd_tree",
+      "title": "奇偶树规则",
+      "query": "力扣 1609 奇偶树：偶数层/奇数层分别有什么值与单调性要求？prev 初始值如何设？",
+      "sources": [
+        "data/notes/my_markdowns/力扣奇偶树题目讲解.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "偶数层值必须为奇数，且严格递增",
+        "奇数层值必须为偶数，且严格递减",
+        "prev 初始值：偶数层 -inf，奇数层 +inf"
+      ],
+      "optional_desc": [
+        "提到 BFS 按层处理"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "偶数层",
+            "奇数"
+          ]
+        },
+        {
+          "any_of": [
+            "严格递增",
+            "递增"
+          ]
+        },
+        {
+          "any_of": [
+            "严格递减",
+            "递减"
+          ]
+        },
+        {
+          "any_of": [
+            "inf",
+            "无穷",
+            "prev"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "BFS",
+            "层序"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S13_complete_tree_check",
+      "title": "完全二叉树检验",
+      "query": "力扣 958：层序遍历里遇到空节点后为什么不能再出现非空？具体判断逻辑是啥？",
+      "sources": [
+        "data/notes/my_markdowns/力扣完全二叉树检验讲解.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "BFS 层序遍历允许 None 入队",
+        "一旦遇到空节点，后续再遇非空即失败（有空洞）"
+      ],
+      "optional_desc": [
+        "可补充索引法 max_index==count"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "BFS",
+            "层序遍历",
+            "队列"
+          ]
+        },
+        {
+          "any_of": [
+            "空节点",
+            "None",
+            "seen_null"
+          ]
+        },
+        {
+          "any_of": [
+            "之后不能再出现非空",
+            "空洞",
+            "出现非空就False"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "索引法",
+            "max_index",
+            "count"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S14_nearest_exit",
+      "title": "迷宫最近出口",
+      "query": "力扣 1926：如何避免把入口当作出口？BFS 里在哪一步检查边界出口？",
+      "sources": [
+        "data/notes/my_markdowns/力扣迷宫最近出口题解.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "入口先标记为已访问（改为 '+')",
+        "只在扩展到邻居空地时判断是否边界出口"
+      ],
+      "optional_desc": [
+        "说明 BFS 找最短步数"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "入口",
+            "标记",
+            "+'",
+            "访问"
+          ]
+        },
+        {
+          "any_of": [
+            "扩展",
+            "邻居",
+            "边界",
+            "出口"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "BFS",
+            "最短"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S15_keys_and_rooms",
+      "title": "钥匙和房间建模",
+      "query": "力扣 841：如何将房间和钥匙建模成图？visited 的作用是什么？复杂度为何是 O(N+E)？",
+      "sources": [
+        "data/notes/my_markdowns/力扣钥匙和房间题讲解.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "房间是节点、钥匙是有向边，从 0 出发遍历",
+        "visited 防重复访问、防止死循环",
+        "时间复杂度 O(N+E)"
+      ],
+      "optional_desc": [
+        "提到 DFS/BFS 均可"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "房间",
+            "节点",
+            "钥匙",
+            "边",
+            "图"
+          ]
+        },
+        {
+          "any_of": [
+            "visited",
+            "去重",
+            "死循环"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "O\\(N\\+E\\)",
+            "O\\(n\\+e\\)"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "DFS",
+            "BFS"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S16_evaluate_division",
+      "title": "除法求值图建模",
+      "query": "力扣 399：如何建图并处理查询？缺失变量或起终点相同怎么返回？",
+      "sources": [
+        "data/notes/my_markdowns/力扣除法求值题讲解.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "a/b=k 建两条边：a→b=k, b→a=1/k",
+        "BFS/DFS 乘积路径得到结果",
+        "变量不存在返回 -1，start==end 返回 1"
+      ],
+      "optional_desc": [
+        "说明 visited 防止循环"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "1/k",
+            "双向",
+            "边权"
+          ]
+        },
+        {
+          "any_of": [
+            "BFS",
+            "DFS",
+            "乘积"
+          ]
+        },
+        {
+          "any_of": [
+            "-1",
+            "不存在",
+            "start==end",
+            "返回1"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "visited",
+            "去重"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S17_lps_interval_dp",
+      "title": "最长回文子序列（区间 DP）",
+      "query": "力扣 516：dp[i][j] 的含义是什么？两端相等/不等的转移式？初始化与填表顺序？",
+      "sources": [
+        "data/notes/my_markdowns/动态规划.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "dp[i][j] 表示 s[i..j] 的 LPS 长度",
+        "s[i]==s[j] -> dp[i+1][j-1]+2；否则 max(dp[i+1][j], dp[i][j-1])",
+        "dp[i][i]=1；i 从后往前、j 从前往后",
+        "时间/空间 O(n^2)"
+      ],
+      "optional_desc": [
+        "可说明区间 DP 特征"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "dp[i][j]",
+            "s[i..j]",
+            "区间"
+          ]
+        },
+        {
+          "any_of": [
+            "dp[i+1][j-1]+2",
+            "s[i]==s[j]"
+          ]
+        },
+        {
+          "any_of": [
+            "max(dp[i+1][j]",
+            "dp[i][j-1]"
+          ]
+        },
+        {
+          "any_of": [
+            "dp[i][i]=1",
+            "初始化"
+          ]
+        },
+        {
+          "any_of": [
+            "i从后往前",
+            "j从前往后",
+            "倒序"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "O\\(n\\^2\\)"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "区间 DP"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S18_subsets_backtracking",
+      "title": "子集回溯本质",
+      "query": "力扣 78 子集：为什么每次进入递归就把 path 加入结果？start_index 的作用是什么？",
+      "sources": [
+        "data/notes/my_markdowns/回溯算法理解与子集问题本质.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "每个节点都是一个中间子集，进入递归就加入结果",
+        "start_index 保证只向后选择，避免重复组合"
+      ],
+      "optional_desc": [
+        "提到“选/不选”决策树模型"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "path",
+            "加入结果",
+            "当前路径就是子集"
+          ]
+        },
+        {
+          "any_of": [
+            "start_index",
+            "向后",
+            "避免重复",
+            "组合"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "决策树",
+            "选/不选"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S19_cbt_inserter",
+      "title": "完全二叉树插入器",
+      "query": "力扣 919：如何用 candidates 队列保证 insert 为 O(1)？插入时父节点怎么更新队列？",
+      "sources": [
+        "data/notes/my_markdowns/完全二叉树插入器题解.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "初始化 BFS 收集孩子未满的节点到队列",
+        "insert 取队头为父，先填左后填右，右填满后弹出父",
+        "新节点入队作为候选父节点"
+      ],
+      "optional_desc": [
+        "初始化 O(n)，插入 O(1)"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "candidates",
+            "候选",
+            "队列",
+            "孩子没满"
+          ]
+        },
+        {
+          "any_of": [
+            "先左后右",
+            "left",
+            "right"
+          ]
+        },
+        {
+          "any_of": [
+            "弹出",
+            "popleft",
+            "父节点出队"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "O(1)",
+            "O(n)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S20_min_malware_spread",
+      "title": "尽量减少恶意软件传播",
+      "query": "力扣 924：为何要按连通分量统计初始感染数？如何选择删除节点？",
+      "sources": [
+        "data/notes/my_markdowns/尽量减少恶意软件的传播.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "按连通分量统计 size 与 infect_cnt",
+        "只有 infect_cnt==1 的分量可被拯救，saved=size",
+        "选 saved 最大者；并列取下标最小；若无可拯救则取 initial 最小"
+      ],
+      "optional_desc": [
+        "提到 DFS/BFS 找分量"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "连通分量",
+            "component",
+            "分量大小"
+          ]
+        },
+        {
+          "any_of": [
+            "infect_cnt",
+            "初始感染数",
+            "只有一个感染"
+          ]
+        },
+        {
+          "any_of": [
+            "saved",
+            "最大",
+            "下标最小",
+            "min(initial)"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "DFS",
+            "BFS"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S21_connect_next_pointers",
+      "title": "常数空间连接 next 指针",
+      "query": "力扣 117 模板中 level_head、next_level_dummy、next_level_tail 分别指什么？",
+      "sources": [
+        "data/notes/my_markdowns/常数空间连接二叉树下一层指针.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "level_head：当前层链表头（最左节点）",
+        "next_level_dummy：下一层虚拟头",
+        "next_level_tail：下一层链表尾指针"
+      ],
+      "optional_desc": [
+        "提到用 next 横向遍历当前层"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "level_head",
+            "当前层",
+            "最左"
+          ]
+        },
+        {
+          "any_of": [
+            "next_level_dummy",
+            "虚拟头",
+            "dummy"
+          ]
+        },
+        {
+          "any_of": [
+            "next_level_tail",
+            "尾指针",
+            "tail"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "next",
+            "横向遍历"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S22_min_gene_mutation",
+      "title": "最小基因变化",
+      "query": "力扣 433：BFS 的核心步骤是什么？为何 end 不在 bank 时可直接返回 -1？",
+      "sources": [
+        "data/notes/my_markdowns/最小基因变化题解.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "BFS，逐位替换为 A/C/G/T 生成邻居",
+        "bank_set 加速查询，end 不在 bank 直接 -1",
+        "visited 防止重复"
+      ],
+      "optional_desc": [
+        "时间复杂度 O(4*L*N)"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "BFS",
+            "队列"
+          ]
+        },
+        {
+          "any_of": [
+            "A",
+            "C",
+            "G",
+            "T"
+          ]
+        },
+        {
+          "any_of": [
+            "end 不在 bank",
+            "直接 -1",
+            "bank_set"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "visited"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S23_min_height_trees",
+      "title": "最小高度树剥洋葱",
+      "query": "力扣 310：为什么要按层剥离叶子？何时停止？剩余节点代表什么？",
+      "sources": [
+        "data/notes/my_markdowns/最小高度树剥洋葱找树中心.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "叶子在直径两端，按层剥离逼近中心",
+        "剩余节点数 <=2 时停止",
+        "剩余 1~2 节点是树中心/最小高度根"
+      ],
+      "optional_desc": [
+        "可提到 O(n) 复杂度"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "剥洋葱",
+            "删除叶子",
+            "叶子层"
+          ]
+        },
+        {
+          "any_of": [
+            "<=2",
+            "1或2个"
+          ]
+        },
+        {
+          "any_of": [
+            "中心",
+            "最小高度根"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "O(n)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S24_sliding_puzzle",
+      "title": "滑动谜题状态表示",
+      "query": "力扣 773：为什么用字符串表示状态？0 的邻居如何预处理？BFS 为什么能保证最少步数？",
+      "sources": [
+        "data/notes/my_markdowns/滑动谜题BFS解题思路.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "把 2x3 棋盘 flatten 成字符串，目标是 123450",
+        "预先写邻接表：0 在每个索引可交换的位置",
+        "无权图最短步数用 BFS"
+      ],
+      "optional_desc": [
+        "提到状态空间最多 6!"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "123450",
+            "字符串状态",
+            "flatten"
+          ]
+        },
+        {
+          "any_of": [
+            "邻接表",
+            "neighbors",
+            "0 的位置"
+          ]
+        },
+        {
+          "any_of": [
+            "BFS",
+            "最短步数",
+            "无权图"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "6!",
+            "720"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S25_climbing_stairs",
+      "title": "爬楼梯递推",
+      "query": "力扣 70：递推公式和初始条件是什么？时间/空间复杂度如何？",
+      "sources": [
+        "data/notes/my_markdowns/爬楼梯动态规划思路解析.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "f(n)=f(n-1)+f(n-2)",
+        "f(1)=1, f(2)=2",
+        "时间 O(n)，空间 O(1)"
+      ],
+      "optional_desc": [
+        "指出是斐波那契模型"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "f(n)=f(n-1)+f(n-2)",
+            "斐波那契"
+          ]
+        },
+        {
+          "any_of": [
+            "f(1)=1",
+            "f(2)=2"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "O\\(n\\)"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "O\\(1\\)"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "斐波那契"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S26_jump_game_iii",
+      "title": "跳跃游戏 III 可达性",
+      "query": "力扣 1306：如何建模并避免死循环？起点为 0 时的返回值？",
+      "sources": [
+        "data/notes/my_markdowns/跳跃游戏III题解.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "must_desc": [
+        "下标是节点，边为 i±arr[i]",
+        "visited 防止在环中无限跳",
+        "arr[start]==0 直接 True"
+      ],
+      "optional_desc": [
+        "说明 BFS/DFS 都可"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "i+arr[i]",
+            "i-arr[i]",
+            "两种跳转"
+          ]
+        },
+        {
+          "any_of": [
+            "visited",
+            "死循环"
+          ]
+        },
+        {
+          "any_of": [
+            "arr[start]==0",
+            "起点为0"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "BFS",
+            "DFS"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "S27_invert_tree_thinking",
+      "title": "翻转二叉树：遍历 vs 分解",
+      "query": "用“遍历思维”和“分解问题思维”分别概括翻转二叉树的递归要点，并给出复杂度。",
+      "sources": [
+        "data/notes/my_markdowns/递归遍历.md"
+      ],
+      "type": "single_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "遍历思维：访问节点时交换左右",
+        "分解思维：递归翻转左右子树后再交换",
+        "时间 O(n)，空间 O(h)"
+      ],
+      "optional_desc": [
+        "指出前序/后序皆可"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "遍历",
+            "交换左右",
+            "前序"
+          ]
+        },
+        {
+          "any_of": [
+            "分解",
+            "翻转左右子树",
+            "递归"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "O\\(n\\)"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "O\\(h\\)"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "前序",
+            "后序"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M01_bfs_compare_levelsum_rotting",
+      "title": "BFS 模板对比：最大层和 vs 腐烂橘子",
+      "query": "对比“最大层和”与“腐烂橘子”两题的 BFS：共同点与差异各列 2 条。",
+      "sources": [
+        "data/notes/my_markdowns/BFS求二叉树最大层和.md",
+        "data/notes/my_markdowns/BFS练习题 II.md"
+      ],
+      "type": "multi_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "共同点：队列层序、level_size 处理一层",
+        "差异：单源 vs 多源；关注层和 vs 分钟/fresh；返回值不同"
+      ],
+      "optional_desc": [
+        "可补充访问控制/入队孩子"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "队列",
+            "BFS",
+            "层序"
+          ]
+        },
+        {
+          "any_of": [
+            "level_size",
+            "按层"
+          ]
+        },
+        {
+          "any_of": [
+            "多源",
+            "多个起点",
+            "腐烂橘子"
+          ]
+        },
+        {
+          "any_of": [
+            "层和",
+            "最大层和",
+            "分钟",
+            "fresh",
+            "-1"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "访问",
+            "入队",
+            "孩子"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M02_grid_bfs_compare_exit_1091",
+      "title": "网格 BFS 对比：迷宫出口 vs 二进制矩阵最短路",
+      "query": "对比 1926 迷宫最近出口 与 1091 二进制矩阵最短路径：共同点 2 条、差异 2 条。",
+      "sources": [
+        "data/notes/my_markdowns/力扣迷宫最近出口题解.md",
+        "data/notes/my_markdowns/二进制矩阵最短路径题讲解.md"
+      ],
+      "type": "multi_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "共同点：无权网格最短路，BFS + visited",
+        "差异：4 方向 vs 8 方向；出口边界且非入口 vs 固定终点；步数口径不同"
+      ],
+      "optional_desc": [
+        "可提到入口先标记为 '+'"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "BFS",
+            "最短路",
+            "visited"
+          ]
+        },
+        {
+          "any_of": [
+            "四方向",
+            "4",
+            "上下左右"
+          ]
+        },
+        {
+          "any_of": [
+            "八方向",
+            "8",
+            "对角线"
+          ]
+        },
+        {
+          "any_of": [
+            "出口",
+            "边界",
+            "入口",
+            "终点"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "+",
+            "标记入口"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M03_graph_model_compare_distancek_rooms",
+      "title": "图建模对比：距离 K vs 钥匙房间",
+      "query": "对比 863 距离为 K 的节点 与 841 钥匙和房间：图建模与遍历目标有什么不同？",
+      "sources": [
+        "data/notes/my_markdowns/二叉树距离为K节点解析.md",
+        "data/notes/my_markdowns/力扣钥匙和房间题讲解.md"
+      ],
+      "type": "multi_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "863：树转无向图（父子双向），BFS 按层到第 K 层",
+        "841：房间为节点、钥匙为有向边，目标是可达性"
+      ],
+      "optional_desc": [
+        "两题都需要 visited 防止重复"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "无向",
+            "双向",
+            "父节点",
+            "建图"
+          ]
+        },
+        {
+          "any_of": [
+            "第K层",
+            "距离K",
+            "按层"
+          ]
+        },
+        {
+          "any_of": [
+            "钥匙",
+            "房间",
+            "可达性",
+            "有向"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "visited",
+            "去重"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "M04_lps_error_fix",
+      "title": "LPS 错误修正（跨文档）",
+      "query": "结合 516 LPS 的 dp 定义与提交记录，指出两次 Runtime Error 的原因并给出正确返回值。",
+      "sources": [
+        "data/notes/my_markdowns/动态规划.md",
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "multi_doc",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_desc": [
+        "第一次错误：n 未定义就用于 dp 维度",
+        "第二次错误：返回 dp[n][n-1] 越界，正确应为 dp[0][n-1]"
+      ],
+      "optional_desc": [
+        "说明 dp[i][j] 表示 s[i..j] 的 LPS"
+      ],
+      "must_have": [
+        {
+          "any_of": [
+            "n 未定义",
+            "先定义 n",
+            "n = len(s)"
+          ]
+        },
+        {
+          "any_of": [
+            "dp[n][n-1]",
+            "越界"
+          ]
+        },
+        {
+          "any_of": [
+            "dp[0][n-1]",
+            "正确返回"
+          ]
+        }
+      ],
+      "optional": [
+        {
+          "any_of": [
+            "dp[i][j]",
+            "s[i..j]"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "U01_search_matrix_II",
+      "title": "未知题：搜索二维矩阵 II",
+      "query": "力扣 240 搜索二维矩阵 II 的 O(m+n) 解法要点是什么？",
+      "sources": [],
+      "type": "unknown",
+      "difficulty": "medium",
+      "allow_unknown": true,
+      "must_desc": [
+        "文档未覆盖时回答“未知/无法确定”"
+      ],
+      "optional_desc": [],
+      "must_have": [],
+      "optional": []
+    },
+    {
+      "id": "U02_lru_cache",
+      "title": "未知题：LRU Cache",
+      "query": "力扣 146 LRU 缓存的核心数据结构与复杂度是什么？",
+      "sources": [],
+      "type": "unknown",
+      "difficulty": "medium",
+      "allow_unknown": true,
+      "must_desc": [
+        "文档未覆盖时回答“未知/无法确定”"
+      ],
+      "optional_desc": [],
+      "must_have": [],
+      "optional": []
+    },
+    {
+      "id": "U03_ndcg_mrr",
+      "title": "未知题：排序指标",
+      "query": "给出 nDCG 与 MRR 的计算公式，并说明使用场景。",
+      "sources": [],
+      "type": "unknown",
+      "difficulty": "hard",
+      "allow_unknown": true,
+      "must_desc": [
+        "文档未覆盖时回答“未知/无法确定”"
+      ],
+      "optional_desc": [],
+      "must_have": [],
+      "optional": []
+    }
+  ]
+}

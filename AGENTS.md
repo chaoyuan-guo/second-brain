@@ -26,6 +26,12 @@
 - 仓库尚未附带后端测试，请在根目录建立 `tests/`，以 `test_<module>.py` 命名，使用 `pytest -q` 作为默认命令，并针对每个工具函数提供成功与失败分支的协程测试，目标覆盖率 ≥80%。 Add fixtures for external HTTP clients and patch network calls to keep tests deterministic.
 - 前端建议在 `frontend/src/__tests__/` 下采用 React Testing Library；新增 `npm run test`（映射至 `next test` 或 `vitest run`）后，命名遵循 `<Component>.test.tsx`，同时通过 `npm run lint`（Next 自带）保证 JSX/TS 规范。 Snapshot tests should be paired with meaningful interaction assertions.
 
+## Evaluation Guidelines
+- 评估相关内容集中在 `eval/` 下，评估集与模板在 `eval/testsets/`，脚本在 `eval/scripts/`，报告建议输出到 `eval/reports/`。
+- 运行自动评分：`python eval/scripts/grade_testset_v2.py --answers path/to/answers.json`；如需指定评估集或输出报告，可用 `--testset eval/testsets/testset_v2.json --output eval/reports/report.json`。
+- 运行在线评估（默认流式 `/chat/stream`）：`python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000 --report eval/reports/report.json`，默认输出 `eval/reports/answers.json`。
+- 如需非流式接口：`--mode chat --endpoint /chat`（当前评估无需鉴权）。
+
 ## Commit & Pull Request Guidelines
 - 仓库已初始化 Git，请继续遵循 Conventional Commits（如 `feat: add web_search retries`、`fix: guard empty query`）保持可读性；单次提交聚焦单一功能或缺陷修复。 Commits should stay atomic on the `main` branch unless stated otherwise.
 - PR 需包含变更摘要、验证方式（命令输出或截图）、相关 Issue 链接以及潜在风险；若触及 env/脚本，请同时更新 `start_services.sh` 或 README 片段以免部署偏差。 Request reviewers familiar with both FastAPI and Next.js when changes cross the stack.
