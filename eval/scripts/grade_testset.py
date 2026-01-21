@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
-"""Baseline grader for testset_v2.json.
+"""Baseline grader for evaluation testsets.
 
 Usage:
-  python eval/scripts/grade_testset_v2.py --answers path/to/answers.json
-  python eval/scripts/grade_testset_v2.py --testset eval/testsets/testset_v2.json --answers answers.json --output report.json
-
-answers.json format:
-{
-  "S01_BFS_max_level_sum": "your answer...",
-  "S02_rotting_oranges_multi_source": "..."
-}
+  python eval/scripts/grade_testset.py --answers path/to/answers.json
+  python eval/scripts/grade_testset.py --testset eval/testsets/testset_v3.json --answers answers.json --output report.json
 """
 
 from __future__ import annotations
@@ -294,8 +288,8 @@ def evaluate_question(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Grade answers against testset_v2.json")
-    parser.add_argument("--testset", default="eval/testsets/testset_v2.json", help="Path to testset JSON")
+    parser = argparse.ArgumentParser(description="Grade answers against testsets")
+    parser.add_argument("--testset", default="eval/testsets/testset_v3.json", help="Path to testset JSON")
     parser.add_argument("--answers", required=True, help="Path to answers JSON")
     parser.add_argument("--output", help="Write report JSON to this path")
     parser.add_argument("--require-sources", action="store_true", help="Require answers to include source paths")

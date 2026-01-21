@@ -27,7 +27,7 @@
 - 前端建议在 `frontend/src/__tests__/` 下采用 React Testing Library；新增 `npm run test`（映射至 `next test` 或 `vitest run`）后，命名遵循 `<Component>.test.tsx`，同时通过 `npm run lint`（Next 自带）保证 JSX/TS 规范。 Snapshot tests should be paired with meaningful interaction assertions.
 
 ## Evaluation Guidelines
-- 评估统一走流式 + 严格来源校验：`python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000 --strict-sources --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。
+- 评估统一走流式 + 严格来源校验 + 引用一致性校验：`python eval/scripts/run_eval_stream.py --testset eval/testsets/testset_v3.json --base-url http://127.0.0.1:9000 --strict-sources --recall-k 5 --concurrency 5 --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。
 
 ## Commit & Pull Request Guidelines
 - 仓库已初始化 Git，请继续遵循 Conventional Commits（如 `feat: add web_search retries`、`fix: guard empty query`）保持可读性；单次提交聚焦单一功能或缺陷修复。 Commits should stay atomic on the `main` branch unless stated otherwise.
