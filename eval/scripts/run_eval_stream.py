@@ -14,6 +14,7 @@ import argparse
 import json
 import socket
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote
 import time
 from datetime import datetime
@@ -113,13 +114,13 @@ def run_eval(
     mode: str,
     headers: Dict[str, str],
     strict_sources: bool,
+    concurrency: int,
     limit: Optional[int] = None,
 ) -> Dict[str, str]:
     answers: Dict[str, str] = {}
     url = base_url.rstrip("/") + endpoint
-    for idx, q in enumerate(questions, start=1):
-        if limit and idx > limit:
-            break
+
+    def _run_single(q: dict) -> Tuple[str, str]:
         qid = q["id"]
         query = q["query"]
         payload = {"user_message": query}
@@ -143,9 +144,22 @@ def run_eval(
             answer = f"[http_error] {exc.code} {exc.reason}"
         except urlerror.URLError as exc:
             answer = f"[url_error] {exc.reason}"
-        answers[qid] = answer
         if pause > 0:
             time.sleep(pause)
+        return qid, answer
+
+    queued: List[dict] = []
+    for idx, q in enumerate(questions, start=1):
+        if limit and idx > limit:
+            break
+        queued.append(q)
+
+    worker_count = max(1, concurrency)
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = [executor.submit(_run_single, q) for q in queued]
+        for future in as_completed(futures):
+            qid, answer = future.result()
+            answers[qid] = answer
     return answers
 
 
@@ -157,11 +171,13 @@ def main() -> None:
     parser.add_argument("--mode", choices=["stream", "chat"], default="stream")
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--pause", type=float, default=0.0)
+    parser.add_argument("--concurrency", type=int, default=5)
     parser.add_argument("--limit", type=int)
     parser.add_argument("-H", "--header", action="append", default=[], help="Extra header, e.g. 'Authorization: Bearer x'")
     parser.add_argument("--out", default="eval/reports/answers.json")
     parser.add_argument("--report", help="Optional report JSON path; runs grader after answering")
     parser.add_argument("--strict-sources", action="store_true", help="Require answers to include note sources")
+    parser.add_argument("--recall-k", default="", help="Compute recall@k (comma-separated integers)")
     args = parser.parse_args()
 
     questions = load_testset(Path(args.testset))
@@ -176,6 +192,7 @@ def main() -> None:
         mode=args.mode,
         headers=headers,
         strict_sources=args.strict_sources,
+        concurrency=args.concurrency,
         limit=args.limit,
     )
 
@@ -196,6 +213,10 @@ def main() -> None:
         ]
         if args.strict_sources:
             report_cmd.append("--require-sources")
+        if args.recall_k:
+            report_cmd += ["--recall-k", args.recall_k]
+        if args.testset:
+            report_cmd += ["--testset", args.testset]
         subprocess.run(
             report_cmd,
             check=False,
@@ -210,6 +231,7 @@ def main() -> None:
                 "endpoint": args.endpoint,
                 "base_url": args.base_url,
                 "strict_sources": args.strict_sources,
+                "concurrency": args.concurrency,
                 "timestamp": datetime.utcnow().isoformat() + "Z",
             },
             ensure_ascii=False,

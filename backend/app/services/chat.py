@@ -1126,8 +1126,6 @@ async def run_chat_conversation(
     query_tool_attempts = 0
     code_interpreter_used = False
     agentic_hint_inserted = False
-    forced_query_done = False
-    strict_context_injected = False
     used_sources: List[str] = []
     eval_context = eval_context or {}
     strict_eval = bool(eval_context.get("strict"))
@@ -1135,6 +1133,7 @@ async def run_chat_conversation(
     expected_sources = [
         str(item) for item in (eval_context.get("expected_sources") or []) if str(item)
     ]
+    eval_mode = bool(strict_eval or question_id or expected_sources)
 
     last_user = messages[-1].get("content") if messages else ""
     last_user_prefix = ""
@@ -1158,7 +1157,7 @@ async def run_chat_conversation(
             extra={"trace_id": trace_id, "question_id": question_id},
         )
 
-    if isinstance(last_user, str) and _should_force_unknown(
+    if not eval_mode and isinstance(last_user, str) and _should_force_unknown(
         last_user,
         strict=strict_eval,
         expected_sources=expected_sources,
@@ -1172,7 +1171,7 @@ async def run_chat_conversation(
         )
         return ChatResponse(response=content, tool_calls=None)
 
-    if isinstance(last_user, str):
+    if not eval_mode and isinstance(last_user, str):
         hint = _build_answer_hints(last_user)
         if hint:
             messages.append({"role": "system", "content": hint})
@@ -1207,127 +1206,7 @@ async def run_chat_conversation(
             content = assistant_message.get("content")
             if content:
                 if strict_eval and expected_sources:
-                    if (
-                        not forced_query_done
-                        and isinstance(last_user, str)
-                        and last_user.strip()
-                        and turn < MAX_TOOL_TURNS
-                    ):
-                        forced_query_done = True
-                        forced_call_id = f"forced_query_{trace_id}_{turn}"
-                        forced_args = {"query": last_user, "top_k": 5}
-                        if event_callback:
-                            try:
-                                event_callback(
-                                    {
-                                        "type": "tool",
-                                        "stage": "start",
-                                        "tool_name": "query_my_notes",
-                                        "tool_call_id": forced_call_id,
-                                        "tool_count": tool_invocations + 1,
-                                        "trace_id": trace_id,
-                                        "message": _format_tool_status_message(
-                                            tool_name="query_my_notes",
-                                            tool_index=tool_invocations + 1,
-                                            tool_count=tool_invocations + 1,
-                                            arguments=forced_args,
-                                            stage="start",
-                                        ),
-                                        "ts": time.time(),
-                                    }
-                                )
-                            except Exception:
-                                logger.debug("Failed to emit forced tool start", exc_info=True)
-                        try:
-                            result = await _call_sync(
-                                query_my_notes,
-                                query=forced_args["query"],
-                                top_k=forced_args["top_k"],
-                            )
-                        except Exception as exc:
-                            result = {"error": str(exc)}
-                        status = "error" if isinstance(result, dict) and "error" in result else "ok"
-                        _log_tool_summary(
-                            tool_name="query_my_notes",
-                            tool_call_id=forced_call_id,
-                            arguments=forced_args,
-                            output=result,
-                            trace_id=trace_id,
-                            turn=turn,
-                            status=status,
-                        )
-                        if isinstance(result, dict):
-                            for item in result.get("results") or []:
-                                source_path = item.get("source_path")
-                                if isinstance(source_path, str) and source_path:
-                                    used_sources.append(_normalize_source_path(source_path))
-                        messages.append(
-                            {
-                                "role": "assistant",
-                                "content": "",
-                                "tool_calls": [
-                                    {
-                                        "id": forced_call_id,
-                                        "type": "function",
-                                        "function": {
-                                            "name": "query_my_notes",
-                                            "arguments": json.dumps(
-                                                forced_args, ensure_ascii=False
-                                            ),
-                                        },
-                                    }
-                                ],
-                            }
-                        )
-                        messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": forced_call_id,
-                                "content": _dumps_tool_payload(result if isinstance(result, dict) else {}),
-                            }
-                        )
-                        query_tool_attempts += 1
-                        tool_invocations += 1
-                        if event_callback:
-                            try:
-                                stage = "end" if status == "ok" else "error"
-                                event_callback(
-                                    {
-                                        "type": "tool",
-                                        "stage": stage,
-                                        "tool_name": "query_my_notes",
-                                        "tool_call_id": forced_call_id,
-                                        "tool_count": tool_invocations,
-                                        "trace_id": trace_id,
-                                        "message": _format_tool_status_message(
-                                            tool_name="query_my_notes",
-                                            tool_index=tool_invocations,
-                                            tool_count=tool_invocations,
-                                            arguments=forced_args,
-                                            stage=stage,
-                                        ),
-                                        "ts": time.time(),
-                                    }
-                                )
-                            except Exception:
-                                logger.debug("Failed to emit forced tool end", exc_info=True)
-                        continue
-
                     matched_sources = _match_expected_sources(used_sources, expected_sources)
-                    if (
-                        not matched_sources
-                        and not strict_context_injected
-                        and turn < MAX_TOOL_TURNS
-                    ):
-                        strict_context = await _prefetch_expected_sources(
-                            expected_sources,
-                            used_sources,
-                            trace_id=trace_id,
-                        )
-                        if strict_context:
-                            messages.append({"role": "system", "content": strict_context})
-                            strict_context_injected = True
-                            continue
                     if matched_sources:
                         sources_suffix = (
                             f"\n\n来源: {', '.join(sorted(set(matched_sources)))}"
@@ -1337,7 +1216,7 @@ async def run_chat_conversation(
                     content = f"{content}{sources_suffix}"
                     if stream_callback:
                         stream_callback(sources_suffix)
-                if isinstance(last_user, str):
+                if not eval_mode and isinstance(last_user, str):
                     content, addition = _append_missing_tokens(content, last_user)
                     if addition and stream_callback:
                         stream_callback(addition)
