@@ -18,6 +18,7 @@
       "difficulty": "medium",
       "allow_unknown": false,
       "quote_required": true,
+      "evidence_mode": "any",
       "must_have": [],
       "evidence": [
         {
@@ -45,6 +46,7 @@
       "difficulty": "easy",
       "allow_unknown": false,
       "quote_required": true,
+      "evidence_mode": "any",
       "must_have": [],
       "evidence": [
         {
@@ -64,6 +66,7 @@
       "difficulty": "easy",
       "allow_unknown": false,
       "quote_required": true,
+      "evidence_mode": "any",
       "must_have": [],
       "evidence": [
         {
@@ -87,6 +90,7 @@
       "difficulty": "easy",
       "allow_unknown": false,
       "quote_required": true,
+      "evidence_mode": "any",
       "must_have": [],
       "evidence": [
         {
@@ -106,6 +110,7 @@
       "difficulty": "easy",
       "allow_unknown": false,
       "quote_required": true,
+      "evidence_mode": "any",
       "must_have": [],
       "evidence": [
         {
@@ -125,6 +130,7 @@
       "difficulty": "easy",
       "allow_unknown": false,
       "quote_required": true,
+      "evidence_mode": "any",
       "must_have": [],
       "evidence": [
         {

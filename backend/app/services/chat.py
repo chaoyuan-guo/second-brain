@@ -1225,6 +1225,19 @@ async def run_chat_conversation(
                     content,
                     extra={"trace_id": trace_id, "turn": turn + 1},
                 )
+                if eval_mode:
+                    matched_sources = _match_expected_sources(used_sources, expected_sources)
+                    logger.info(
+                        "[Eval] summary question_id=%s used_sources=%s expected_sources=%s matched_sources=%s tool_invocations=%s query_tool_attempts=%s code_interpreter_used=%s",
+                        question_id,
+                        sorted(set(used_sources)),
+                        expected_sources,
+                        sorted(set(matched_sources)),
+                        tool_invocations,
+                        query_tool_attempts,
+                        code_interpreter_used,
+                        extra={"trace_id": trace_id, "turn": turn + 1},
+                    )
                 if event_callback:
                     try:
                         event_callback(

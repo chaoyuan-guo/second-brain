@@ -97,11 +97,11 @@ def check_quote_consistency(
     answer: str,
 ) -> List[int]:
     require_quotes = bool(question.get("quote_required"))
-    quotes = extract_quotes(answer)
-    if require_quotes and not quotes:
-        return [0]
-    if not quotes:
+    if not require_quotes:
         return []
+    quotes = extract_quotes(answer)
+    if not quotes:
+        return [0]
 
     sources_map = load_sources(question)
     missing: List[int] = []
@@ -121,11 +121,31 @@ def check_evidence(
     answer: str,
 ) -> List[int]:
     evidence = question.get("evidence") or []
+    mode = str(question.get("evidence_mode") or "strict").strip().lower()
     if not evidence:
+        return []
+    if mode == "any":
         return []
 
     sources_map = load_sources(question)
     missing: List[int] = []
+    if mode == "any_of":
+        for item in evidence:
+            if isinstance(item, str):
+                text = item
+                source = None
+            else:
+                text = str(item.get("text") or "")
+                source = item.get("source")
+            if not text or not contains_normalized(answer, text):
+                continue
+            if source:
+                source_text = sources_map.get(str(source), "")
+                if not contains_normalized(source_text, text):
+                    continue
+            return []
+        return [0]
+
     for idx, item in enumerate(evidence, start=1):
         if isinstance(item, str):
             text = item
