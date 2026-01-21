@@ -27,11 +27,7 @@
 - 前端建议在 `frontend/src/__tests__/` 下采用 React Testing Library；新增 `npm run test`（映射至 `next test` 或 `vitest run`）后，命名遵循 `<Component>.test.tsx`，同时通过 `npm run lint`（Next 自带）保证 JSX/TS 规范。 Snapshot tests should be paired with meaningful interaction assertions.
 
 ## Evaluation Guidelines
-- 评估相关内容集中在 `eval/` 下，评估集与模板在 `eval/testsets/`，脚本在 `eval/scripts/`，输出建议放在 `eval/reports/`。
-- 运行在线评估（默认流式 `/chat/stream`）：`python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000`，默认输出 `eval/reports/answers.json`。
-- 严格评估（强制来源）：`python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000 --strict-sources --report eval/reports/report.json`。
-- 运行自动评分：`python eval/scripts/grade_testset_v2.py --answers eval/reports/answers.json --output eval/reports/report.json`。
-- 如需非流式接口：`--mode chat --endpoint /chat`（当前评估无需鉴权）。
+- 评估统一走流式 + 严格来源校验：`python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000 --strict-sources --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。
 
 ## Commit & Pull Request Guidelines
 - 仓库已初始化 Git，请继续遵循 Conventional Commits（如 `feat: add web_search retries`、`fix: guard empty query`）保持可读性；单次提交聚焦单一功能或缺陷修复。 Commits should stay atomic on the `main` branch unless stated otherwise.

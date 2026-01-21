@@ -59,6 +59,7 @@ Thumbs.db
 *.swo
 
 runtime/logs/
+eval/reports/
 
 # Local-only deployment prompt notes
 docs/deployment-prompt.md
