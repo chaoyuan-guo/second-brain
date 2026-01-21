@@ -29,6 +29,8 @@
 ## Evaluation Guidelines
 - 评估相关内容集中在 `eval/` 下，评估集与模板在 `eval/testsets/`，脚本在 `eval/scripts/`，输出建议放在 `eval/reports/`。
 - 运行在线评估（默认流式 `/chat/stream`）：`python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000`，默认输出 `eval/reports/answers.json`。
+- 严格评估（强制来源）：`python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000 --strict-sources --report eval/reports/report.json`。
+- 运行自动评分：`python eval/scripts/grade_testset_v2.py --answers eval/reports/answers.json --output eval/reports/report.json`。
 - 如需非流式接口：`--mode chat --endpoint /chat`（当前评估无需鉴权）。
 
 ## Commit & Pull Request Guidelines

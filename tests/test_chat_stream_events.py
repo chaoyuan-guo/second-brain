@@ -64,7 +64,7 @@ def test_run_code_interpreter_error_emits_tool_error_event(monkeypatch) -> None:
     from backend.app.services import chat as chat_service
     from backend.app.services.exceptions import ToolExecutionError
 
-    def fake_request_completion(messages, stream_callback=None):
+    async def fake_request_completion(messages, stream_callback=None, **_kwargs):
         # First turn requests tool, second turn returns final answer.
         if not any(message.get("role") == "tool" for message in messages):
             return {

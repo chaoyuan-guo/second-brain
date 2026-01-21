@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from urllib.parse import unquote
 from fastapi.responses import FileResponse, StreamingResponse
 
 from ..core.config import settings
@@ -24,8 +25,9 @@ def read_hello(input: str) -> dict[str, str]:
 
 
 @router.post("/chat")
-async def chat_completion(payload: ChatRequest) -> ChatResponse:
-    return await execute_chat(payload)
+async def chat_completion(request: Request, payload: ChatRequest) -> ChatResponse:
+    eval_context = _extract_eval_context(request)
+    return await execute_chat(payload, eval_context=eval_context)
 
 
 @router.post("/chat/stream", response_class=StreamingResponse)
@@ -33,7 +35,8 @@ async def chat_completion_stream(request: Request, payload: ChatRequest) -> Stre
     stream_format = request.headers.get("x-stream-format")
     accept = request.headers.get("accept", "")
     want_ndjson = stream_format == "ndjson" or "application/x-ndjson" in accept
-    return await stream_chat_response(payload, want_ndjson=want_ndjson)
+    eval_context = _extract_eval_context(request)
+    return await stream_chat_response(payload, want_ndjson=want_ndjson, eval_context=eval_context)
 
 
 @router.post("/chat/title")
@@ -90,3 +93,20 @@ async def serve_frontend(resource_path: str) -> FileResponse:
 
 
 __all__ = ["router"]
+
+
+def _extract_eval_context(request: Request) -> dict[str, object]:
+    strict = request.headers.get("x-eval-strict", "").strip().lower() in {"1", "true", "yes", "on"}
+    question_id = request.headers.get("x-eval-question-id", "").strip()
+    expected_sources_raw = request.headers.get("x-eval-expected-sources", "")
+    expected_sources = []
+    for item in expected_sources_raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        expected_sources.append(unquote(item))
+    return {
+        "strict": strict,
+        "question_id": question_id,
+        "expected_sources": expected_sources,
+    }

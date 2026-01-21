@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 import time
 import shutil
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar
+from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, TypeVar
 
 import httpx
 import numpy as np
@@ -601,6 +602,45 @@ def call_with_retries(operation: Callable[[], T]) -> T:
     raise RuntimeError("Chat API call failed without exception")
 
 
+async def async_call_with_retries(operation: Callable[[], Awaitable[T]]) -> T:
+    attempts = max(1, CHAT_API_MAX_RETRIES)
+    last_error: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return await operation()
+        except (APITimeoutError, APIConnectionError) as exc:
+            last_error = exc
+            logger.warning(
+                "Chat API connection error",
+                extra={"attempt": attempt, "error": str(exc)},
+            )
+        except RateLimitError as exc:
+            last_error = exc
+            logger.warning(
+                "Chat API rate limited",
+                extra={"attempt": attempt, "error": str(exc)},
+            )
+        except APIStatusError as exc:
+            status_code = getattr(exc, "status_code", None)
+            if not is_retryable_status(status_code):
+                raise
+            last_error = exc
+            logger.warning(
+                "Chat API status error",
+                extra={"attempt": attempt, "status_code": status_code},
+            )
+
+        if attempt < attempts:
+            backoff = CHAT_API_RETRY_BACKOFF_SECONDS * attempt
+            await asyncio.sleep(backoff)
+            continue
+        break
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Chat API call failed without exception")
+
+
 def is_retryable_status(status_code: int | None) -> bool:
     if status_code is None:
         return False
@@ -618,6 +658,7 @@ __all__ = [
     "build_embedding",
     "query_my_notes",
     "call_with_retries",
+    "async_call_with_retries",
     "is_retryable_status",
     "looks_like_raw_markdown",
     "looks_like_interpreter_error",

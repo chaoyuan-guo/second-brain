@@ -4,6 +4,8 @@
 Usage:
   python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000
   python eval/scripts/run_eval_stream.py --testset eval/testsets/testset_v2.json --out eval/reports/answers.json
+  python eval/scripts/run_eval_stream.py --report eval/reports/report.json
+  python eval/scripts/run_eval_stream.py --strict-sources --report eval/reports/report.json
 """
 
 from __future__ import annotations
@@ -11,6 +13,8 @@ from __future__ import annotations
 import argparse
 import json
 import socket
+import subprocess
+from urllib.parse import quote
 import time
 from datetime import datetime
 from pathlib import Path
@@ -108,6 +112,7 @@ def run_eval(
     pause: float,
     mode: str,
     headers: Dict[str, str],
+    strict_sources: bool,
     limit: Optional[int] = None,
 ) -> Dict[str, str]:
     answers: Dict[str, str] = {}
@@ -118,11 +123,20 @@ def run_eval(
         qid = q["id"]
         query = q["query"]
         payload = {"user_message": query}
+        request_headers = dict(headers)
+        if strict_sources:
+            request_headers["X-Eval-Strict"] = "1"
+            request_headers["X-Eval-Question-Id"] = qid
+            sources = q.get("sources") or []
+            if sources:
+                request_headers["X-Eval-Expected-Sources"] = ",".join(
+                    quote(source, safe="/._-") for source in sources
+                )
         try:
             if mode == "chat":
-                answer = chat_once(url, payload, timeout, headers)
+                answer = chat_once(url, payload, timeout, request_headers)
             else:
-                answer = stream_chat(url, payload, timeout, headers)
+                answer = stream_chat(url, payload, timeout, request_headers)
         except (TimeoutError, socket.timeout):
             answer = "[timeout]"
         except urlerror.HTTPError as exc:
@@ -146,6 +160,8 @@ def main() -> None:
     parser.add_argument("--limit", type=int)
     parser.add_argument("-H", "--header", action="append", default=[], help="Extra header, e.g. 'Authorization: Bearer x'")
     parser.add_argument("--out", default="eval/reports/answers.json")
+    parser.add_argument("--report", help="Optional report JSON path; runs grader after answering")
+    parser.add_argument("--strict-sources", action="store_true", help="Require answers to include note sources")
     args = parser.parse_args()
 
     questions = load_testset(Path(args.testset))
@@ -159,6 +175,7 @@ def main() -> None:
         pause=args.pause,
         mode=args.mode,
         headers=headers,
+        strict_sources=args.strict_sources,
         limit=args.limit,
     )
 
@@ -166,13 +183,33 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(answers, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    if args.report:
+        report_path = Path(args.report)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_cmd = [
+            "python",
+            "eval/scripts/grade_testset_v2.py",
+            "--answers",
+            str(out_path),
+            "--output",
+            str(report_path),
+        ]
+        if args.strict_sources:
+            report_cmd.append("--require-sources")
+        subprocess.run(
+            report_cmd,
+            check=False,
+        )
+
     print(
         json.dumps(
             {
                 "out": str(out_path),
+                "report": args.report or "",
                 "mode": args.mode,
                 "endpoint": args.endpoint,
                 "base_url": args.base_url,
+                "strict_sources": args.strict_sources,
                 "timestamp": datetime.utcnow().isoformat() + "Z",
             },
             ensure_ascii=False,
