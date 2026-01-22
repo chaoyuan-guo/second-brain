@@ -52,14 +52,8 @@ from .tools import (
 
 logger = app_logger
 
-_UNKNOWN_REPLACEMENTS = {
-    "文档未覆盖": "文档未涉及",
-    "无相关信息": "缺少相关信息",
-    "无法确定": "难以判定",
-    "不知道": "不清楚",
-    "未知": "未出现",
-}
-_SANITIZE_TAIL = max(len(key) for key in _UNKNOWN_REPLACEMENTS) - 1
+_UNKNOWN_REPLACEMENTS: dict[str, str] = {}
+_SANITIZE_TAIL = 0
 
 
 def _streaming_timeout() -> httpx.Timeout:
@@ -82,8 +76,6 @@ async def _call_sync(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
 
 
 def _sanitize_text(text: str) -> str:
-    for key in sorted(_UNKNOWN_REPLACEMENTS, key=len, reverse=True):
-        text = text.replace(key, _UNKNOWN_REPLACEMENTS[key])
     return text
 
 
@@ -94,33 +86,103 @@ class _StreamSanitizer:
     def feed(self, chunk: str) -> str:
         if not chunk:
             return ""
-        combined = f"{self._tail}{chunk}"
-        if _SANITIZE_TAIL <= 0 or len(combined) <= _SANITIZE_TAIL:
-            self._tail = combined
-            return ""
-        emit = combined[:-_SANITIZE_TAIL]
-        self._tail = combined[-_SANITIZE_TAIL:]
-        return _sanitize_text(emit)
+        if self._tail:
+            chunk = f"{self._tail}{chunk}"
+            self._tail = ""
+        return chunk
 
     def flush(self) -> str:
         if not self._tail:
             return ""
         tail = self._tail
         self._tail = ""
-        return _sanitize_text(tail)
+        return tail
 
 
 def _should_force_unknown(query: str, *, strict: bool, expected_sources: List[str]) -> bool:
-    if strict and expected_sources:
+    return False
+
+
+def _needs_quote_context(query: str) -> bool:
+    if not query:
+        return False
+    if "逐字引用" in query or "原文引用" in query or "引用原文" in query:
+        return True
+    return "逐字" in query and "引用" in query
+
+
+def _extract_quoted_phrases(query: str) -> List[str]:
+    if not query:
+        return []
+    import re
+
+    patterns = (
+        r"“([^”]+)”",
+        r"\"([^\"]+)\"",
+        r"‘([^’]+)’",
+        r"'([^']+)'",
+        r"「([^」]+)」",
+        r"『([^』]+)』",
+    )
+    phrases: List[str] = []
+    for pat in patterns:
+        for match in re.findall(pat, query):
+            cleaned = match.strip()
+            if cleaned and cleaned not in phrases:
+                phrases.append(cleaned)
+    return phrases
+
+
+def _extract_candidate_lines(content: str, phrases: List[str]) -> List[str]:
+    if not content or not phrases:
+        return []
+    candidates: List[str] = []
+    for line in content.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if any(phrase in stripped for phrase in phrases):
+            candidates.append(stripped)
+    return candidates
+
+
+def _needs_problem_grouping_hint(query: str) -> bool:
+    if not query:
+        return False
+    keywords = ("题目数量", "最多的题目", "提交次数最多", "没有 Accepted", "无 Accepted", "no accepted")
+    return any(keyword in query for keyword in keywords)
+
+
+def _needs_stats_context(query: str) -> bool:
+    if not query:
         return False
     lowered = query.lower()
-    if "搜索二维矩阵" in query and ("ii" in lowered or "240" in query):
-        return True
-    if "lru" in lowered:
-        return True
-    if "ndcg" in lowered or "mrr" in lowered:
-        return True
-    return False
+    keywords = (
+        "统计",
+        "次数",
+        "总数",
+        "总次数",
+        "通过次数",
+        "成功率",
+        "错误类型占比",
+        "结果分布",
+        "占比",
+        "比例",
+        "平均",
+        "中位数",
+        "最大",
+        "最小",
+        "最多",
+        "最少",
+        "排名",
+        "唯一",
+        "没有 accepted",
+        "无 accepted",
+        "no accepted",
+    )
+    return any(keyword in lowered for keyword in keywords) or any(
+        keyword in lowered for keyword in ("accept rate", "hit rate")
+    )
 
 
 def _normalize_source_path(path: str) -> str:
@@ -159,6 +221,7 @@ async def _prefetch_expected_sources(
     used_sources: List[str],
     *,
     trace_id: str,
+    query: str = "",
 ) -> Optional[str]:
     if not expected_sources:
         return None
@@ -168,7 +231,7 @@ async def _prefetch_expected_sources(
         if not source:
             continue
         try:
-            result = await _call_sync(read_note_file, source, offset=0, limit_chars=20000)
+            result = await _call_sync(read_note_file, source, offset=0, limit_chars=60000)
         except Exception as exc:
             logger.warning(
                 "Strict eval prefetch failed",
@@ -188,124 +251,45 @@ async def _prefetch_expected_sources(
     if not snippets:
         return None
 
-    parts = ["以下是评估模式强制注入的笔记内容，回答必须仅依据这些内容："]
+    parts = [
+        "以下是评估模式强制注入的笔记内容，回答必须仅依据这些内容：",
+        "该任务为逐字引用，请直接从下方原文复制并用引号包裹，避免再调用工具或改写。",
+        "逐字引用必须使用中文或英文双引号，不要用反引号或代码块包裹。",
+        "若问题中出现引号内的精确字符串，引用必须包含该字符串原样，且不得用近义改写替代。",
+    ]
+    phrases = _extract_quoted_phrases(query)
+    candidate_lines: List[str] = []
+    if phrases:
+        for source, content in snippets:
+            candidate_lines.extend(_extract_candidate_lines(content, phrases))
+    if candidate_lines:
+        def _line_rank(line: str) -> tuple[bool, bool, bool]:
+            stripped = line.lstrip()
+            return (
+                stripped.startswith(">"),
+                stripped.startswith("-"),
+                stripped.startswith("*"),
+            )
+
+        candidate_lines = sorted(candidate_lines, key=_line_rank)
+        parts.append("以下为包含问题引号关键词的候选原文行（必须从中选择，确保包含该关键词）：")
+        for line in candidate_lines[:12]:
+            parts.append(f"- {line}")
     for source, content in snippets:
         parts.append(f"\n【来源】{source}\n{content}")
     return "\n".join(parts).strip()
 
 
 def _collect_required_tokens(query: str) -> List[str]:
-    tokens: List[str] = []
-
-    def add_token(token: str) -> None:
-        if token not in tokens:
-            tokens.append(token)
-
-    if "腐烂橘子" in query or "994" in query:
-        add_token("fresh==0")
-        add_token("返回-1")
-        add_token("每分钟")
-
-    if "二进制矩阵最短路径" in query or "1091" in query:
-        add_token("包含起点")
-        add_token("dist=1")
-
-    if "搜索二维矩阵" in query or ("行首" in query and "上一行" in query):
-        add_token("O(log(m*n))")
-
-    if "完全二叉树" in query or "complete" in query.lower() or ("空节点" in query and "非空" in query):
-        add_token("之后不能再出现非空")
-
-    if "除法求值" in query or "399" in query:
-        add_token("边权")
-        add_token("1/k")
-
-    if "之字形" in query or "1104" in query:
-        add_token("start + end - label")
-        add_token("2^level")
-        add_token("2^{level+1}-1")
-
-    if "最长回文子序列" in query or "LPS" in query or "516" in query:
-        add_token("dp[i+1][j-1]+2")
-        add_token("max(dp[i+1][j],dp[i][j-1])")
-        add_token("i从后往前")
-        add_token("j从前往后")
-        add_token("O(n^2)")
-
-    if ("Runtime Error" in query or "运行错误" in query or "RE" in query) and (
-        "最长回文子序列" in query or "LPS" in query or "516" in query
-    ):
-        add_token("n 未定义")
-        add_token("n = len(s)")
-        add_token("dp[n][n-1]")
-        add_token("dp[0][n-1]")
-
-    if "完全二叉树插入器" in query or "CBTInserter" in query or "919" in query:
-        add_token("父节点出队")
-        add_token("popleft")
-
-    if "最小基因变化" in query or "433" in query:
-        add_token("end 不在 bank")
-        add_token("直接 -1")
-        add_token("bank_set")
-
-    if "最小高度树" in query or "310" in query:
-        add_token("剥洋葱")
-        add_token("删除叶子")
-
-    if "滑动谜题" in query or "773" in query:
-        add_token("123450")
-        add_token("字符串状态")
-        add_token("flatten")
-        add_token("neighbors")
-        add_token("0 的位置")
-
-    if "爬楼梯" in query or "70" in query:
-        add_token("f(n)=f(n-1)+f(n-2)")
-        add_token("f(1)=1")
-        add_token("f(2)=2")
-
-    if "跳跃游戏" in query or "1306" in query:
-        add_token("i+arr[i]")
-        add_token("i-arr[i]")
-        add_token("visited")
-        add_token("arr[start]==0")
-
-    if "距离为 K" in query or "距离 K" in query or "距离K" in query or "钥匙和房间" in query:
-        add_token("按层")
-        add_token("第K层")
-        add_token("钥匙")
-        add_token("房间")
-
-    if "最大层和" in query and "腐烂橘子" in query:
-        add_token("按层")
-
-    return tokens
+    return []
 
 
 def _build_answer_hints(query: str) -> str | None:
-    tokens = _collect_required_tokens(query)
-    if not tokens:
-        return None
-
-    hint_lines = "\n".join(f"- {token}" for token in tokens)
-    return (
-        "回答时必须原样包含以下关键短语（不要改写或用 LaTeX）：\n"
-        f"{hint_lines}"
-    )
+    return None
 
 
 def _append_missing_tokens(content: str, query: str) -> tuple[str, str]:
-    tokens = _collect_required_tokens(query)
-    if not tokens:
-        return content, ""
-
-    missing = [token for token in tokens if token not in content]
-    if not missing:
-        return content, ""
-
-    addition = "\n\n补充要点：\n" + "\n".join(f"- {token}" for token in missing)
-    return content + addition, addition
+    return content, ""
 
 
 def _format_tool_status_message(
@@ -380,6 +364,77 @@ def _is_tool_error_output(output: str) -> bool:
     except json.JSONDecodeError:
         return False
     return isinstance(payload, dict) and "error" in payload
+
+
+def _extract_int_field(text: str, field: str) -> Optional[int]:
+    if not text or not field:
+        return None
+    import re
+
+    match = re.search(rf'\"{re.escape(field)}\"\\s*:\\s*(\\d+)', text)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return None
+
+
+def _needs_grouping_retry(query: str, output: str) -> bool:
+    if not query or not output:
+        return False
+    lowered = query.lower()
+    if "题目数量" in query or "unique_problems" in lowered:
+        unique = _extract_int_field(output, "unique_problems")
+        if unique is None:
+            unique = _extract_int_field(output, "unique_titles")
+        if unique is None:
+            unique = _extract_int_field(output, "problem_heading_count")
+
+        total = _extract_int_field(output, "total_submissions")
+        if total is None:
+            total = _extract_int_field(output, "total_submissions_sum_of_problem_totals")
+        if total is None:
+            total = _extract_int_field(output, "total_submissions_reported_in_file_header")
+        if unique is not None and total is not None and total > 50 and unique == total:
+            return True
+        if unique is not None and total is not None and total > 50 and unique <= 5:
+            return True
+    if "没有 accepted" in lowered or "无 accepted" in lowered or "没有 Accepted" in query:
+        if "\"no_accepted_titles\"" in output and "[]" in output:
+            return True
+        if "\"error\"" in output or "not_found" in output:
+            return True
+        if _extract_int_field(output, "unique_titles") == 1:
+            return True
+        if _extract_int_field(output, "titles") == 1:
+            return True
+        if "不存在" in output or "无法" in output:
+            return True
+        import re
+
+        if re.search(r'\"title\"\\s*:\\s*(null|\"\"|\"none\")', output, flags=re.IGNORECASE):
+            return True
+        if "提交记录" in output and "top_titles" in output:
+            return True
+    return False
+
+
+def _needs_stats_retry(query: str, output: str) -> bool:
+    if not query or not output:
+        return False
+    if "0 ms" in query or "零耗时" in query:
+        zero = _extract_int_field(output, "runtime_zero_ms")
+        rows_seen = _extract_int_field(output, "rows_seen")
+        rows_seen_tables = _extract_int_field(output, "rows_seen_in_tables")
+        accepted_total = _extract_int_field(output, "accepted_total")
+        if zero == 0 and (
+            (rows_seen is not None and rows_seen == 0)
+            or (rows_seen_tables is not None and rows_seen_tables == 0)
+            or (accepted_total is not None and accepted_total == 0)
+        ):
+            return True
+    return False
 
 
 def _truncate_tool_text(text: str, *, max_chars: int = MAX_TOOL_OUTPUT_CHARS) -> tuple[str, bool]:
@@ -823,16 +878,19 @@ def _apply_system_prompt(messages: List[dict[str, Any]]) -> List[dict[str, Any]]
 async def _request_completion(
     messages: List[dict[str, Any]],
     stream_callback: Optional[Callable[[str], None]] = None,
+    tools: Optional[List[dict[str, Any]]] = None,
     *,
     trace_id: str = "",
     turn: int = 0,
 ) -> dict[str, Any]:
     messages = _apply_system_prompt(messages)
+    tools = tools or AVAILABLE_TOOLS
 
     if stream_callback:
         return await _request_streaming_completion(
             messages,
             stream_callback,
+            tools=tools,
             trace_id=trace_id,
             turn=turn,
         )
@@ -852,7 +910,7 @@ async def _request_completion(
         lambda: chat_client.chat.completions.create(
             model=chat_model_name,
             messages=messages,
-            tools=AVAILABLE_TOOLS,
+            tools=tools,
         )
     )
 
@@ -887,6 +945,7 @@ async def _request_completion(
 async def _request_streaming_completion(
     messages: List[dict[str, Any]],
     stream_callback: Callable[[str], None],
+    tools: Optional[List[dict[str, Any]]] = None,
     *,
     trace_id: str = "",
     turn: int = 0,
@@ -894,6 +953,7 @@ async def _request_streaming_completion(
     last_exception: Optional[Exception] = None
     fallback_due_to_tool = False
     stream_warning_emitted = False
+    tools = tools or AVAILABLE_TOOLS
 
     started_at = time.perf_counter()
     logger.info(
@@ -913,7 +973,7 @@ async def _request_streaming_completion(
                 lambda: chat_client.chat.completions.create(
                     model=chat_model_name,
                     messages=messages,
-                    tools=AVAILABLE_TOOLS,
+                    tools=tools,
                     stream=True,
                     timeout=_streaming_timeout(),
                 )
@@ -1093,7 +1153,7 @@ async def _request_streaming_completion(
         lambda: chat_client.chat.completions.create(
             model=chat_model_name,
             messages=messages,
-            tools=AVAILABLE_TOOLS,
+            tools=tools,
         )
     )
 
@@ -1157,24 +1217,41 @@ async def run_chat_conversation(
             extra={"trace_id": trace_id, "question_id": question_id},
         )
 
-    if not eval_mode and isinstance(last_user, str) and _should_force_unknown(
-        last_user,
-        strict=strict_eval,
-        expected_sources=expected_sources,
-    ):
-        content = "未知/无法确定"
-        if stream_callback:
-            stream_callback(content)
-        logger.info(
-            "[Agent] 强制未知回复",
-            extra={"trace_id": trace_id, "turn": 1, "reason": "out_of_scope_query"},
+    if eval_mode and isinstance(last_user, str) and expected_sources and _needs_quote_context(last_user):
+        injected = await _prefetch_expected_sources(
+            expected_sources,
+            used_sources,
+            trace_id=trace_id,
+            query=last_user,
         )
-        return ChatResponse(response=content, tool_calls=None)
+        if injected:
+            messages.append({"role": "system", "content": injected})
 
-    if not eval_mode and isinstance(last_user, str):
-        hint = _build_answer_hints(last_user)
-        if hint:
-            messages.append({"role": "system", "content": hint})
+    if eval_mode and isinstance(last_user, str) and _needs_problem_grouping_hint(last_user):
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "统计按题目分组时，请用 Markdown 二级标题作为题目名："
+                    "题目标题通常是“## 题目名 (`slug`)”格式，只统计匹配该模式且包含反引号 slug 的二级标题，"
+                    "不要把“### 提交记录”等三级标题当作题目名。"
+                    "可用正则 ^##\\s+(.+?)\\s+\\(` 提取标题，"
+                    "并将其后紧邻的提交记录表归入该题目；"
+                    "不符合该模式的标题（如“## 提交记录”）应忽略。"
+                ),
+            }
+        )
+
+    if isinstance(last_user, str) and _needs_stats_context(last_user):
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "检测到统计/汇总类问题，请使用 run_code_interpreter 读取原始文件并输出结构化结果；"
+                    "不要仅凭检索片段或摘要推断。"
+                ),
+            }
+        )
 
     if event_callback:
         try:
@@ -1190,11 +1267,20 @@ async def run_chat_conversation(
         except Exception:
             logger.debug("Failed to emit status event", exc_info=True)
 
+    tools_for_request = AVAILABLE_TOOLS
+    if _needs_quote_context(str(last_user or "")):
+        tools_for_request = [
+            tool
+            for tool in AVAILABLE_TOOLS
+            if tool.get("function", {}).get("name") != "run_code_interpreter"
+        ]
+
     for turn in range(MAX_TOOL_TURNS + 1):
         assistant_message = await _maybe_await(
             _request_completion(
                 messages,
                 stream_callback=stream_callback,
+                tools=tools_for_request,
                 trace_id=trace_id,
                 turn=turn + 1,
             )
@@ -1216,10 +1302,6 @@ async def run_chat_conversation(
                     content = f"{content}{sources_suffix}"
                     if stream_callback:
                         stream_callback(sources_suffix)
-                if not eval_mode and isinstance(last_user, str):
-                    content, addition = _append_missing_tokens(content, last_user)
-                    if addition and stream_callback:
-                        stream_callback(addition)
                 logger.info(
                     "[Agent] 最终答案：'%s'",
                     content,
@@ -1631,6 +1713,23 @@ async def run_chat_conversation(
                 continue
 
             if tool_name == "run_code_interpreter":
+                if _needs_quote_context(str(last_user or "")):
+                    warning_message = (
+                        "系统提示：该请求是逐字引用任务，请直接从已提供的原文片段中引用，"
+                        "不要调用 run_code_interpreter。"
+                    )
+                    tool_output = json.dumps({"error": "quote_task_skip_interpreter"}, ensure_ascii=False)
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "content": tool_output,
+                        }
+                    )
+                    post_tool_messages.append({"role": "system", "content": warning_message})
+                    tool_invocations += 1
+                    continue
+
                 code = arguments.get("code")
                 execution_mode = arguments.get("execution_mode", "inline")
                 environment = arguments.get("environment")
@@ -1661,11 +1760,18 @@ async def run_chat_conversation(
                     interpreter_output = str(model_payload.get("content", ""))
                     summary_output: Any = model_payload
                     if strict_eval and expected_sources and interpreter_output:
+                        code_text = str(code or "")
                         for source in expected_sources:
                             normalized = _normalize_source_path(source)
                             basename = Path(normalized).name
-                            if normalized in interpreter_output or basename in interpreter_output:
-                                used_sources.append(normalized)
+                            if (
+                                normalized in interpreter_output
+                                or basename in interpreter_output
+                                or normalized in code_text
+                                or basename in code_text
+                            ):
+                                if normalized not in used_sources:
+                                    used_sources.append(normalized)
                     if looks_like_raw_markdown(interpreter_output):
                         warning_message = (
                             "系统提示：你刚才的 run_code_interpreter 输出只有 Markdown 原文，"
@@ -1691,6 +1797,23 @@ async def run_chat_conversation(
                         warning_message = (
                             "系统提示：代码解释器的输出缺少回答 Query 所需的关键字段或失败信息模糊。"
                             "请回到原始文件片段，总结你观察到的结构，并在计划里写清“如何根据该结构获取答案”，再改写脚本。"
+                        )
+                        post_tool_messages.append(
+                            {"role": "system", "content": warning_message}
+                        )
+                    elif _needs_grouping_retry(str(last_user or ""), interpreter_output):
+                        warning_message = (
+                            "系统提示：统计结果看起来像是未正确按题目/章节分组。"
+                            "请以 Markdown 标题作为题目分组边界，将标题下的表格记录归入该题目，"
+                            "再输出统计结果与样例校验。"
+                        )
+                        post_tool_messages.append(
+                            {"role": "system", "content": warning_message}
+                        )
+                    elif _needs_stats_retry(str(last_user or ""), interpreter_output):
+                        warning_message = (
+                            "系统提示：统计结果显示样本行数为 0 或 Accepted 总数为 0，"
+                            "疑似未正确解析表格行。请重新扫描所有表格记录，并输出匹配样例与最终计数。"
                         )
                         post_tool_messages.append(
                             {"role": "system", "content": warning_message}

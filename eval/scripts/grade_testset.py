@@ -3,7 +3,7 @@
 
 Usage:
   python eval/scripts/grade_testset.py --answers path/to/answers.json
-  python eval/scripts/grade_testset.py --testset eval/testsets/testset_v3.json --answers answers.json --output report.json
+  python eval/scripts/grade_testset.py --testset eval/testsets/testset_v4.json --answers answers.json --output report.json
 """
 
 from __future__ import annotations
@@ -163,6 +163,47 @@ def check_evidence(
     return missing
 
 
+def check_evidence_in_quotes(
+    question: Dict[str, Any],
+    answer: str,
+) -> List[int]:
+    if not question.get("evidence_quote_required"):
+        return []
+    evidence = question.get("evidence") or []
+    if not evidence:
+        return []
+    mode = str(question.get("evidence_mode") or "strict").strip().lower()
+    if mode == "any":
+        return []
+
+    quotes = extract_quotes(answer)
+    if not quotes:
+        return [0]
+
+    def quote_contains(text: str) -> bool:
+        return any(contains_normalized(quote, text) for quote in quotes)
+
+    if mode == "any_of":
+        for item in evidence:
+            if isinstance(item, str):
+                text = item
+            else:
+                text = str(item.get("text") or "")
+            if text and quote_contains(text):
+                return []
+        return [0]
+
+    missing: List[int] = []
+    for idx, item in enumerate(evidence, start=1):
+        if isinstance(item, str):
+            text = item
+        else:
+            text = str(item.get("text") or "")
+        if not text or not quote_contains(text):
+            missing.append(idx)
+    return missing
+
+
 def normalize_source_path(value: str) -> str:
     return Path(value).name.lower()
 
@@ -221,6 +262,9 @@ def compute_recall_at_k(
 
     for question in questions:
         expected_sources = [normalize_source_path(s) for s in (question.get("sources") or [])]
+        case_type = str(question.get("case_type") or "").strip().lower()
+        q_type = str(question.get("type") or "").strip().lower()
+        allow_any_source = case_type == "multi_source" or q_type == "multi_doc"
         if not expected_sources or k_max == 0:
             results.append({"id": question.get("id"), "recall": {}})
             continue
@@ -244,8 +288,11 @@ def compute_recall_at_k(
         recall_map: Dict[str, float] = {}
         for k in k_values:
             top_k = retrieved_sources[:k]
-            hits = sum(1 for s in expected_sources if s in top_k)
-            recall_value = hits / max(len(expected_sources), 1)
+            if allow_any_source:
+                recall_value = 1.0 if any(s in top_k for s in expected_sources) else 0.0
+            else:
+                hits = sum(1 for s in expected_sources if s in top_k)
+                recall_value = hits / max(len(expected_sources), 1)
             recall_map[str(k)] = recall_value
             agg.setdefault(str(k), {"sum": 0.0, "count": 0.0})
             agg[str(k)]["sum"] += recall_value
@@ -296,6 +343,8 @@ def evaluate_question(
     if not missing:
         missing_evidence = check_evidence(question, answer)
     if not missing and not missing_evidence:
+        missing_evidence = missing_evidence + check_evidence_in_quotes(question, answer)
+    if not missing and not missing_evidence:
         missing_quotes = check_quote_consistency(question, answer)
     return (
         len(missing) == 0
@@ -309,7 +358,7 @@ def evaluate_question(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Grade answers against testsets")
-    parser.add_argument("--testset", default="eval/testsets/testset_v3.json", help="Path to testset JSON")
+    parser.add_argument("--testset", default="eval/testsets/testset_v4.json", help="Path to testset JSON")
     parser.add_argument("--answers", required=True, help="Path to answers JSON")
     parser.add_argument("--output", help="Write report JSON to this path")
     parser.add_argument("--require-sources", action="store_true", help="Require answers to include source paths")

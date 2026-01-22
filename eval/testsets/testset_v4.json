@@ -1,0 +1,613 @@
+{
+  "meta": {
+    "name": "agentic_rag_eval_v4",
+    "version": "v4",
+    "language": "zh",
+    "notes_dir": "data/notes/my_markdowns",
+    "total_questions": 20
+  },
+  "questions": [
+    {
+      "id": "V4_Q01_perfect_tree_node_count_conflict",
+      "title": "Perfect 二叉树节点数冲突",
+      "query": "请在《二叉树 Perfect Complete Full 区别.md》中逐字引用两句关于 Perfect 二叉树节点总数的表述（每句只引用包含节点总数公式的短句），并用一句话说明这两句存在口径不一致（说明时不要使用引号）。",
+      "sources": [
+        "data/notes/my_markdowns/二叉树 Perfect Complete Full 区别.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "quote_required": true,
+      "evidence_mode": "strict",
+      "evidence_quote_required": true,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "不一致",
+            "冲突",
+            "两种说法",
+            "口径"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "text": "高度为 h 时节点数一定是 \\(2^{h+1}-1\\)",
+          "source": "data/notes/my_markdowns/二叉树 Perfect Complete Full 区别.md"
+        },
+        {
+          "text": "如果树的高度是 `h`，那么节点总数一定是 `2^h - 1`。",
+          "source": "data/notes/my_markdowns/二叉树 Perfect Complete Full 区别.md"
+        }
+      ]
+    },
+    {
+      "id": "V4_Q02_maze_exit_bug",
+      "title": "迷宫最近出口入口误判",
+      "query": "请在《力扣迷宫最近出口题解.md》中逐字引用用户提问“下面我的代码哪里出了问题？”这句，以及助手指出的核心错误短句，并用一句话说明正确的出口判定应排除入口。",
+      "sources": [
+        "data/notes/my_markdowns/力扣迷宫最近出口题解.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "quote_required": true,
+      "evidence_mode": "strict",
+      "evidence_quote_required": true,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "入口.*不能.*出口",
+            "排除入口",
+            "入口.*不算.*出口"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "text": "下面我的代码哪里出了问题？",
+          "source": "data/notes/my_markdowns/力扣迷宫最近出口题解.md"
+        },
+        {
+          "text": "把入口当成了出口",
+          "source": "data/notes/my_markdowns/力扣迷宫最近出口题解.md"
+        }
+      ]
+    },
+    {
+      "id": "V4_Q03_complete_tree_complexity",
+      "title": "完全二叉树索引法复杂度误解",
+      "query": "请在《力扣完全二叉树检验讲解.md》中逐字引用包含“索引法”的用户提问与助手给出的结论短句，并补充一句说明时间复杂度层级。",
+      "sources": [
+        "data/notes/my_markdowns/力扣完全二叉树检验讲解.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "quote_required": true,
+      "evidence_mode": "strict",
+      "evidence_quote_required": true,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "O\\(n\\)"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "text": "索引法的复杂度会更低吗",
+          "source": "data/notes/my_markdowns/力扣完全二叉树检验讲解.md"
+        },
+        {
+          "text": "不会，本质上两种方法**时间复杂度和空间复杂度是一个级别的**。",
+          "source": "data/notes/my_markdowns/力扣完全二叉树检验讲解.md"
+        }
+      ]
+    },
+    {
+      "id": "V4_Q04_dp_sort_confusion",
+      "title": "信封问题同宽降序理由",
+      "query": "请在《动态规划.md》中逐字引用用户疑问“还是没懂为什么在 w 相同时 h 需要降序”这句，以及包含“LIS 误判”为核心的助手解释句，并用一句话总结为什么同宽要按高度降序。",
+      "sources": [
+        "data/notes/my_markdowns/动态规划.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "quote_required": true,
+      "evidence_mode": "strict",
+      "evidence_quote_required": true,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "同宽",
+            "w 相同",
+            "相同.*w",
+            "降序"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "text": "还是没懂为什么在 w 相同时 h 需要降序",
+          "source": "data/notes/my_markdowns/动态规划.md"
+        },
+        {
+          "text": "如果你按 `w` 升序、`h` 也升序排序，那么当 `w` 相同的时候，`h` 递增会被 LIS 误判为可嵌套（但宽度没变，不能嵌套）。",
+          "source": "data/notes/my_markdowns/动态规划.md"
+        }
+      ]
+    },
+    {
+      "id": "V4_Q05_bfs_level_size_confusion",
+      "title": "BFS level_size 误解",
+      "query": "请在《滑动谜题BFS解题思路.md》中逐字引用用户关于 level_size 的提问，以及包含“(状态, 步数)”的助手解释句，并用一句话说明原因。",
+      "sources": [
+        "data/notes/my_markdowns/滑动谜题BFS解题思路.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "quote_required": true,
+      "evidence_mode": "any_of",
+      "evidence_quote_required": true,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "\\(状态, 步数\\)",
+            "\\(state, steps\\)",
+            "步数.*一起.*入队",
+            "状态.*步数.*入队",
+            "步数.*队列",
+            "队列.*步数"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "text": "这两个其实是 **两种 BFS 写法**，这题用的是其中一种，所以不需要 `level_size = len(queue)`。",
+          "source": "data/notes/my_markdowns/滑动谜题BFS解题思路.md"
+        },
+        {
+          "text": "**只要你在队列里存的是 `(状态, 步数)`，就不需要 `level_size`；",
+          "source": "data/notes/my_markdowns/滑动谜题BFS解题思路.md"
+        },
+        {
+          "text": "queue.append((start, 0))  # (状态, 到达该状态的步数)",
+          "source": "data/notes/my_markdowns/滑动谜题BFS解题思路.md"
+        },
+        {
+          "text": "队列里放的是 `(state, steps)`。",
+          "source": "data/notes/my_markdowns/滑动谜题BFS解题思路.md"
+        }
+      ]
+    },
+    {
+      "id": "V4_Q06_search_matrix_mapping",
+      "title": "二维矩阵索引映射公式",
+      "query": "请在《力扣74搜索二维矩阵讲解.md》中逐字引用把一维索引映射回二维坐标的两条公式。",
+      "sources": [
+        "data/notes/my_markdowns/力扣74搜索二维矩阵讲解.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "quote_required": true,
+      "evidence_mode": "strict",
+      "evidence_quote_required": true,
+      "must_have": [],
+      "evidence": [
+        {
+          "text": "row = mid // n",
+          "source": "data/notes/my_markdowns/力扣74搜索二维矩阵讲解.md"
+        },
+        {
+          "text": "col = mid % n",
+          "source": "data/notes/my_markdowns/力扣74搜索二维矩阵讲解.md"
+        }
+      ]
+    },
+    {
+      "id": "V4_Q07_climb_stairs_formula",
+      "title": "爬楼梯递推公式",
+      "query": "请在《爬楼梯动态规划思路解析.md》中逐字引用递推公式（含空格与符号），并用一句话说明它表示的含义。",
+      "sources": [
+        "data/notes/my_markdowns/爬楼梯动态规划思路解析.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "quote_required": true,
+      "evidence_mode": "strict",
+      "evidence_quote_required": true,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "表示.*n.*(方法|方案|走法|爬法)",
+            "到第.*n.*(方法|方案|走法|爬法)"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "text": "f(n) = f(n - 1) + f(n - 2)",
+          "source": "data/notes/my_markdowns/爬楼梯动态规划思路解析.md"
+        }
+      ]
+    },
+    {
+      "id": "V4_Q08_malware_components_quote",
+      "title": "恶意软件连通分量关系",
+      "query": "请在《尽量减少恶意软件的传播.md》中逐字引用关于连通分量关系的短句（只引用该短句本身，不要加冒号或解释），并用一句话说明它对删除策略的影响。",
+      "sources": [
+        "data/notes/my_markdowns/尽量减少恶意软件的传播.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "easy",
+      "allow_unknown": false,
+      "quote_required": true,
+      "evidence_mode": "strict",
+      "evidence_quote_required": true,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "删除",
+            "移除"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "text": "图的连通分量之间互不影响",
+          "source": "data/notes/my_markdowns/尽量减少恶意软件的传播.md"
+        }
+      ]
+    },
+    {
+      "id": "V4_Q09_lps_state_definition_multi",
+      "title": "LPS 状态定义多来源引用",
+      "query": "请逐字引用原文里对“dp[i][j] 表示 s[i..j] 的最长回文子序列长度”的描述，并说明这是哪类 DP。",
+      "sources": [
+        "data/notes/my_markdowns/动态规划.md",
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "multi_doc",
+      "case_type": "multi_source",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "quote_required": true,
+      "evidence_mode": "any_of",
+      "evidence_quote_required": true,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "区间 DP",
+            "区间dp",
+            "区间型"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "text": "dp[i][j] 表示 s[i..j] 的最长回文子序列长度。",
+          "source": "data/notes/my_markdowns/动态规划.md"
+        },
+        {
+          "text": "dp[i][j] 表示 s[i..j] 的最长回文子序列长度。",
+          "source": "data/notes/my_markdowns/leetcode_submissions.md"
+        }
+      ]
+    },
+    {
+      "id": "V4_Q10_division_reverse_edge_multi",
+      "title": "除法求值反向边权重引用",
+      "query": "请逐字引用原文里对反向边权重 1/k 的描述，并用一句话说明其含义。",
+      "sources": [
+        "data/notes/my_markdowns/力扣除法求值题讲解.md",
+        "data/notes/my_markdowns/BFS练习题 II.md",
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "multi_doc",
+      "case_type": "multi_source",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "quote_required": true,
+      "evidence_mode": "any_of",
+      "evidence_quote_required": true,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "反向边",
+            "反向关系",
+            "反向",
+            "逆向",
+            "倒数"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "text": "`b -> a` 权重为 `1/k`",
+          "source": "data/notes/my_markdowns/力扣除法求值题讲解.md"
+        },
+        {
+          "text": "`b -> a` 权重 1/k",
+          "source": "data/notes/my_markdowns/BFS练习题 II.md"
+        },
+        {
+          "text": "b→a 权重 1/k",
+          "source": "data/notes/my_markdowns/leetcode_submissions.md"
+        }
+      ]
+    },
+    {
+      "id": "V4_Q11_submissions_result_counts",
+      "title": "提交结果总统计",
+      "query": "请统计 leetcode_submissions.md 中所有提交的结果分布，输出 JSON：{\"total\":?,\"accepted\":?,\"wrong_answer\":?,\"runtime_error\":?,\"mle\":?,\"tle\":?}。",
+      "sources": [
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "\"total\"\\s*:\\s*1058"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"accepted\"\\s*:\\s*572"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"wrong_answer\"\\s*:\\s*240"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"runtime_error\"\\s*:\\s*223"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"mle\"\\s*:\\s*12"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"tle\"\\s*:\\s*11"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V4_Q12_submissions_rates",
+      "title": "Accepted 与 Runtime Error 占比",
+      "query": "请基于 leetcode_submissions.md 统计 Accepted 与 Runtime Error 占总提交的百分比（保留两位小数），输出 JSON：{\"accepted_rate\":\"xx.xx%\",\"runtime_error_rate\":\"yy.yy%\"}。",
+      "sources": [
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "hard",
+      "allow_unknown": false,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "\"accepted_rate\"\\s*:\\s*\"?54\\.06%?\"?"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"runtime_error_rate\"\\s*:\\s*\"?21\\.08%?\"?"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V4_Q13_unique_problem_count",
+      "title": "题目数量统计",
+      "query": "统计 leetcode_submissions.md 中包含的不同题目数量（题目标题格式为 \"## 题目名 (`slug`)\"），并给出总提交数，输出 JSON：{\"unique_problems\":?,\"total_submissions\":?}。",
+      "sources": [
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "medium",
+      "allow_unknown": false,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "\"unique_problems\"\\s*:\\s*220"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"total_submissions\"\\s*:\\s*1058"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V4_Q14_top_submission_problem",
+      "title": "提交次数最多的题目",
+      "query": "在 leetcode_submissions.md 中，找出提交次数最多的题目及其提交次数（题目标题格式为 \"## 题目名 (`slug`)\"），输出 JSON：{\"title\":\"...\",\"submissions\":?}。",
+      "sources": [
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "hard",
+      "allow_unknown": false,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "\"title\"\\s*:\\s*\"岛屿数量(\\s*\\([^\\\"]+\\))?\""
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"submissions\"\\s*:\\s*28"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V4_Q15_submissions_on_date",
+      "title": "指定日期提交统计",
+      "query": "统计 leetcode_submissions.md 中 2026-01-13 这一天的总提交数与 Accepted 数量，输出 JSON：{\"date\":\"2026-01-13\",\"total\":?,\"accepted\":?}。",
+      "sources": [
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "hard",
+      "allow_unknown": false,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "\"date\"\\s*:\\s*\"2026-01-13\""
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"total\"\\s*:\\s*8"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"accepted\"\\s*:\\s*5"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V4_Q16_accepted_runtime_median",
+      "title": "Accepted 耗时中位数",
+      "query": "统计 leetcode_submissions.md 中所有 Accepted 提交的耗时中位数（单位 ms，保留 1 位小数），输出 JSON：{\"median_ms\":?}。",
+      "sources": [
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "hard",
+      "allow_unknown": false,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "\"median_ms\"\\s*:\\s*43\\.5"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V4_Q17_accepted_runtime_avg",
+      "title": "Accepted 耗时平均值",
+      "query": "统计 leetcode_submissions.md 中所有 Accepted 提交的平均耗时（单位 ms，保留两位小数），输出 JSON：{\"avg_ms\":?}。",
+      "sources": [
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "hard",
+      "allow_unknown": false,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "\"avg_ms\"\\s*:\\s*184\\.47"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V4_Q18_accepted_memory_extremes",
+      "title": "Accepted 内存极值",
+      "query": "统计 leetcode_submissions.md 中所有 Accepted 提交的内存最小值与最大值（单位 MB，保留 1 位小数），输出 JSON：{\"min_mb\":?,\"max_mb\":?}。",
+      "sources": [
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "hard",
+      "allow_unknown": false,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "\"min_mb\"\\s*:\\s*16\\.8"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"max_mb\"\\s*:\\s*80\\.1"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V4_Q19_accepted_runtime_zero",
+      "title": "Accepted 零耗时次数",
+      "query": "统计 leetcode_submissions.md 中 Accepted 且耗时为 0 ms 的提交次数，输出 JSON：{\"runtime_zero_ms\":?}。",
+      "sources": [
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "hard",
+      "allow_unknown": false,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "\"runtime_zero_ms\"\\s*:\\s*106"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "V4_Q20_no_accepted_problem",
+      "title": "无 Accepted 的题目",
+      "query": "在 leetcode_submissions.md 中找出唯一没有 Accepted 的题目，并给出其结果分布，输出 JSON：{\"title\":\"...\",\"accepted\":0,\"runtime_error\":?,\"tle\":?}。",
+      "sources": [
+        "data/notes/my_markdowns/leetcode_submissions.md"
+      ],
+      "type": "single_doc",
+      "case_type": "explicit_source",
+      "difficulty": "hard",
+      "allow_unknown": false,
+      "must_have": [
+        {
+          "any_of_regex": [
+            "\"title\"\\s*:\\s*\"排序数组(\\s*\\([^\\\"]+\\))?\""
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"accepted\"\\s*:\\s*0"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"runtime_error\"\\s*:\\s*1"
+          ]
+        },
+        {
+          "any_of_regex": [
+            "\"tle\"\\s*:\\s*1"
+          ]
+        }
+      ]
+    }
+  ]
+}

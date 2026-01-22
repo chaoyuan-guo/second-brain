@@ -187,6 +187,10 @@ def looks_like_incomplete_insight(text: str | None) -> bool:
         "placeholder",
         "no data",
         "not found",
+        "not_found",
+        "no_records",
+        "未解析",
+        "\"error\"",
         "无法回答",
     )
     if any(marker in lowered for marker in incomplete_markers):
