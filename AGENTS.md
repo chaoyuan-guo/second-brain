@@ -37,6 +37,11 @@
 - `.env` 必须提供 `SUPER_MIND_API_KEY` 与可选 `CHAT_ALLOWED_ORIGINS`；不要将密钥写入日志或前端 bundle，可通过 `os.getenv` 访问并在启动时校验。 Keep the `.env` file out of version control.
 - 生产部署需将 `frontend/out` 置于受控 CDN，并以 `uvicorn main:app --proxy-headers --forwarded-allow-ips="*"` 运行后端；任何外部请求都应保持 20s 超时与错误日志，以免工具链卡死。 Rotate API tokens regularly and scrub `backend.log` before sharing.
 
+## 协作与设计原则
+- 讨论技术实现方案时，请优先从更通用、可复用、泛化能力更强的角度思考与给出建议。
+- Agentic 系统倾向遵循 “less structure, more intelligence” 的设计哲学：尽量让系统能力建立在模型能力之上，避免过度结构化/过度工程化的约束，从而在模型变强时让系统能力能够同步“水涨船高”。
+- 当我下达任务或提出请求时，如果你认为信息不足、表述不清晰、存在隐含前提，或你有更优方案/替代路径，请主动提问、澄清并阐述你的思考与权衡。
+
 ## 其他说明
 默认使用中文进行说明与讨论，除非内容为代码片段、命令或规范要求英文表述。
 
