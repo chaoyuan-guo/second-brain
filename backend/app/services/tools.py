@@ -34,6 +34,7 @@ from ..repositories.notes import load_index, load_metadata
 from .clients import chat_client, client, chat_model_name
 from .exceptions import ToolExecutionError
 from .embedded_interpreter import embedded_python_interpreter
+from .skills import load_skill_content
 
 logger = app_logger
 
@@ -567,6 +568,16 @@ def query_my_notes(query: str, top_k: int = 5) -> dict[str, Any]:
     return {"query": query, "results": results}
 
 
+def load_skill(skill_name: str) -> dict[str, str]:
+    """加载技能 SKILL.md 的完整内容。"""
+
+    if not skill_name:
+        raise ValueError("skill_name 不能为空")
+    content = load_skill_content(skill_name)
+    logger.info("Skill loaded", extra={"skill_name": skill_name, "length": len(content)})
+    return {"name": skill_name, "content": content}
+
+
 def call_with_retries(operation: Callable[[], T]) -> T:
     attempts = max(1, CHAT_API_MAX_RETRIES)
     last_error: Exception | None = None
@@ -661,6 +672,7 @@ __all__ = [
     "call_mcp_python_interpreter",
     "build_embedding",
     "query_my_notes",
+    "load_skill",
     "call_with_retries",
     "async_call_with_retries",
     "is_retryable_status",

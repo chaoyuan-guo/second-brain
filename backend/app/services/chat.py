@@ -36,6 +36,7 @@ from ..models.schemas import (
 )
 from .clients import chat_client, chat_model_name
 from .exceptions import ToolExecutionError
+from .skills import build_skills_prompt
 from .tools import (
     async_call_with_retries,
     call_mcp_python_interpreter,
@@ -44,6 +45,7 @@ from .tools import (
     looks_like_incomplete_insight,
     looks_like_interpreter_error,
     looks_like_raw_markdown,
+    load_skill,
     query_my_notes,
     read_note_file,
     read_page,
@@ -313,6 +315,8 @@ def _format_tool_status_message(
         tool_label = "笔记读取"
     elif tool_name == "run_code_interpreter":
         tool_label = "代码执行"
+    elif tool_name == "load_skill":
+        tool_label = "技能加载"
 
     prefix = f"[{tool_index}] {tool_label}（第 {tool_count} 次）"
 
@@ -330,6 +334,10 @@ def _format_tool_status_message(
         path = str(arguments.get("path") or "").strip()
         if path:
             prefix += f"：{path}"
+    if tool_name == "load_skill":
+        skill_name = str(arguments.get("skill_name") or "").strip()
+        if skill_name:
+            prefix += f"：{skill_name}"
 
     if tool_name == "run_code_interpreter":
         mode = str(arguments.get("execution_mode") or "inline")
@@ -558,13 +566,13 @@ WEB_SEARCH_TOOL_SCHEMA = {
     "type": "function",
     "function": {
         "name": "web_search",
-        "description": "Use this tool to search internal knowledge for up-to-date information.",
+        "description": "联网检索公开信息，返回搜索结果摘要；需要正文时再用 read_page。",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Natural language question or keywords to search for.",
+                    "description": "用于检索的自然语言问题或关键词。",
                 }
             },
             "required": ["query"],
@@ -577,13 +585,13 @@ READ_PAGE_TOOL_SCHEMA = {
     "type": "function",
     "function": {
         "name": "read_page",
-        "description": "Fetch the textual content of a web page to extract detailed information.",
+        "description": "抓取公开网页正文用于提取细节，仅用于 http/https。",
         "parameters": {
             "type": "object",
             "properties": {
                 "url": {
                     "type": "string",
-                    "description": "Fully qualified URL to retrieve and summarize.",
+                    "description": "需要抓取的完整 URL。",
                 }
             },
             "required": ["url"],
@@ -596,29 +604,50 @@ READ_NOTE_FILE_TOOL_SCHEMA = {
     "type": "function",
     "function": {
         "name": "read_note_file",
-        "description": "Read a local note file under data/notes/my_markdowns with optional chunking.",
+        "description": (
+            "读取 data/notes/my_markdowns 下的本地笔记，可用 offset/limit 分块；"
+            "需按顺序循环读取直到 done=true 并拼接完整内容；返回 source_file 以便溯源。"
+        ),
         "parameters": {
             "type": "object",
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Relative path under data/notes/my_markdowns or full path within it.",
+                    "description": "data/notes/my_markdowns 下的相对路径或其完整路径。",
                 },
                 "offset": {
                     "type": "integer",
                     "minimum": 0,
                     "default": 0,
-                    "description": "Character offset to start reading from.",
+                    "description": "起始字符偏移。",
                 },
                 "limit_chars": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 60000,
                     "default": 60000,
-                    "description": "Maximum number of characters to read in this chunk.",
+                    "description": "单次读取的最大字符数。",
                 },
             },
             "required": ["path"],
+        },
+    },
+}
+
+LOAD_SKILL_TOOL_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "load_skill",
+        "description": "加载指定技能的 SKILL.md 完整说明。",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "skill_name": {
+                    "type": "string",
+                    "description": "技能名称（需与 skills/ 下目录名一致）。",
+                }
+            },
+            "required": ["skill_name"],
         },
     },
 }
@@ -628,7 +657,7 @@ QUERY_MY_NOTES_TOOL_SCHEMA = {
     "type": "function",
     "function": {
         "name": "query_my_notes",
-        "description": "在个人 Markdown 向量索引中执行语义搜索，返回最相关的笔记片段。",
+        "description": "在本地笔记向量索引中语义检索，返回相关片段（非全文），用于定位而非最终溯源。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -654,7 +683,11 @@ MCP_CODE_INTERPRETER_SCHEMA = {
     "type": "function",
     "function": {
         "name": "run_code_interpreter",
-        "description": "在 MCP Python Interpreter 沙盒中运行 Python 代码。",
+        "description": (
+            "在 MCP Python Interpreter 沙盒中运行 Python 代码，仅支持标准库；"
+            "需从 data/notes/my_markdowns 读取原始文件并输出结构化结果（JSON/表格）；"
+            "异常时返回可读错误结构；统计类输出需包含 source_file。"
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -687,6 +720,7 @@ AVAILABLE_TOOLS = [
     WEB_SEARCH_TOOL_SCHEMA,
     READ_PAGE_TOOL_SCHEMA,
     READ_NOTE_FILE_TOOL_SCHEMA,
+    LOAD_SKILL_TOOL_SCHEMA,
     MCP_CODE_INTERPRETER_SCHEMA,
 ]
 
@@ -866,12 +900,16 @@ def _safe_load_tool_arguments(arguments_raw: str) -> dict[str, Any]:
 
 
 def _apply_system_prompt(messages: List[dict[str, Any]]) -> List[dict[str, Any]]:
+    system_prompt = SYSTEM_PROMPT
+    skills_prompt = build_skills_prompt()
+    if skills_prompt:
+        system_prompt = f"{SYSTEM_PROMPT}\n\n{skills_prompt}"
     for message in messages:
         if message.get("role") == "system":
-            message["content"] = SYSTEM_PROMPT
+            message["content"] = system_prompt
             break
     else:
-        messages.insert(0, {"role": "system", "content": SYSTEM_PROMPT})
+        messages.insert(0, {"role": "system", "content": system_prompt})
     return messages
 
 
@@ -1247,7 +1285,8 @@ async def run_chat_conversation(
             {
                 "role": "system",
                 "content": (
-                    "检测到统计/汇总类问题，请使用 run_code_interpreter 读取原始文件并输出结构化结果；"
+                    "检测到统计/汇总类问题，请优先查看是否有相关技能可用（load_skill），"
+                    "再使用 run_code_interpreter 读取原始文件并输出结构化结果；"
                     "不要仅凭检索片段或摘要推断。"
                 ),
             }
@@ -1712,6 +1751,75 @@ async def run_chat_conversation(
                 tool_invocations += 1
                 continue
 
+            if tool_name == "load_skill":
+                tool_started_at = time.perf_counter()
+                result: Any = None
+                try:
+                    result = await _call_sync(
+                        load_skill,
+                        skill_name=str(arguments.get("skill_name") or "").strip(),
+                    )
+                    tool_output = json.dumps(result, ensure_ascii=False)
+                    summary_status = "ok"
+                except Exception as exc:
+                    tool_output = json.dumps({"error": str(exc)}, ensure_ascii=False)
+                    summary_status = "error"
+                    logger.error(
+                        "[System] load_skill 异常",
+                        extra={
+                            "trace_id": trace_id,
+                            "turn": turn + 1,
+                            "tool_call_id": tool_call_id,
+                            "error": tool_output,
+                            "tool_latency_ms": round(
+                                (time.perf_counter() - tool_started_at) * 1000, 2
+                            ),
+                        },
+                    )
+                _log_tool_summary(
+                    tool_name=tool_name,
+                    tool_call_id=tool_call_id,
+                    arguments=arguments,
+                    output=result if summary_status == "ok" else tool_output,
+                    trace_id=trace_id,
+                    turn=turn,
+                    status=summary_status,
+                )
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": tool_output,
+                    }
+                )
+                tool_invocations += 1
+                if event_callback:
+                    try:
+                        stage = "end" if not _is_tool_error_output(tool_output) else "error"
+                        event_callback(
+                            {
+                                "type": "tool",
+                                "stage": stage,
+                                "tool_name": tool_name,
+                                "tool_call_id": tool_call_id,
+                                "tool_count": tool_count,
+                                "latency_ms": round(
+                                    (time.perf_counter() - tool_started_at) * 1000, 2
+                                ),
+                                "message": _format_tool_status_message(
+                                    tool_name=tool_name,
+                                    tool_index=tool_count,
+                                    tool_count=tool_count,
+                                    arguments=arguments,
+                                    stage=stage,
+                                ),
+                                "ts": time.time(),
+                            }
+                        )
+                    except Exception:
+                        logger.debug("Failed to emit tool end event", exc_info=True)
+                continue
+
             if tool_name == "run_code_interpreter":
                 if _needs_quote_context(str(last_user or "")):
                     warning_message = (
@@ -2099,6 +2207,7 @@ __all__ = [
     "WEB_SEARCH_TOOL_SCHEMA",
     "READ_PAGE_TOOL_SCHEMA",
     "QUERY_MY_NOTES_TOOL_SCHEMA",
+    "LOAD_SKILL_TOOL_SCHEMA",
     "MCP_CODE_INTERPRETER_SCHEMA",
     "run_chat_conversation",
     "execute_chat",
