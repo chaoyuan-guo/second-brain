@@ -94,7 +94,7 @@ pytest tests/test_chat_stream_events.py::test_stream_events_basic -v
 ```bash
 # 针对测试集运行评估（需要后端运行中）
 python eval/scripts/run_eval_stream.py \
-  --testset eval/testsets/testset_v4.json \
+  --testset eval/testsets/testset.json \
   --base-url http://127.0.0.1:9000 \
   --strict-sources \
   --recall-k 5 \
@@ -103,7 +103,7 @@ python eval/scripts/run_eval_stream.py \
 
 # 评分答案
 python eval/scripts/grade_testset.py \
-  --testset eval/testsets/testset_v4.json \
+  --testset eval/testsets/testset.json \
   --answers eval/reports/answers.json \
   --output eval/reports/report.json
 ```

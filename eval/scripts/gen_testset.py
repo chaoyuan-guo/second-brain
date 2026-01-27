@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""生成 testset_v6.json 评估集
+"""生成 testset.json 评估集
 
-v6 改进：
+特点：
 1. 调整题型分布：减少统计题，增加理解和推理题
 2. 新增评分维度字段：retrieval_weight, content_weight, citation_weight
 3. 改进 must_have 为分层结构：must_have（必须）、should_have（加分）、must_not_have（扣分）
@@ -9,15 +9,14 @@ v6 改进：
 import json
 from pathlib import Path
 
-def generate_testset_v6():
+def generate_testset():
     testset = {
         "meta": {
-            "name": "agentic_rag_eval_v6",
-            "version": "v6",
+            "name": "agentic_rag_eval",
             "language": "zh",
             "notes_dir": "data/notes/my_markdowns",
             "total_questions": 25,
-            "changelog": "v6: 部分得分机制、多维度评分、改进题型分布"
+            "description": "部分得分机制、多维度评分"
         },
         "questions": []
     }
@@ -28,7 +27,7 @@ def generate_testset_v6():
     
     # Q1: Perfect Tree 节点数
     questions.append({
-        "id": "V6_Q01_perfect_tree_node_count",
+        "id": "Q01_perfect_tree_node_count",
         "query": "Perfect Binary Tree 的节点数公式是什么？",
         "category": "understanding",
         "difficulty": "easy",
@@ -58,7 +57,7 @@ def generate_testset_v6():
     
     # Q2: 迷宫 bug
     questions.append({
-        "id": "V6_Q02_maze_exit_bug",
+        "id": "Q02_maze_exit_bug",
         "query": "在「力扣迷宫最近出口」这道题中，用户代码的主要 bug 是什么？",
         "category": "understanding",
         "difficulty": "medium",
@@ -85,7 +84,7 @@ def generate_testset_v6():
     
     # Q3: 爬楼梯公式
     questions.append({
-        "id": "V6_Q03_climb_stairs_formula",
+        "id": "Q03_climb_stairs_formula",
         "query": "爬楼梯问题的递推公式是什么？",
         "category": "understanding",
         "difficulty": "easy",
@@ -112,7 +111,7 @@ def generate_testset_v6():
 
     # Q4: 恶意软件传播策略
     questions.append({
-        "id": "V6_Q04_malware_strategy",
+        "id": "Q04_malware_strategy",
         "query": "在「尽量减少恶意软件的传播」题目中，删除哪个节点能拯救最多节点？",
         "category": "understanding",
         "difficulty": "medium",
@@ -127,7 +126,7 @@ def generate_testset_v6():
 
     # Q5: 腐烂橘子 bug
     questions.append({
-        "id": "V6_Q05_oranges_bug",
+        "id": "Q05_oranges_bug",
         "query": "在腐烂橘子题目中，用户代码 'grid[nr][nc] == 2' 这行有什么问题？",
         "category": "understanding",
         "difficulty": "easy",
@@ -142,7 +141,7 @@ def generate_testset_v6():
 
     # Q6: 搜索二维矩阵映射
     questions.append({
-        "id": "V6_Q06_search_matrix_mapping",
+        "id": "Q06_search_matrix_mapping",
         "query": "在力扣74搜索二维矩阵中，如何将一维索引映射到二维坐标？",
         "category": "understanding",
         "difficulty": "medium",
@@ -157,7 +156,7 @@ def generate_testset_v6():
 
     # Q7: 动态规划核心
     questions.append({
-        "id": "V6_Q07_dp_essence",
+        "id": "Q07_dp_essence",
         "query": "动态规划的核心思想是什么？",
         "category": "understanding",
         "difficulty": "easy",
@@ -172,7 +171,7 @@ def generate_testset_v6():
 
     # Q8: 回溯本质
     questions.append({
-        "id": "V6_Q08_backtrack_essence",
+        "id": "Q08_backtrack_essence",
         "query": "回溯算法的本质是什么？",
         "category": "understanding",
         "difficulty": "medium",
@@ -187,7 +186,7 @@ def generate_testset_v6():
 
     # Q9: Z字形遍历技巧
     questions.append({
-        "id": "V6_Q09_zigzag_trick",
+        "id": "Q09_zigzag_trick",
         "query": "二叉树Z字形层序遍历有什么技巧？",
         "category": "understanding",
         "difficulty": "medium",
@@ -202,7 +201,7 @@ def generate_testset_v6():
 
     # Q10: 三种二叉树区别
     questions.append({
-        "id": "V6_Q10_tree_types_diff",
+        "id": "Q10_tree_types_diff",
         "query": "Perfect、Complete、Full 三种二叉树的主要区别是什么？",
         "category": "understanding",
         "difficulty": "medium",
@@ -221,7 +220,7 @@ def generate_testset_v6():
 
     # Q11: 钥匙和房间
     questions.append({
-        "id": "V6_Q11_keys_rooms",
+        "id": "Q11_keys_rooms",
         "query": "力扣「钥匙和房间」这道题的核心思路是什么？",
         "category": "understanding",
         "difficulty": "medium",
@@ -236,7 +235,7 @@ def generate_testset_v6():
 
     # Q12: 乘积最大子数组
     questions.append({
-        "id": "V6_Q12_max_product",
+        "id": "Q12_max_product",
         "query": "乘积最大子数组问题为什么需要同时维护最大值和最小值？",
         "category": "understanding",
         "difficulty": "hard",
@@ -255,7 +254,7 @@ def generate_testset_v6():
 
     # Q13: BFS vs DFS 空间复杂度
     questions.append({
-        "id": "V6_Q13_bfs_dfs_space",
+        "id": "Q13_bfs_dfs_space",
         "query": "比较 BFS 和 DFS 在树遍历中的空间复杂度差异",
         "category": "reasoning",
         "difficulty": "hard",
@@ -274,7 +273,7 @@ def generate_testset_v6():
 
     # Q14: 连通分量相关题目
     questions.append({
-        "id": "V6_Q14_component_problems",
+        "id": "Q14_component_problems",
         "query": "哪些题目用到了连通分量的概念？列举题目名称",
         "category": "reasoning",
         "difficulty": "hard",
@@ -289,7 +288,7 @@ def generate_testset_v6():
 
     # Q15: DP 状态定义示例
     questions.append({
-        "id": "V6_Q15_dp_state_examples",
+        "id": "Q15_dp_state_examples",
         "query": "在动态规划题目中，如何定义状态？请举2个具体例子",
         "category": "reasoning",
         "difficulty": "hard",
@@ -304,7 +303,7 @@ def generate_testset_v6():
 
     # Q16: 多源 BFS 题目
     questions.append({
-        "id": "V6_Q16_multi_source_bfs",
+        "id": "Q16_multi_source_bfs",
         "query": "哪些题目使用了多源 BFS？说明其特点",
         "category": "reasoning",
         "difficulty": "hard",
@@ -319,7 +318,7 @@ def generate_testset_v6():
 
     # Q17: BFS 层序遍历技巧
     questions.append({
-        "id": "V6_Q17_bfs_level_size",
+        "id": "Q17_bfs_level_size",
         "query": "在 BFS 层序遍历中，如何确保每次只处理一层的节点？",
         "category": "reasoning",
         "difficulty": "medium",
@@ -334,7 +333,7 @@ def generate_testset_v6():
 
     # Q18: 二分查找变体对比
     questions.append({
-        "id": "V6_Q18_binary_search_variants",
+        "id": "Q18_binary_search_variants",
         "query": "笔记中涉及了哪些二分查找的变体或应用？",
         "category": "reasoning",
         "difficulty": "hard",
@@ -351,7 +350,7 @@ def generate_testset_v6():
 
     # Q19: Dijkstra（文档未覆盖）
     questions.append({
-        "id": "V6_Q19_dijkstra_unknown",
+        "id": "Q19_dijkstra_unknown",
         "query": "Dijkstra 算法的时间复杂度是多少？",
         "category": "negative",
         "difficulty": "easy",
@@ -367,7 +366,7 @@ def generate_testset_v6():
 
     # Q20: 红黑树（文档未覆盖）
     questions.append({
-        "id": "V6_Q20_rbtree_unknown",
+        "id": "Q20_rbtree_unknown",
         "query": "如何实现红黑树的插入操作？",
         "category": "negative",
         "difficulty": "medium",
@@ -383,7 +382,7 @@ def generate_testset_v6():
 
     # Q21: 快速排序（文档未覆盖）
     questions.append({
-        "id": "V6_Q21_quicksort_unknown",
+        "id": "Q21_quicksort_unknown",
         "query": "快速排序的最坏情况时间复杂度是什么？",
         "category": "negative",
         "difficulty": "easy",
@@ -399,7 +398,7 @@ def generate_testset_v6():
 
     # Q22: 哈希表冲突（文档未覆盖）
     questions.append({
-        "id": "V6_Q22_hashtable_unknown",
+        "id": "Q22_hashtable_unknown",
         "query": "哈希表解决冲突的方法有哪些？",
         "category": "negative",
         "difficulty": "easy",
@@ -415,7 +414,7 @@ def generate_testset_v6():
 
     # Q23: AVL树旋转（文档未覆盖）
     questions.append({
-        "id": "V6_Q23_avl_unknown",
+        "id": "Q23_avl_unknown",
         "query": "AVL树的旋转操作有哪几种？",
         "category": "negative",
         "difficulty": "medium",
@@ -435,7 +434,7 @@ def generate_testset_v6():
 
     # Q24: 提交结果统计
     questions.append({
-        "id": "V6_Q24_submissions_result_counts",
+        "id": "Q24_submissions_result_counts",
         "query": "在 leetcode_submissions.md 中，Accepted 和 Wrong Answer 的提交各有多少次？",
         "category": "statistics",
         "difficulty": "medium",
@@ -450,7 +449,7 @@ def generate_testset_v6():
 
     # Q25: 不同题目数量
     questions.append({
-        "id": "V6_Q25_unique_problem_count",
+        "id": "Q25_unique_problem_count",
         "query": "leetcode_submissions.md 中一共涉及多少道不同的题目？",
         "category": "statistics",
         "difficulty": "medium",
@@ -469,7 +468,7 @@ def generate_testset_v6():
     return testset
 
 if __name__ == "__main__":
-    testset = generate_testset_v6()
-    output_path = Path(__file__).parent.parent / "testsets" / "testset_v6.json"
+    testset = generate_testset()
+    output_path = Path(__file__).parent.parent / "testsets" / "testset.json"
     output_path.write_text(json.dumps(testset, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"✓ 评估集已生成: {output_path}")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Grader for evaluation testsets with partial scoring support.
 
-v6 新增部分得分机制：
+部分得分机制：
 - retrieval_score: 检索得分 (0~1)
 - content_score: 内容得分 (0~1)
 - citation_score: 引用得分 (0~1)
@@ -9,7 +9,7 @@ v6 新增部分得分机制：
 
 Usage:
   python eval/scripts/grade_testset.py --answers path/to/answers.json
-  python eval/scripts/grade_testset.py --testset eval/testsets/testset_v6.json --answers answers.json --output report.json
+  python eval/scripts/grade_testset.py --testset eval/testsets/testset.json --answers answers.json --output report.json
 """
 
 from __future__ import annotations
@@ -221,11 +221,11 @@ def compute_recall_at_k(
     return summary, results
 
 
-# ========== v6 部分得分评估函数 ==========
+# ========== 部分得分评估函数 ==========
 
 
-def evaluate_content_score_v6(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
-    """计算 v6 格式的内容得分（部分得分机制）。
+def evaluate_content_score(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
+    """计算内容得分（部分得分机制）。
 
     Returns:
         {
@@ -333,8 +333,8 @@ def evaluate_content_score_v6(question: Dict[str, Any], answer: str) -> Dict[str
     }
 
 
-def evaluate_citation_score_v6(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
-    """计算 v6 格式的引用得分。
+def evaluate_citation_score(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
+    """计算引用得分。
 
     Returns:
         {
@@ -389,8 +389,8 @@ def evaluate_citation_score_v6(question: Dict[str, Any], answer: str) -> Dict[st
     }
 
 
-def evaluate_question_v6(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
-    """v6 格式的完整评估，返回部分得分。
+def evaluate_question(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
+    """完整评估，返回部分得分。
 
     Returns:
         {
@@ -409,8 +409,8 @@ def evaluate_question_v6(question: Dict[str, Any], answer: str) -> Dict[str, Any
     citation_weight = scoring.get("citation_weight", 0.2)
 
     # 计算各维度得分
-    content_result = evaluate_content_score_v6(question, answer)
-    citation_result = evaluate_citation_score_v6(question, answer)
+    content_result = evaluate_content_score(question, answer)
+    citation_result = evaluate_citation_score(question, answer)
 
     # retrieval_score 在这里设为 1.0，实际由 recall@k 单独计算
     retrieval_score = 1.0
@@ -440,20 +440,18 @@ def evaluate_question_v6(question: Dict[str, Any], answer: str) -> Dict[str, Any
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Grade answers against testsets")
-    parser.add_argument("--testset", default="eval/testsets/testset_v6.json", help="Path to testset JSON")
+    parser.add_argument("--testset", default="eval/testsets/testset.json", help="Path to testset JSON")
     parser.add_argument("--answers", required=True, help="Path to answers JSON")
     parser.add_argument("--output", help="Write report JSON to this path")
     parser.add_argument("--require-sources", action="store_true", help="Require answers to include source paths")
     parser.add_argument("--recall-k", default="1,3,5,10", help="Compute recall@k (comma-separated integers, default: 1,3,5,10)")
-    
+
     args = parser.parse_args()
 
     testset = load_json(Path(args.testset))
     answers = load_json(Path(args.answers))
 
-    # v6 版本
     meta = testset.get("meta", {})
-    version = meta.get("version", "v6")
 
     results = []
     passed = 0
@@ -464,8 +462,8 @@ def main() -> None:
         qid = q["id"]
         answer = answers.get(qid, "")
 
-        # v6 部分得分模式
-        eval_result = evaluate_question_v6(q, answer)
+        # 部分得分模式
+        eval_result = evaluate_question(q, answer)
         total_score_sum += eval_result["total_score"]
         if eval_result["passed"]:
             passed += 1

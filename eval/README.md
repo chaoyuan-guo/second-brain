@@ -68,7 +68,6 @@ python eval/scripts/grade_testset.py \
 ```json
 {
   "meta": {
-    "testset_version": "v6",
     "scoring_mode": "partial"
   },
   "summary": {
@@ -94,8 +93,8 @@ python eval/scripts/grade_testset.py \
 
 | 文件 | 说明 |
 |------|------|
-| `eval/testsets/testset_v6.json` | 评估集 |
-| `eval/scripts/gen_testset_v6.py` | 评估集生成脚本 |
+| `eval/testsets/testset.json` | 评估集 |
+| `eval/scripts/gen_testset.py` | 评估集生成脚本 |
 | `eval/scripts/grade_testset.py` | 评分脚本 |
 | `eval/scripts/run_eval_stream.py` | 运行脚本 |
 | `eval/README.md` | 本文档 |
