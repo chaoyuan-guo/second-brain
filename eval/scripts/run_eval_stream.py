@@ -3,9 +3,8 @@
 
 Usage:
   python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000
-  python eval/scripts/run_eval_stream.py --testset eval/testsets/testset_v4.json --out eval/reports/answers.json
+  python eval/scripts/run_eval_stream.py --testset eval/testsets/testset_v6.json --out eval/reports/answers.json
   python eval/scripts/run_eval_stream.py --report eval/reports/report.json
-  python eval/scripts/run_eval_stream.py --strict-sources --report eval/reports/report.json
 """
 
 from __future__ import annotations
@@ -155,17 +154,26 @@ def run_eval(
         queued.append(q)
 
     worker_count = max(1, concurrency)
+    total = len(queued)
+    completed = 0
+
+    print(f"开始评估: 共 {total} 题，并发数 {worker_count}")
+
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = [executor.submit(_run_single, q) for q in queued]
         for future in as_completed(futures):
             qid, answer = future.result()
             answers[qid] = answer
+            completed += 1
+            print(f"  [{completed}/{total}] {qid} 完成")
+
+    print(f"✓ 评估完成，已生成 {len(answers)} 个答案")
     return answers
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run streaming eval against chat API")
-    parser.add_argument("--testset", default="eval/testsets/testset_v4.json")
+    parser.add_argument("--testset", default="eval/testsets/testset_v6.json")
     parser.add_argument("--base-url", default="http://127.0.0.1:9000")
     parser.add_argument("--endpoint", default="/chat/stream")
     parser.add_argument("--mode", choices=["stream", "chat"], default="stream")
@@ -177,7 +185,7 @@ def main() -> None:
     parser.add_argument("--out", default="eval/reports/answers.json")
     parser.add_argument("--report", help="Optional report JSON path; runs grader after answering")
     parser.add_argument("--strict-sources", action="store_true", help="Require answers to include note sources")
-    parser.add_argument("--recall-k", default="", help="Compute recall@k (comma-separated integers)")
+    parser.add_argument("--recall-k", default="1,3,5,10", help="Compute recall@k (comma-separated integers, default: 1,3,5,10)")
     args = parser.parse_args()
 
     questions = load_testset(Path(args.testset))
@@ -199,8 +207,10 @@ def main() -> None:
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(answers, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"✓ 答案已保存至: {out_path}")
 
     if args.report:
+        print(f"\n开始评分...")
         report_path = Path(args.report)
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_cmd = [

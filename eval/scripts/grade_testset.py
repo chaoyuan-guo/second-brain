@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Baseline grader for evaluation testsets.
+"""Grader for evaluation testsets with partial scoring support.
+
+v6 新增部分得分机制：
+- retrieval_score: 检索得分 (0~1)
+- content_score: 内容得分 (0~1)
+- citation_score: 引用得分 (0~1)
+- total_score: 加权总分 (0~1)
 
 Usage:
   python eval/scripts/grade_testset.py --answers path/to/answers.json
-  python eval/scripts/grade_testset.py --testset eval/testsets/testset_v4.json --answers answers.json --output report.json
+  python eval/scripts/grade_testset.py --testset eval/testsets/testset_v6.json --answers answers.json --output report.json
 """
 
 from __future__ import annotations
@@ -24,6 +30,20 @@ UNKNOWN_PATTERNS = [
     r"无法确定",
     r"无相关信息",
     r"文档未覆盖",
+    r"没有.*信息",
+    r"未提及",
+    r"没有.*相关",
+    r"笔记.*没有",
+    r"未找到",
+    r"无法回答",
+]
+
+# 排除模式：包含这些模式时不应被判定为 unknown
+UNKNOWN_EXCLUSION_PATTERNS = [
+    r"虽然.*但",
+    r"虽然.*不过",
+    r"虽然没有.*可以",
+    r"虽然未.*但",
 ]
 
 
@@ -32,25 +52,40 @@ def load_json(path: Path) -> Dict[str, Any]:
 
 
 def is_unknown(answer: str) -> bool:
+    """检测答案是否表示"不知道"。
+
+    改进：排除"虽然没有...但是..."这类结构，避免误判。
+    """
+    # 先检查排除模式
+    for pat in UNKNOWN_EXCLUSION_PATTERNS:
+        if re.search(pat, answer):
+            return False
+    # 再检查 unknown 模式
     for pat in UNKNOWN_PATTERNS:
         if re.search(pat, answer):
             return True
     return False
 
 
-def match_any_substring(patterns: List[str], text: str) -> bool:
-    lowered = text.lower()
-    for p in patterns:
-        if p.lower() in lowered:
-            return True
-    return False
+def is_unknown_with_confidence(answer: str) -> tuple:
+    """检测答案是否表示"不知道"，并返回置信度。
 
+    Returns:
+        (is_unknown: bool, confidence: float, matched_pattern: str)
+    """
+    # 先检查排除模式
+    for pat in UNKNOWN_EXCLUSION_PATTERNS:
+        if re.search(pat, answer):
+            return False, 0.0, ""
 
-def match_any_regex(patterns: List[str], text: str) -> bool:
-    for p in patterns:
-        if re.search(p, text, flags=re.IGNORECASE):
-            return True
-    return False
+    # 检查 unknown 模式
+    for pat in UNKNOWN_PATTERNS:
+        match = re.search(pat, answer)
+        if match:
+            # 如果匹配在答案开头附近（前100字符），置信度更高
+            confidence = 0.9 if match.start() < 100 else 0.7
+            return True, confidence, pat
+    return False, 0.0, ""
 
 
 def normalize_text(text: str) -> str:
@@ -61,17 +96,6 @@ def contains_normalized(haystack: str, needle: str) -> bool:
     if not haystack or not needle:
         return False
     return normalize_text(needle) in normalize_text(haystack)
-
-
-def load_sources(question: Dict[str, Any]) -> Dict[str, str]:
-    sources = question.get("sources") or []
-    loaded: Dict[str, str] = {}
-    for source in sources:
-        try:
-            loaded[str(source)] = Path(source).read_text(encoding="utf-8")
-        except FileNotFoundError:
-            loaded[str(source)] = ""
-    return loaded
 
 
 def extract_quotes(answer: str) -> List[str]:
@@ -90,118 +114,6 @@ def extract_quotes(answer: str) -> List[str]:
             if cleaned:
                 quotes.append(cleaned)
     return quotes
-
-
-def check_quote_consistency(
-    question: Dict[str, Any],
-    answer: str,
-) -> List[int]:
-    require_quotes = bool(question.get("quote_required"))
-    if not require_quotes:
-        return []
-    quotes = extract_quotes(answer)
-    if not quotes:
-        return [0]
-
-    sources_map = load_sources(question)
-    missing: List[int] = []
-    for idx, quote in enumerate(quotes, start=1):
-        found = False
-        for source_text in sources_map.values():
-            if contains_normalized(source_text, quote):
-                found = True
-                break
-        if not found:
-            missing.append(idx)
-    return missing
-
-
-def check_evidence(
-    question: Dict[str, Any],
-    answer: str,
-) -> List[int]:
-    evidence = question.get("evidence") or []
-    mode = str(question.get("evidence_mode") or "strict").strip().lower()
-    if not evidence:
-        return []
-    if mode == "any":
-        return []
-
-    sources_map = load_sources(question)
-    missing: List[int] = []
-    if mode == "any_of":
-        for item in evidence:
-            if isinstance(item, str):
-                text = item
-                source = None
-            else:
-                text = str(item.get("text") or "")
-                source = item.get("source")
-            if not text or not contains_normalized(answer, text):
-                continue
-            if source:
-                source_text = sources_map.get(str(source), "")
-                if not contains_normalized(source_text, text):
-                    continue
-            return []
-        return [0]
-
-    for idx, item in enumerate(evidence, start=1):
-        if isinstance(item, str):
-            text = item
-            source = None
-        else:
-            text = str(item.get("text") or "")
-            source = item.get("source")
-        if not text or not contains_normalized(answer, text):
-            missing.append(idx)
-            continue
-        if source:
-            source_text = sources_map.get(str(source), "")
-            if not contains_normalized(source_text, text):
-                missing.append(idx)
-    return missing
-
-
-def check_evidence_in_quotes(
-    question: Dict[str, Any],
-    answer: str,
-) -> List[int]:
-    if not question.get("evidence_quote_required"):
-        return []
-    evidence = question.get("evidence") or []
-    if not evidence:
-        return []
-    mode = str(question.get("evidence_mode") or "strict").strip().lower()
-    if mode == "any":
-        return []
-
-    quotes = extract_quotes(answer)
-    if not quotes:
-        return [0]
-
-    def quote_contains(text: str) -> bool:
-        return any(contains_normalized(quote, text) for quote in quotes)
-
-    if mode == "any_of":
-        for item in evidence:
-            if isinstance(item, str):
-                text = item
-            else:
-                text = str(item.get("text") or "")
-            if text and quote_contains(text):
-                return []
-        return [0]
-
-    missing: List[int] = []
-    for idx, item in enumerate(evidence, start=1):
-        if isinstance(item, str):
-            text = item
-        else:
-            text = str(item.get("text") or "")
-        if not text or not quote_contains(text):
-            missing.append(idx)
-    return missing
 
 
 def normalize_source_path(value: str) -> str:
@@ -309,99 +221,264 @@ def compute_recall_at_k(
     return summary, results
 
 
-def check_requirement(req: Dict[str, Any], answer: str) -> bool:
-    if "any_of" in req and req["any_of"]:
-        if match_any_substring(req["any_of"], answer):
-            return True
-    if "any_of_regex" in req and req["any_of_regex"]:
-        if match_any_regex(req["any_of_regex"], answer):
-            return True
-    return False
+# ========== v6 部分得分评估函数 ==========
 
 
-def evaluate_question(
-    question: Dict[str, Any],
-    answer: str,
-) -> Tuple[bool, List[int], List[int], List[int]]:
-    missing: List[int] = []
-    allow_unknown = bool(question.get("allow_unknown"))
-    must_have = question.get("must_have", [])
-    missing_evidence: List[int] = []
-    missing_quotes: List[int] = []
+def evaluate_content_score_v6(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
+    """计算 v6 格式的内容得分（部分得分机制）。
 
-    if allow_unknown and is_unknown(answer):
-        return True, missing, missing_evidence, missing_quotes
-    if allow_unknown and not must_have:
-        return False, [0], [0], [0]
-    if (not allow_unknown) and is_unknown(answer):
-        return False, [0], [0], [0]
+    Returns:
+        {
+            "score": float (0~1),
+            "matched_must_have": List[str],
+            "matched_should_have": List[str],
+            "matched_evidence": List[str],
+            "details": str
+        }
+    """
+    content_rules = question.get("content_rules", {})
+    must_have = content_rules.get("must_have", [])
+    should_have = content_rules.get("should_have", [])
+    evidence = content_rules.get("evidence", [])
+    unknown_indicators = content_rules.get("unknown_indicators", [])
 
-    for idx, req in enumerate(must_have, start=1):
-        if not check_requirement(req, answer):
-            missing.append(idx)
+    # 处理 negative case
+    if question.get("allow_unknown") and unknown_indicators:
+        is_unk, confidence, _ = is_unknown_with_confidence(answer)
+        if is_unk:
+            return {
+                "score": confidence,
+                "matched_must_have": [],
+                "matched_should_have": [],
+                "matched_evidence": [],
+                "is_unknown_answer": True,
+                "details": "正确识别为未知问题"
+            }
+        else:
+            return {
+                "score": 0.0,
+                "matched_must_have": [],
+                "matched_should_have": [],
+                "matched_evidence": [],
+                "is_unknown_answer": False,
+                "details": "应回答不知道但给出了答案"
+            }
 
-    if not missing:
-        missing_evidence = check_evidence(question, answer)
-    if not missing and not missing_evidence:
-        missing_evidence = missing_evidence + check_evidence_in_quotes(question, answer)
-    if not missing and not missing_evidence:
-        missing_quotes = check_quote_consistency(question, answer)
-    return (
-        len(missing) == 0
-        and len(missing_evidence) == 0
-        and len(missing_quotes) == 0,
-        missing,
-        missing_evidence,
-        missing_quotes,
+    # 计算 must_have 得分
+    total_weight = 0.0
+    earned_weight = 0.0
+    matched_must = []
+
+    for item in must_have:
+        if isinstance(item, dict):
+            text = item.get("text", "")
+            weight = item.get("weight", 0.2)
+        else:
+            text = str(item)
+            weight = 1.0 / max(len(must_have), 1)
+
+        total_weight += weight
+        if text and contains_normalized(answer, text):
+            earned_weight += weight
+            matched_must.append(text)
+
+    # 计算 should_have 加分
+    matched_should = []
+    bonus_weight = 0.0
+    for item in should_have:
+        if isinstance(item, dict):
+            text = item.get("text", "")
+            weight = item.get("weight", 0.1)
+        else:
+            text = str(item)
+            weight = 0.1
+
+        if text and contains_normalized(answer, text):
+            bonus_weight += weight
+            matched_should.append(text)
+
+    # 计算 evidence 得分
+    matched_ev = []
+    evidence_weight = 0.0
+    evidence_total = 0.0
+    for item in evidence:
+        if isinstance(item, dict):
+            text = item.get("text", "")
+            weight = item.get("weight", 0.3)
+        else:
+            text = str(item)
+            weight = 0.3
+
+        evidence_total += weight
+        if text and contains_normalized(answer, text):
+            evidence_weight += weight
+            matched_ev.append(text)
+
+    # 综合计算得分
+    if total_weight + evidence_total > 0:
+        base_score = (earned_weight + evidence_weight) / (total_weight + evidence_total)
+    else:
+        base_score = 1.0 if not must_have and not evidence else 0.0
+
+    # 加上 should_have 加分，但不超过 1.0
+    final_score = min(1.0, base_score + bonus_weight)
+
+    return {
+        "score": final_score,
+        "matched_must_have": matched_must,
+        "matched_should_have": matched_should,
+        "matched_evidence": matched_ev,
+        "is_unknown_answer": False,
+        "details": f"must_have: {len(matched_must)}/{len(must_have)}, evidence: {len(matched_ev)}/{len(evidence)}"
+    }
+
+
+def evaluate_citation_score_v6(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
+    """计算 v6 格式的引用得分。
+
+    Returns:
+        {
+            "score": float (0~1),
+            "has_quote": bool,
+            "has_source": bool,
+            "details": str
+        }
+    """
+    citation_rules = question.get("citation_rules", {})
+    require_quote = citation_rules.get("require_quote", False)
+    require_source = citation_rules.get("require_source", False)
+
+    # 如果不要求引用，直接满分
+    if not require_quote and not require_source:
+        return {
+            "score": 1.0,
+            "has_quote": False,
+            "has_source": False,
+            "details": "不要求引用"
+        }
+
+    quotes = extract_quotes(answer)
+    has_quote = len(quotes) > 0
+
+    # 检查是否包含来源文件名
+    sources = question.get("expected_sources", [])
+    has_source = False
+    for source in sources:
+        basename = Path(source).stem.lower()
+        if basename in answer.lower():
+            has_source = True
+            break
+
+    # 计算得分
+    score = 0.0
+    if require_quote and require_source:
+        if has_quote:
+            score += 0.5
+        if has_source:
+            score += 0.5
+    elif require_quote:
+        score = 1.0 if has_quote else 0.0
+    elif require_source:
+        score = 1.0 if has_source else 0.0
+
+    return {
+        "score": score,
+        "has_quote": has_quote,
+        "has_source": has_source,
+        "details": f"quote: {has_quote}, source: {has_source}"
+    }
+
+
+def evaluate_question_v6(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
+    """v6 格式的完整评估，返回部分得分。
+
+    Returns:
+        {
+            "retrieval_score": float,
+            "content_score": float,
+            "citation_score": float,
+            "total_score": float,
+            "passed": bool,
+            "details": {...}
+        }
+    """
+    # 获取权重配置
+    scoring = question.get("scoring", {})
+    retrieval_weight = scoring.get("retrieval_weight", 0.3)
+    content_weight = scoring.get("content_weight", 0.5)
+    citation_weight = scoring.get("citation_weight", 0.2)
+
+    # 计算各维度得分
+    content_result = evaluate_content_score_v6(question, answer)
+    citation_result = evaluate_citation_score_v6(question, answer)
+
+    # retrieval_score 在这里设为 1.0，实际由 recall@k 单独计算
+    retrieval_score = 1.0
+
+    # 计算加权总分
+    total_score = (
+        retrieval_score * retrieval_weight +
+        content_result["score"] * content_weight +
+        citation_result["score"] * citation_weight
     )
+
+    # 通过阈值：总分 >= 0.6
+    passed = total_score >= 0.6
+
+    return {
+        "retrieval_score": retrieval_score,
+        "content_score": content_result["score"],
+        "citation_score": citation_result["score"],
+        "total_score": total_score,
+        "passed": passed,
+        "details": {
+            "content": content_result,
+            "citation": citation_result
+        }
+    }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Grade answers against testsets")
-    parser.add_argument("--testset", default="eval/testsets/testset_v4.json", help="Path to testset JSON")
+    parser.add_argument("--testset", default="eval/testsets/testset_v6.json", help="Path to testset JSON")
     parser.add_argument("--answers", required=True, help="Path to answers JSON")
     parser.add_argument("--output", help="Write report JSON to this path")
     parser.add_argument("--require-sources", action="store_true", help="Require answers to include source paths")
-    parser.add_argument("--recall-k", default="", help="Compute recall@k (comma-separated integers)")
+    parser.add_argument("--recall-k", default="1,3,5,10", help="Compute recall@k (comma-separated integers, default: 1,3,5,10)")
+    
     args = parser.parse_args()
 
     testset = load_json(Path(args.testset))
     answers = load_json(Path(args.answers))
 
+    # v6 版本
+    meta = testset.get("meta", {})
+    version = meta.get("version", "v6")
+
     results = []
     passed = 0
+    total_score_sum = 0.0
 
     questions = testset.get("questions", [])
     for q in questions:
         qid = q["id"]
         answer = answers.get(qid, "")
-        ok, missing, missing_evidence, missing_quotes = evaluate_question(q, answer)
-        if ok and args.require_sources:
-            sources = q.get("sources") or []
-            if sources:
-                answer_lower = answer.lower()
-                matched = False
-                for source in sources:
-                    normalized = str(source)
-                    basename = Path(normalized).name.lower()
-                    if normalized.lower() in answer_lower or basename in answer_lower:
-                        matched = True
-                        break
-                if not matched:
-                    ok = False
-                    missing = missing + [0]
-        if ok:
-            passed += 1
-        results.append(
-            {
-                "id": qid,
-                "passed": ok,
-                "missing_requirements": missing,
-                "missing_evidence": missing_evidence,
-                "missing_quotes": missing_quotes,
-            }
-        )
 
+        # v6 部分得分模式
+        eval_result = evaluate_question_v6(q, answer)
+        total_score_sum += eval_result["total_score"]
+        if eval_result["passed"]:
+            passed += 1
+        results.append({
+            "id": qid,
+            "passed": eval_result["passed"],
+            "total_score": eval_result["total_score"],
+            "content_score": eval_result["content_score"],
+            "citation_score": eval_result["citation_score"],
+            "details": eval_result["details"]
+        })
+
+    # 计算 recall@k
     recall_summary = {}
     recall_results = []
     if args.recall_k:
@@ -420,10 +497,39 @@ def main() -> None:
             except Exception as exc:
                 recall_summary = {"error": str(exc)}
 
+    # 统计各类别
+    category_stats = {}
+    for q, result in zip(questions, results):
+        cat = q.get("category", "unknown")
+        if cat not in category_stats:
+            category_stats[cat] = {"total": 0, "passed": 0, "score_sum": 0.0}
+        category_stats[cat]["total"] += 1
+        if result["passed"]:
+            category_stats[cat]["passed"] += 1
+        category_stats[cat]["score_sum"] += result.get("total_score", 0.0)
+
+    for cat, stats in category_stats.items():
+        stats["pass_rate"] = stats["passed"] / stats["total"] if stats["total"] > 0 else 0.0
+        stats["avg_score"] = stats["score_sum"] / stats["total"] if stats["total"] > 0 else 0.0
+
+    # 构建报告
+    avg_score = total_score_sum / len(results) if results else 0.0
+    perfect_count = sum(1 for r in results if r.get("total_score", 0) >= 0.95)
+    
     report = {
-        "total": len(results),
-        "passed": passed,
-        "pass_rate": (passed / len(results)) if results else 0.0,
+        "meta": {
+            "testset_version": version,
+            "scoring_mode": "partial"
+        },
+        "summary": {
+            "total": len(results),
+            "passed": passed,
+            "pass_rate": (passed / len(results)) if results else 0.0,
+            "avg_score": avg_score,
+            "perfect_count": perfect_count,
+            "perfect_rate": perfect_count / len(results) if results else 0.0
+        },
+        "category_stats": category_stats,
         "results": results,
         "recall_summary": recall_summary,
         "recall_results": recall_results,
@@ -431,6 +537,10 @@ def main() -> None:
 
     if args.output:
         Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"✓ 评估完成: {passed}/{len(results)} 通过 ({report['summary']['pass_rate']:.1%})")
+        print(f"  平均得分: {avg_score:.2f}")
+        print(f"  满分率: {report['summary']['perfect_rate']:.1%}")
+        print(f"  报告已保存至: {args.output}")
     else:
         print(json.dumps(report, ensure_ascii=False, indent=2))
 

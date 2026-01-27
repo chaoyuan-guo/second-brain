@@ -684,9 +684,8 @@ MCP_CODE_INTERPRETER_SCHEMA = {
     "function": {
         "name": "run_code_interpreter",
         "description": (
-            "在 MCP Python Interpreter 沙盒中运行 Python 代码，仅支持标准库；"
-            "需从 data/notes/my_markdowns 读取原始文件并输出结构化结果（JSON/表格）；"
-            "异常时返回可读错误结构；统计类输出需包含 source_file。"
+            "在沙盒中运行 Python 代码（仅标准库）。"
+            "笔记文件位于 data/notes/my_markdowns/；输出建议为 JSON 或表格。"
         ),
         "parameters": {
             "type": "object",
