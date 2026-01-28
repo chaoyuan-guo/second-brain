@@ -3,8 +3,8 @@
     "name": "agentic_rag_eval",
     "language": "zh",
     "notes_dir": "data/notes/my_markdowns",
-    "total_questions": 25,
-    "description": "部分得分机制、多维度评分"
+    "total_questions": 47,
+    "description": "部分得分机制、多维度评分、完整工具覆盖"
   },
   "questions": [
     {
@@ -646,8 +646,7 @@
       "category": "reasoning",
       "difficulty": "hard",
       "expected_sources": [
-        "力扣74搜索二维矩阵讲解.md",
-        "二分查找.md"
+        "力扣74搜索二维矩阵讲解.md"
       ],
       "scoring": {
         "retrieval_weight": 0.4,
@@ -829,17 +828,31 @@
         "must_have": [
           {
             "text": "Accepted",
-            "weight": 0.3
+            "weight": 0.2
           },
           {
             "text": "Wrong Answer",
-            "weight": 0.3
+            "weight": 0.2
           }
         ],
         "should_have": [
           {
             "text": "次",
-            "weight": 0.2
+            "weight": 0.1
+          }
+        ],
+        "numeric_validations": [
+          {
+            "pattern": "Accepted[^0-9]*?(\\d+)\\s*次",
+            "expected_value": 572,
+            "tolerance": 5,
+            "weight": 0.25
+          },
+          {
+            "pattern": "Wrong Answer[^0-9]*?(\\d+)\\s*次",
+            "expected_value": 480,
+            "tolerance": 5,
+            "weight": 0.25
           }
         ]
       },
@@ -865,12 +878,303 @@
         "must_have": [
           {
             "text": "题目",
-            "weight": 0.3
+            "weight": 0.2
           }
         ],
         "should_have": [
           {
             "text": "道",
+            "weight": 0.1
+          }
+        ],
+        "numeric_validations": [
+          {
+            "pattern": "(\\d+)\\s*道",
+            "expected_value": 220,
+            "tolerance": 5,
+            "weight": 0.5
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": false
+      }
+    },
+
+    {
+      "id": "Q26_sliding_puzzle_bfs",
+      "query": "滑动谜题这道题为什么要用 BFS 而不是 DFS？状态空间有多大？",
+      "category": "understanding",
+      "difficulty": "medium",
+      "expected_sources": [
+        "滑动谜题BFS解题思路.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "最短",
+            "weight": 0.3
+          },
+          {
+            "text": "720",
+            "weight": 0.4
+          }
+        ],
+        "should_have": [
+          {
+            "text": "6!",
+            "weight": 0.2
+          },
+          {
+            "text": "无权图",
+            "weight": 0.1
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q27_min_height_tree_center",
+      "query": "最小高度树问题中，为什么树的中心点只能有 1 个或 2 个？",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "最小高度树剥洋葱找树中心.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "直径",
+            "weight": 0.4
+          },
+          {
+            "text": "中点",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "奇数",
+            "weight": 0.1
+          },
+          {
+            "text": "偶数",
+            "weight": 0.1
+          },
+          {
+            "text": "相邻",
+            "weight": 0.1
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q28_topological_peel_onion",
+      "query": "剥洋葱法是什么算法思想？在哪些题目中用到？",
+      "category": "reasoning",
+      "difficulty": "medium",
+      "expected_sources": [
+        "最小高度树剥洋葱找树中心.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "叶子",
+            "weight": 0.3
+          },
+          {
+            "text": "拓扑",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "度",
+            "weight": 0.2
+          },
+          {
+            "text": "最小高度树",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q29_bfs_two_implementations",
+      "query": "BFS 有哪两种常见的写法？什么时候需要用 level_size = len(queue)？",
+      "category": "understanding",
+      "difficulty": "medium",
+      "expected_sources": [
+        "滑动谜题BFS解题思路.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "步数",
+            "weight": 0.3
+          },
+          {
+            "text": "队列",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "分层",
+            "weight": 0.2
+          },
+          {
+            "text": "状态",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q30_bidirectional_bfs",
+      "query": "什么是双向 BFS？它比单向 BFS 快多少？",
+      "category": "understanding",
+      "difficulty": "hard",
+      "expected_sources": [
+        "滑动谜题BFS解题思路.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "起点",
+            "weight": 0.2
+          },
+          {
+            "text": "终点",
+            "weight": 0.2
+          },
+          {
+            "text": "相遇",
+            "weight": 0.2
+          }
+        ],
+        "should_have": [
+          {
+            "text": "指数",
+            "weight": 0.2
+          },
+          {
+            "text": "d/2",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q31_open_lock_deadends",
+      "query": "打开转盘锁这道题中，deadends 应该怎么处理？为什么要用集合？",
+      "category": "understanding",
+      "difficulty": "easy",
+      "expected_sources": [
+        "滑动谜题BFS解题思路.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "O(1)",
+            "weight": 0.4
+          },
+          {
+            "text": "visited",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "哈希",
+            "weight": 0.2
+          },
+          {
+            "text": "查询",
+            "weight": 0.1
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q32_web_search_fallback",
+      "query": "Python 3.13 有什么新特性？",
+      "category": "web_search",
+      "difficulty": "medium",
+      "expected_sources": [],
+      "scoring": {
+        "retrieval_weight": 0.1,
+        "content_weight": 0.7,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "Python",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "GIL",
+            "weight": 0.3
+          },
+          {
+            "text": "JIT",
             "weight": 0.2
           }
         ]
@@ -878,6 +1182,569 @@
       "citation_rules": {
         "require_quote": false,
         "require_source": false
+      },
+      "notes": "测试联网降级：本地无结果时应触发 web_search 工具"
+    },
+    {
+      "id": "Q33_web_search_current_events",
+      "query": "2025 年 LeetCode 周赛排名第一的选手是谁？",
+      "category": "web_search",
+      "difficulty": "hard",
+      "expected_sources": [],
+      "scoring": {
+        "retrieval_weight": 0.1,
+        "content_weight": 0.6,
+        "citation_weight": 0.3
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "LeetCode",
+            "weight": 0.3
+          }
+        ],
+        "should_have": []
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": false
+      },
+      "notes": "测试联网搜索时事信息"
+    },
+    {
+      "id": "Q34_skill_load_explicit",
+      "query": "帮我统计 LeetCode 提交记录中各难度题目的数量分布",
+      "category": "skill",
+      "difficulty": "medium",
+      "expected_sources": [
+        "leetcode_submissions.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.2,
+        "content_weight": 0.6,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "Easy",
+            "weight": 0.2
+          },
+          {
+            "text": "Medium",
+            "weight": 0.2
+          },
+          {
+            "text": "Hard",
+            "weight": 0.2
+          }
+        ],
+        "should_have": [
+          {
+            "text": "数量",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": true
+      },
+      "notes": "测试 load_skill 工具的显式加载"
+    },
+    {
+      "id": "Q35_multi_file_analysis",
+      "query": "对比所有 BFS 相关笔记中的时间复杂度，哪个问题的状态空间最大？",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "滑动谜题BFS解题思路.md",
+        "BFS练习题 II.md",
+        "最小高度树剥洋葱找树中心.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.4,
+        "content_weight": 0.4,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "O(",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "720",
+            "weight": 0.2
+          },
+          {
+            "text": "10000",
+            "weight": 0.2
+          },
+          {
+            "text": "状态",
+            "weight": 0.1
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "测试多轮工具调用：需要查询多个文件并进行对比分析"
+    },
+    {
+      "id": "Q36_code_interpreter_stats",
+      "query": "用代码计算我所有笔记文件的总字数和平均字数",
+      "category": "statistics",
+      "difficulty": "medium",
+      "expected_sources": [],
+      "expected_tools": ["run_code_interpreter"],
+      "scoring": {
+        "retrieval_weight": 0.1,
+        "content_weight": 0.6,
+        "citation_weight": 0.2,
+        "tool_weight": 0.1
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "字",
+            "weight": 0.4
+          }
+        ],
+        "should_have": [
+          {
+            "text": "总",
+            "weight": 0.2
+          },
+          {
+            "text": "平均",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": false
+      },
+      "notes": "测试 run_code_interpreter 的文件统计场景"
+    },
+    {
+      "id": "Q37_code_interpreter_complexity",
+      "query": "用代码分析 leetcode_submissions.md 中提交时间的分布，按月统计提交次数",
+      "category": "statistics",
+      "difficulty": "hard",
+      "expected_sources": [
+        "leetcode_submissions.md"
+      ],
+      "expected_tools": ["run_code_interpreter"],
+      "scoring": {
+        "retrieval_weight": 0.2,
+        "content_weight": 0.5,
+        "citation_weight": 0.2,
+        "tool_weight": 0.1
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "月",
+            "weight": 0.4
+          }
+        ],
+        "should_have": [
+          {
+            "text": "提交",
+            "weight": 0.3
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": true
+      },
+      "notes": "测试 run_code_interpreter 的数据分析场景"
+    },
+    {
+      "id": "Q38_negative_graceful",
+      "query": "笔记中有关于红黑树的讲解吗？",
+      "category": "negative",
+      "difficulty": "easy",
+      "expected_sources": [],
+      "scoring": {
+        "retrieval_weight": 0.2,
+        "content_weight": 0.6,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "没有",
+            "weight": 0.5
+          }
+        ],
+        "should_have": [
+          {
+            "text": "红黑树",
+            "weight": 0.3
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": false
+      },
+      "notes": "测试本地无结果时的优雅处理"
+    },
+    {
+      "id": "Q39_binary_matrix_shortest_path",
+      "query": "二进制矩阵最短路径问题的解题思路是什么？",
+      "category": "understanding",
+      "difficulty": "medium",
+      "expected_sources": [
+        "二进制矩阵最短路径题讲解.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "BFS",
+            "weight": 0.4
+          }
+        ],
+        "should_have": [
+          {
+            "text": "最短",
+            "weight": 0.2
+          },
+          {
+            "text": "8个方向",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q40_gene_mutation_bfs",
+      "query": "最小基因变化问题和打开转盘锁有什么相似之处？",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "最小基因变化题解.md",
+        "滑动谜题BFS解题思路.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.4,
+        "content_weight": 0.4,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "BFS",
+            "weight": 0.3
+          },
+          {
+            "text": "状态",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "最短",
+            "weight": 0.2
+          },
+          {
+            "text": "变化",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q41_jump_game_iii",
+      "query": "跳跃游戏 III 为什么可以用 BFS 或 DFS 解决？",
+      "category": "understanding",
+      "difficulty": "medium",
+      "expected_sources": [
+        "跳跃游戏III题解.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "可达",
+            "weight": 0.4
+          }
+        ],
+        "should_have": [
+          {
+            "text": "跳跃",
+            "weight": 0.2
+          },
+          {
+            "text": "0",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q42_tree_distance_k",
+      "query": "二叉树中距离为 K 的节点问题，为什么要先把树转成图？",
+      "category": "understanding",
+      "difficulty": "hard",
+      "expected_sources": [
+        "二叉树距离为K节点解析.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "父节点",
+            "weight": 0.4
+          }
+        ],
+        "should_have": [
+          {
+            "text": "BFS",
+            "weight": 0.2
+          },
+          {
+            "text": "邻接",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q43_complete_tree_inserter",
+      "query": "完全二叉树插入器是怎么实现的？用了什么数据结构？",
+      "category": "understanding",
+      "difficulty": "medium",
+      "expected_sources": [
+        "完全二叉树插入器题解.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "队列",
+            "weight": 0.4
+          }
+        ],
+        "should_have": [
+          {
+            "text": "层序",
+            "weight": 0.2
+          },
+          {
+            "text": "完全二叉树",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q44_odd_even_tree",
+      "query": "奇偶树的判断条件是什么？需要检查哪些性质？",
+      "category": "understanding",
+      "difficulty": "medium",
+      "expected_sources": [
+        "力扣奇偶树题目讲解.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "奇",
+            "weight": 0.2
+          },
+          {
+            "text": "偶",
+            "weight": 0.2
+          },
+          {
+            "text": "层",
+            "weight": 0.2
+          }
+        ],
+        "should_have": [
+          {
+            "text": "递增",
+            "weight": 0.2
+          },
+          {
+            "text": "递减",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q45_evaluate_division_graph",
+      "query": "除法求值问题为什么要建图？图的边权代表什么？",
+      "category": "understanding",
+      "difficulty": "hard",
+      "expected_sources": [
+        "力扣除法求值题讲解.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "图",
+            "weight": 0.3
+          },
+          {
+            "text": "权",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "除",
+            "weight": 0.2
+          },
+          {
+            "text": "BFS",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q46_complete_tree_check",
+      "query": "如何判断一棵二叉树是不是完全二叉树？核心思路是什么？",
+      "category": "understanding",
+      "difficulty": "medium",
+      "expected_sources": [
+        "力扣完全二叉树检验讲解.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "层序遍历",
+            "weight": 0.3
+          },
+          {
+            "text": "空",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "BFS",
+            "weight": 0.2
+          },
+          {
+            "text": "None",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      }
+    },
+    {
+      "id": "Q47_constant_space_next_pointer",
+      "query": "如何用常数空间连接二叉树的下一层指针？为什么普通 BFS 不行？",
+      "category": "understanding",
+      "difficulty": "hard",
+      "expected_sources": [
+        "常数空间连接二叉树下一层指针.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "O(1)",
+            "weight": 0.3
+          },
+          {
+            "text": "next",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "虚拟",
+            "weight": 0.2
+          },
+          {
+            "text": "dummy",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
       }
     }
   ]

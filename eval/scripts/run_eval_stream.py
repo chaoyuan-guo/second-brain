@@ -46,7 +46,12 @@ def stream_chat(
     payload: dict,
     timeout: int,
     extra_headers: Optional[Dict[str, str]] = None,
-) -> str:
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """发送流式聊天请求并收集答案和工具事件。
+
+    Returns:
+        (答案文本, 工具调用事件列表)
+    """
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urlrequest.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/json")
@@ -57,6 +62,8 @@ def stream_chat(
             req.add_header(key, val)
 
     answer_parts: List[str] = []
+    tool_events: List[Dict[str, Any]] = []
+
     with urlrequest.urlopen(req, timeout=timeout) as resp:
         while True:
             raw = resp.readline()
@@ -69,14 +76,26 @@ def stream_chat(
                 event = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if event.get("type") == "delta":
+
+            event_type = event.get("type")
+
+            if event_type == "delta":
                 delta = event.get("delta")
                 if isinstance(delta, str):
                     answer_parts.append(delta)
-            if event.get("type") == "done":
+            elif event_type == "tool":
+                # 收集工具调用事件
+                tool_events.append({
+                    "stage": event.get("stage"),
+                    "tool_name": event.get("tool_name"),
+                    "tool_call_id": event.get("tool_call_id"),
+                    "latency_ms": event.get("latency_ms"),
+                    "error": event.get("error"),
+                })
+            elif event_type == "done":
                 break
 
-    return "".join(answer_parts).strip()
+    return "".join(answer_parts).strip(), tool_events
 
 
 def chat_once(
@@ -115,11 +134,17 @@ def run_eval(
     strict_sources: bool,
     concurrency: int,
     limit: Optional[int] = None,
-) -> Dict[str, str]:
+) -> Tuple[Dict[str, str], Dict[str, List[Dict[str, Any]]]]:
+    """运行评估，返回答案和工具追踪。
+
+    Returns:
+        (answers: Dict[question_id, answer], tool_traces: Dict[question_id, tool_events])
+    """
     answers: Dict[str, str] = {}
+    tool_traces: Dict[str, List[Dict[str, Any]]] = {}
     url = base_url.rstrip("/") + endpoint
 
-    def _run_single(q: dict) -> Tuple[str, str]:
+    def _run_single(q: dict) -> Tuple[str, str, List[Dict[str, Any]]]:
         qid = q["id"]
         query = q["query"]
         payload = {"user_message": query}
@@ -127,16 +152,17 @@ def run_eval(
         if strict_sources:
             request_headers["X-Eval-Strict"] = "1"
             request_headers["X-Eval-Question-Id"] = qid
-            sources = q.get("sources") or []
+            sources = q.get("expected_sources") or q.get("sources") or []
             if sources:
                 request_headers["X-Eval-Expected-Sources"] = ",".join(
                     quote(source, safe="/._-") for source in sources
                 )
+        tool_events: List[Dict[str, Any]] = []
         try:
             if mode == "chat":
                 answer = chat_once(url, payload, timeout, request_headers)
             else:
-                answer = stream_chat(url, payload, timeout, request_headers)
+                answer, tool_events = stream_chat(url, payload, timeout, request_headers)
         except (TimeoutError, socket.timeout):
             answer = "[timeout]"
         except urlerror.HTTPError as exc:
@@ -145,7 +171,7 @@ def run_eval(
             answer = f"[url_error] {exc.reason}"
         if pause > 0:
             time.sleep(pause)
-        return qid, answer
+        return qid, answer, tool_events
 
     queued: List[dict] = []
     for idx, q in enumerate(questions, start=1):
@@ -162,13 +188,14 @@ def run_eval(
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = [executor.submit(_run_single, q) for q in queued]
         for future in as_completed(futures):
-            qid, answer = future.result()
+            qid, answer, tool_events = future.result()
             answers[qid] = answer
+            tool_traces[qid] = tool_events
             completed += 1
             print(f"  [{completed}/{total}] {qid} 完成")
 
     print(f"✓ 评估完成，已生成 {len(answers)} 个答案")
-    return answers
+    return answers, tool_traces
 
 
 def main() -> None:
@@ -191,7 +218,7 @@ def main() -> None:
     questions = load_testset(Path(args.testset))
     headers = parse_headers(args.header)
 
-    answers = run_eval(
+    answers, tool_traces = run_eval(
         questions,
         base_url=args.base_url,
         endpoint=args.endpoint,
@@ -209,6 +236,11 @@ def main() -> None:
     out_path.write_text(json.dumps(answers, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"✓ 答案已保存至: {out_path}")
 
+    # 保存工具追踪
+    tool_traces_path = out_path.parent / (out_path.stem + "_tool_traces.json")
+    tool_traces_path.write_text(json.dumps(tool_traces, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"✓ 工具追踪已保存至: {tool_traces_path}")
+
     if args.report:
         print(f"\n开始评分...")
         report_path = Path(args.report)
@@ -220,6 +252,8 @@ def main() -> None:
             str(out_path),
             "--output",
             str(report_path),
+            "--tool-traces",
+            str(tool_traces_path),
         ]
         if args.strict_sources:
             report_cmd.append("--require-sources")
