@@ -24,6 +24,12 @@ from typing import Any, Dict, List, Optional, Tuple
 DEFAULT_API_BASE_URL = "https://space.ai-builders.com/backend/v1"
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
+# 笔记目录路径
+NOTES_DIR = Path(__file__).resolve().parents[2] / "data" / "notes" / "my_markdowns"
+
+# 源文档内容缓存
+_source_content_cache: Dict[str, str] = {}
+
 UNKNOWN_PATTERNS = [
     r"未知",
     r"不知道",
@@ -49,6 +55,18 @@ UNKNOWN_EXCLUSION_PATTERNS = [
 # 语义匹配配置
 SEMANTIC_SIMILARITY_THRESHOLD = 0.75  # 语义相似度阈值
 SEMANTIC_MATCH_WEIGHT = 0.7  # 语义匹配给予 70% 权重（精确匹配为 100%）
+
+# 通过阈值配置（按题型）
+PASS_THRESHOLDS = {
+    "understanding": 0.7,
+    "reasoning": 0.65,  # 允许部分推理错误
+    "negative": 0.8,    # 对诚实性要求更高
+    "statistics": 0.7,
+    "skill": 0.7,
+    "web_search": 0.6,  # 联网搜索结果不确定性较高
+    "multi_turn": 0.7,
+    "default": 0.7,     # 默认阈值（从 0.6 提高到 0.7）
+}
 
 # 全局 embedding 缓存
 _embedding_cache: Dict[str, List[float]] = {}
@@ -146,6 +164,56 @@ def extract_quotes(answer: str) -> List[str]:
             quotes.append(cleaned)
 
     return quotes
+
+
+def load_source_content(source_path: str) -> str:
+    """加载源文档内容，使用缓存避免重复读取。"""
+    normalized = normalize_source_path(source_path)
+    if normalized in _source_content_cache:
+        return _source_content_cache[normalized]
+
+    # 尝试从笔记目录加载
+    for file in NOTES_DIR.glob("*.md"):
+        if normalize_source_path(file.name) == normalized:
+            try:
+                content = file.read_text(encoding="utf-8")
+                _source_content_cache[normalized] = content
+                return content
+            except Exception:
+                pass
+
+    _source_content_cache[normalized] = ""
+    return ""
+
+
+def quote_matches_source(quote: str, source_path: str) -> bool:
+    """检查引用内容是否在源文档中存在。
+
+    使用模糊匹配，允许空白字符差异。
+    """
+    source_content = load_source_content(source_path)
+    if not source_content:
+        return False
+
+    # 规范化后比较
+    normalized_quote = normalize_text(quote)
+    normalized_source = normalize_text(source_content)
+
+    # 直接包含检查
+    if normalized_quote in normalized_source:
+        return True
+
+    # 对于较短的引用，尝试更宽松的匹配
+    if len(normalized_quote) < 50:
+        # 分词后检查关键词
+        quote_words = set(normalized_quote.split())
+        if len(quote_words) >= 3:
+            # 至少 80% 的词在源文档中
+            matches = sum(1 for w in quote_words if w in normalized_source)
+            if matches / len(quote_words) >= 0.8:
+                return True
+
+    return False
 
 
 def normalize_source_path(value: str) -> str:
@@ -431,8 +499,17 @@ def evaluate_numeric_validations(
     }
 
 
-def evaluate_content_score(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
+def evaluate_content_score(
+    question: Dict[str, Any],
+    answer: str,
+    tool_events: Optional[List[Dict[str, Any]]] = None
+) -> Dict[str, Any]:
     """计算内容得分（部分得分机制）。
+
+    Args:
+        question: 题目配置
+        answer: 答案文本
+        tool_events: 工具调用事件列表（可选，用于 negative 题目评估）
 
     Returns:
         {
@@ -456,15 +533,40 @@ def evaluate_content_score(question: Dict[str, Any], answer: str) -> Dict[str, A
     # 处理 negative case
     if question.get("allow_unknown") and unknown_indicators:
         is_unk, confidence, _ = is_unknown_with_confidence(answer)
+
+        # 检查是否尝试了检索
+        attempted_retrieval = False
+        if tool_events:
+            attempted_retrieval = any(
+                e.get("tool_name") == "query_my_notes" and e.get("stage") == "start"
+                for e in tool_events
+            )
+
         if is_unk:
-            return {
-                "score": confidence,
-                "matched_must_have": [],
-                "matched_should_have": [],
-                "matched_evidence": [],
-                "is_unknown_answer": True,
-                "details": "正确识别为未知问题"
-            }
+            if attempted_retrieval:
+                # 正确行为：尝试检索后回答不知道
+                return {
+                    "score": confidence,
+                    "matched_must_have": [],
+                    "matched_should_have": [],
+                    "matched_evidence": [],
+                    "is_unknown_answer": True,
+                    "behavior": "correct_rejection",
+                    "attempted_retrieval": True,
+                    "details": "正确识别为未知问题（已尝试检索）"
+                }
+            else:
+                # 懒惰拒绝：未尝试检索就回答不知道，扣分
+                return {
+                    "score": confidence * 0.5,
+                    "matched_must_have": [],
+                    "matched_should_have": [],
+                    "matched_evidence": [],
+                    "is_unknown_answer": True,
+                    "behavior": "lazy_rejection",
+                    "attempted_retrieval": False,
+                    "details": "回答不知道但未尝试检索（扣分）"
+                }
         else:
             return {
                 "score": 0.0,
@@ -472,6 +574,8 @@ def evaluate_content_score(question: Dict[str, Any], answer: str) -> Dict[str, A
                 "matched_should_have": [],
                 "matched_evidence": [],
                 "is_unknown_answer": False,
+                "behavior": "hallucination",
+                "attempted_retrieval": attempted_retrieval,
                 "details": "应回答不知道但给出了答案"
             }
 
@@ -584,11 +688,16 @@ def evaluate_content_score(question: Dict[str, Any], answer: str) -> Dict[str, A
 def evaluate_citation_score(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
     """计算引用得分。
 
+    新增：验证引用内容是否来自正确的源文档。
+
     Returns:
         {
             "score": float (0~1),
             "has_quote": bool,
             "has_source": bool,
+            "quote_validity_score": float (0~1),
+            "valid_quotes": List[str],
+            "invalid_quotes": List[str],
             "details": str
         }
     """
@@ -602,6 +711,9 @@ def evaluate_citation_score(question: Dict[str, Any], answer: str) -> Dict[str, 
             "score": 1.0,
             "has_quote": False,
             "has_source": False,
+            "quote_validity_score": 1.0,
+            "valid_quotes": [],
+            "invalid_quotes": [],
             "details": "不要求引用"
         }
 
@@ -617,15 +729,43 @@ def evaluate_citation_score(question: Dict[str, Any], answer: str) -> Dict[str, 
             has_source = True
             break
 
+    # 新增：验证引用内容是否来自源文档
+    valid_quotes = []
+    invalid_quotes = []
+    quote_validity_score = 1.0
+
+    if quotes and sources:
+        for quote in quotes:
+            is_valid = False
+            for source in sources:
+                if quote_matches_source(quote, source):
+                    is_valid = True
+                    break
+            if is_valid:
+                valid_quotes.append(quote)
+            else:
+                invalid_quotes.append(quote)
+
+        # 有效引用率
+        quote_validity_score = len(valid_quotes) / len(quotes) if quotes else 1.0
+
     # 计算得分
     score = 0.0
     if require_quote and require_source:
+        base_score = 0.0
         if has_quote:
-            score += 0.5
+            base_score += 0.4
         if has_source:
-            score += 0.5
+            base_score += 0.3
+        # 引用有效性占 0.3
+        base_score += quote_validity_score * 0.3
+        score = base_score
     elif require_quote:
-        score = 1.0 if has_quote else 0.0
+        if has_quote:
+            # 引用存在性 70%，有效性 30%
+            score = 0.7 + quote_validity_score * 0.3
+        else:
+            score = 0.0
     elif require_source:
         score = 1.0 if has_source else 0.0
 
@@ -633,8 +773,46 @@ def evaluate_citation_score(question: Dict[str, Any], answer: str) -> Dict[str, 
         "score": score,
         "has_quote": has_quote,
         "has_source": has_source,
-        "details": f"quote: {has_quote}, source: {has_source}"
+        "quote_validity_score": quote_validity_score,
+        "valid_quotes": valid_quotes,
+        "invalid_quotes": invalid_quotes,
+        "details": f"quote: {has_quote}, source: {has_source}, validity: {quote_validity_score:.2f}"
     }
+
+
+def compute_arguments_hash(arguments: Any) -> str:
+    """计算工具调用参数的哈希值，用于检测重复调用。"""
+    import hashlib
+    if arguments is None:
+        return ""
+    try:
+        arg_str = json.dumps(arguments, sort_keys=True, ensure_ascii=False)
+        return hashlib.md5(arg_str.encode()).hexdigest()[:8]
+    except (TypeError, ValueError):
+        return str(arguments)[:50]
+
+
+def check_call_order_violations(call_order: List[str]) -> float:
+    """检查工具调用顺序的合理性。
+
+    规则：
+    - 检索工具（query_my_notes, read_note_file）应在代码执行（run_code_interpreter）之前
+    - 返回违规惩罚分数 (0~1)，0 表示无违规
+    """
+    retrieval_tools = {"query_my_notes", "read_note_file"}
+    execution_tools = {"run_code_interpreter"}
+
+    penalty = 0.0
+    last_execution_idx = -1
+
+    for idx, tool in enumerate(call_order):
+        if tool in execution_tools:
+            last_execution_idx = idx
+        elif tool in retrieval_tools and last_execution_idx >= 0:
+            # 在代码执行之后又调用检索工具，可能是顺序不当
+            penalty += 0.1
+
+    return min(penalty, 0.3)  # 最多扣 30%
 
 
 def evaluate_tool_behavior(
@@ -653,19 +831,30 @@ def evaluate_tool_behavior(
             "tools_used": List[str],
             "tool_count": int,
             "errors": List[str],
+            "redundancy_ratio": float,
+            "order_violations": float,
             "details": str
         }
     """
     tools_used: List[str] = []
     errors: List[str] = []
     tool_count = 0
+    call_signatures: List[Tuple[str, str]] = []  # (tool_name, args_hash)
+    call_order: List[str] = []
 
     for event in tool_events:
         stage = event.get("stage")
+        tool_name = event.get("tool_name")
+
         if stage == "start":
             tool_count += 1
+            if tool_name:
+                call_order.append(tool_name)
+                # 计算调用签名用于冗余检测
+                args = event.get("arguments")
+                args_hash = compute_arguments_hash(args)
+                call_signatures.append((tool_name, args_hash))
         elif stage == "end":
-            tool_name = event.get("tool_name")
             if tool_name and tool_name not in tools_used:
                 tools_used.append(tool_name)
         elif stage == "error":
@@ -673,27 +862,41 @@ def evaluate_tool_behavior(
             if error_msg:
                 errors.append(error_msg)
 
-    # 计算得分
-    score = 1.0
+    # 计算基础得分
+    base_score = 1.0
 
     # 检查期望的工具是否被调用
     expected_tools = question.get("expected_tools", [])
     if expected_tools:
         matched = [t for t in expected_tools if t in tools_used]
         tool_match_score = len(matched) / len(expected_tools)
-        score *= tool_match_score
+        base_score *= tool_match_score
 
     # 如果有错误，扣分
     if errors:
-        score *= 0.8
+        base_score *= 0.8
+
+    # 新增：冗余调用检测
+    unique_signatures = set(call_signatures)
+    redundancy_ratio = 0.0
+    if call_signatures:
+        redundancy_ratio = 1 - len(unique_signatures) / len(call_signatures)
+
+    # 新增：调用顺序合理性检查
+    order_violations = check_call_order_violations(call_order)
+
+    # 应用惩罚
+    final_score = base_score * (1 - redundancy_ratio * 0.2) * (1 - order_violations)
 
     return {
-        "score": score,
+        "score": final_score,
         "tools_used": tools_used,
         "tool_count": tool_count,
         "errors": errors,
         "expected_tools": expected_tools,
-        "details": f"tools: {len(tools_used)}, calls: {tool_count}, errors: {len(errors)}"
+        "redundancy_ratio": redundancy_ratio,
+        "order_violations": order_violations,
+        "details": f"tools: {len(tools_used)}, calls: {tool_count}, errors: {len(errors)}, redundancy: {redundancy_ratio:.2f}, order_penalty: {order_violations:.2f}"
     }
 
 
@@ -730,7 +933,7 @@ def evaluate_question(
     tool_weight = scoring.get("tool_weight", 0.0)  # 默认不计入工具评分
 
     # 计算各维度得分
-    content_result = evaluate_content_score(question, answer)
+    content_result = evaluate_content_score(question, answer, tool_events)
     citation_result = evaluate_citation_score(question, answer)
 
     # 使用传入的 recall_score 作为检索得分
@@ -759,8 +962,10 @@ def evaluate_question(
         tool_score * tool_weight
     )
 
-    # 通过阈值：总分 >= 0.6
-    passed = total_score >= 0.6
+    # 按题型获取通过阈值
+    category = question.get("category", "default")
+    pass_threshold = PASS_THRESHOLDS.get(category, PASS_THRESHOLDS["default"])
+    passed = total_score >= pass_threshold
 
     result = {
         "retrieval_score": retrieval_score,
@@ -769,6 +974,7 @@ def evaluate_question(
         "tool_score": tool_score,
         "total_score": total_score,
         "passed": passed,
+        "pass_threshold": pass_threshold,
         "details": {
             "content": content_result,
             "citation": citation_result

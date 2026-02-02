@@ -3,8 +3,8 @@
     "name": "agentic_rag_eval",
     "language": "zh",
     "notes_dir": "data/notes/my_markdowns",
-    "total_questions": 47,
-    "description": "部分得分机制、多维度评分、完整工具覆盖"
+    "total_questions": 52,
+    "description": "部分得分机制、多维度评分、完整工具覆盖、复杂推理题型"
   },
   "questions": [
     {
@@ -193,6 +193,14 @@
         "evidence": [
           {
             "text": "用了 == (比较运算)，而不是 = (赋值运算)",
+            "weight": 0.7
+          },
+          {
+            "text": "赋值写成了比较",
+            "weight": 0.7
+          },
+          {
+            "text": "== 而不是 =",
             "weight": 0.7
           }
         ]
@@ -1778,6 +1786,238 @@
         "require_quote": true,
         "require_source": true
       }
+    },
+    {
+      "id": "Q48_multi_doc_comparison",
+      "query": "对比所有 BFS 相关笔记，哪个问题的状态空间最大？请列出各题目的状态空间大小并给出结论",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "滑动谜题BFS解题思路.md",
+        "BFS练习题 II.md",
+        "最小高度树剥洋葱找树中心.md",
+        "力扣迷宫最近出口题解.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.4,
+        "content_weight": 0.4,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "720",
+            "weight": 0.3,
+            "note": "滑动谜题的状态空间 6!"
+          },
+          {
+            "text": "状态",
+            "weight": 0.2
+          }
+        ],
+        "should_have": [
+          {
+            "text": "滑动谜题",
+            "weight": 0.2
+          },
+          {
+            "text": "6!",
+            "weight": 0.2
+          },
+          {
+            "text": "10000",
+            "weight": 0.1
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "多文档对比 + 推理：需要查询多个 BFS 相关文档并对比分析"
+    },
+    {
+      "id": "Q49_pattern_summary",
+      "query": "找出我做过的所有使用「多源 BFS」技巧的题目，并总结它们的共同模式",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "BFS练习题 II.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.4,
+        "content_weight": 0.4,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "腐烂",
+            "weight": 0.3
+          },
+          {
+            "text": "多源",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "同时",
+            "weight": 0.2
+          },
+          {
+            "text": "起点",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "多轮检索 + 归纳：需要检索多个文档并总结共同模式"
+    },
+    {
+      "id": "Q50_submission_monthly_analysis",
+      "query": "用代码分析 leetcode_submissions.md，找出提交次数最多的月份，并计算该月的通过率",
+      "category": "statistics",
+      "difficulty": "hard",
+      "expected_sources": [
+        "leetcode_submissions.md"
+      ],
+      "expected_tools": ["run_code_interpreter"],
+      "scoring": {
+        "retrieval_weight": 0.2,
+        "content_weight": 0.5,
+        "citation_weight": 0.2,
+        "tool_weight": 0.1
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "月",
+            "weight": 0.3
+          },
+          {
+            "text": "通过率",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "%",
+            "weight": 0.2
+          },
+          {
+            "text": "提交",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": true
+      },
+      "notes": "检索 + 代码执行：需要先检索文件内容，再用代码分析计算"
+    },
+    {
+      "id": "Q51_algorithm_evolution",
+      "query": "从我的笔记中，总结 BFS 和 DFS 在不同场景下的选择策略，至少给出3个具体例子",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "BFS练习题 II.md",
+        "DFS&回溯算法.md",
+        "滑动谜题BFS解题思路.md",
+        "力扣钥匙和房间题讲解.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.4,
+        "content_weight": 0.4,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "BFS",
+            "weight": 0.2
+          },
+          {
+            "text": "DFS",
+            "weight": 0.2
+          },
+          {
+            "text": "最短",
+            "weight": 0.2
+          }
+        ],
+        "should_have": [
+          {
+            "text": "遍历",
+            "weight": 0.15
+          },
+          {
+            "text": "回溯",
+            "weight": 0.15
+          },
+          {
+            "text": "场景",
+            "weight": 0.1
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "多文档综合 + 归纳：需要从多个文档中提取信息并进行综合分析"
+    },
+    {
+      "id": "Q52_cross_topic_connection",
+      "query": "动态规划和 BFS 有什么联系？在我的笔记中有哪些题目同时涉及这两种方法？",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "动态规划.md",
+        "BFS练习题 II.md",
+        "滑动谜题BFS解题思路.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.4,
+        "content_weight": 0.4,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "状态",
+            "weight": 0.3
+          },
+          {
+            "text": "转移",
+            "weight": 0.2
+          }
+        ],
+        "should_have": [
+          {
+            "text": "图",
+            "weight": 0.2
+          },
+          {
+            "text": "最短",
+            "weight": 0.15
+          },
+          {
+            "text": "路径",
+            "weight": 0.15
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "跨主题关联：需要理解两种算法的联系并从笔记中找到例证"
     }
   ]
 }

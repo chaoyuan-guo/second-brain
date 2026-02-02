@@ -361,6 +361,8 @@ start_backend() {
   stop_service "后端服务" "$BACKEND_PID_FILE" "$BACKEND_PORT" "uvicorn backend.app.main:app --port $BACKEND_PORT"
   : > "$BACKEND_LOG"
   cd "$PROJECT_ROOT"
+  # 使用 embedded 模式运行代码解释器，避免 MCP 依赖问题
+  MCP_INTERPRETER_BACKEND="${MCP_INTERPRETER_BACKEND:-embedded}" \
   MCP_SSE_ENDPOINT="${MCP_SSE_ENDPOINT:-$MCP_ENDPOINT}" \
     nohup uvicorn backend.app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" >> "$BACKEND_LOG" 2>&1 &
   local pid=$!

@@ -84,11 +84,12 @@ def stream_chat(
                 if isinstance(delta, str):
                     answer_parts.append(delta)
             elif event_type == "tool":
-                # 收集工具调用事件
+                # 收集工具调用事件（包含参数用于冗余检测）
                 tool_events.append({
                     "stage": event.get("stage"),
                     "tool_name": event.get("tool_name"),
                     "tool_call_id": event.get("tool_call_id"),
+                    "arguments": event.get("arguments"),  # 新增：收集参数
                     "latency_ms": event.get("latency_ms"),
                     "error": event.get("error"),
                 })
