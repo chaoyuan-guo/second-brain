@@ -23,24 +23,29 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "2^h",
-            "weight": 0.3
-          },
-          {
-            "text": "节点",
-            "weight": 0.2
+            "text": "2^",
+            "weight": 0.2,
+            "note": "匹配 2^h、2^(h+1) 等幂次表达"
           }
         ],
         "should_have": [
           {
             "text": "公式",
             "weight": 0.1
+          },
+          {
+            "text": "节点",
+            "weight": 0.1
           }
         ],
         "evidence": [
           {
+            "text": "2^(h+1)-1",
+            "weight": 0.3
+          },
+          {
             "text": "2^h - 1",
-            "weight": 0.4
+            "weight": 0.3
           }
         ]
       },
@@ -102,13 +107,23 @@
         "must_have": [
           {
             "text": "f(n)",
+            "weight": 0.3
+          },
+          {
+            "text": "f(n-1)",
             "weight": 0.2
+          }
+        ],
+        "should_have": [
+          {
+            "text": "递推",
+            "weight": 0.1
           }
         ],
         "evidence": [
           {
             "text": "f(n) = f(n-1) + f(n-2)",
-            "weight": 0.8
+            "weight": 0.4
           }
         ]
       },
@@ -134,11 +149,13 @@
         "must_have": [
           {
             "text": "连通分量",
-            "weight": 0.3
-          },
+            "weight": 0.4
+          }
+        ],
+        "should_have": [
           {
-            "text": "一个",
-            "weight": 0.2
+            "text": "唯一",
+            "weight": 0.1
           }
         ],
         "evidence": [
@@ -201,18 +218,30 @@
       "content_rules": {
         "must_have": [
           {
+            "text": "//",
+            "weight": 0.2,
+            "note": "整除运算符"
+          },
+          {
+            "text": "%",
+            "weight": 0.2,
+            "note": "取模运算符"
+          }
+        ],
+        "should_have": [
+          {
             "text": "行",
-            "weight": 0.2
+            "weight": 0.1
           },
           {
             "text": "列",
-            "weight": 0.2
+            "weight": 0.1
           }
         ],
         "evidence": [
           {
             "text": "row = mid // n, col = mid % n",
-            "weight": 0.6
+            "weight": 0.4
           }
         ]
       },
@@ -843,16 +872,18 @@
         ],
         "numeric_validations": [
           {
-            "pattern": "Accepted[^0-9]*?(\\d+)\\s*次",
+            "pattern": "Accepted[^0-9]*?(\\d+)|(?:通过|AC)[^0-9]*?(\\d+)|(\\d+)[^0-9]*?(?:次|个)?[^0-9]*?Accepted",
             "expected_value": 572,
             "tolerance": 5,
-            "weight": 0.25
+            "weight": 0.25,
+            "note": "支持多种格式：Accepted 572次、572次Accepted、通过572次等"
           },
           {
-            "pattern": "Wrong Answer[^0-9]*?(\\d+)\\s*次",
+            "pattern": "Wrong Answer[^0-9]*?(\\d+)|(?:错误|WA)[^0-9]*?(\\d+)|(\\d+)[^0-9]*?(?:次|个)?[^0-9]*?Wrong Answer",
             "expected_value": 480,
             "tolerance": 5,
-            "weight": 0.25
+            "weight": 0.25,
+            "note": "支持多种格式：Wrong Answer 480次、480次WA等"
           }
         ]
       },
@@ -889,10 +920,11 @@
         ],
         "numeric_validations": [
           {
-            "pattern": "(\\d+)\\s*道",
+            "pattern": "(\\d+)\\s*道|共[^0-9]*?(\\d+)|一共[^0-9]*?(\\d+)|总共[^0-9]*?(\\d+)|(\\d+)[^0-9]*?(?:道|个)?[^0-9]*?(?:题目|题)",
             "expected_value": 220,
             "tolerance": 5,
-            "weight": 0.5
+            "weight": 0.5,
+            "note": "支持多种格式：220道、共220道题目、一共220个题等"
           }
         ]
       },

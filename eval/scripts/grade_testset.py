@@ -106,20 +106,45 @@ def contains_normalized(haystack: str, needle: str) -> bool:
 
 
 def extract_quotes(answer: str) -> List[str]:
-    patterns = [
-        r"“([^”]{4,})”",
-        r"\"([^\"]{4,})\"",
-        r"‘([^’]{4,})’",
-        r"'([^']{4,})'",
-        r"「([^」]{4,})」",
-        r"『([^』]{4,})』",
-    ]
+    """从答案中提取引用内容。
+
+    支持以下格式：
+    1. 中英文引号：""、''、「」、『』、""、''
+    2. Markdown 引用块：> 开头的行
+    3. 代码块中的引用（```...```）
+    """
     quotes: List[str] = []
-    for pat in patterns:
+
+    # 1. 各种引号格式
+    quote_patterns = [
+        r"\u201c([^\u201d]{4,})\u201d",   # 中文双引号 ""
+        r"\"([^\"]{4,})\"",                # 英文双引号 ""
+        r"\u2018([^\u2019]{4,})\u2019",   # 中文单引号 ''
+        r"'([^']{4,})'",                   # 英文单引号 ''
+        r"\u300c([^\u300d]{4,})\u300d",   # 日式引号 「」
+        r"\u300e([^\u300f]{4,})\u300f",   # 日式双引号 『』
+        r"\u3010([^\u3011]{4,})\u3011",   # 方括号 【】
+    ]
+    for pat in quote_patterns:
         for match in re.findall(pat, answer):
             cleaned = match.strip()
             if cleaned:
                 quotes.append(cleaned)
+
+    # 2. Markdown 引用块（> 开头的行）
+    blockquote_pattern = r"^>\s*(.+)$"
+    for match in re.findall(blockquote_pattern, answer, re.MULTILINE):
+        cleaned = match.strip()
+        if len(cleaned) >= 4:
+            quotes.append(cleaned)
+
+    # 3. 代码块内容（作为引用的一种形式）
+    code_block_pattern = r"```[\w]*\n([\s\S]*?)```"
+    for match in re.findall(code_block_pattern, answer):
+        cleaned = match.strip()
+        if len(cleaned) >= 10:  # 代码块至少10字符才算有效引用
+            quotes.append(cleaned)
+
     return quotes
 
 
@@ -316,7 +341,7 @@ def evaluate_numeric_validations(
     Args:
         answer: 答案文本
         validations: 数值校验规则列表，每项包含:
-            - pattern: 正则表达式，第一个捕获组为数值
+            - pattern: 正则表达式，支持多个捕获组（取第一个非空的组）
             - expected_value: 期望的数值
             - tolerance: 允许的误差范围（默认 0）
             - weight: 权重（默认 0.3）
@@ -349,7 +374,23 @@ def evaluate_numeric_validations(
         match = re.search(pattern, answer, re.IGNORECASE | re.DOTALL)
         if match:
             try:
-                actual = int(match.group(1))
+                # 支持多捕获组：取第一个非空的捕获组
+                actual = None
+                for group in match.groups():
+                    if group is not None and group.strip():
+                        actual = int(group.strip())
+                        break
+
+                if actual is None:
+                    matched_values.append({
+                        "expected": expected,
+                        "actual": None,
+                        "passed": False,
+                        "pattern": pattern,
+                        "error": "所有捕获组均为空"
+                    })
+                    continue
+
                 if abs(actual - expected) <= tolerance:
                     earned_weight += weight
                     matched_values.append({
@@ -365,13 +406,13 @@ def evaluate_numeric_validations(
                         "passed": False,
                         "pattern": pattern
                     })
-            except (ValueError, IndexError):
+            except (ValueError, IndexError) as e:
                 matched_values.append({
                     "expected": expected,
                     "actual": None,
                     "passed": False,
                     "pattern": pattern,
-                    "error": "无法解析数值"
+                    "error": f"无法解析数值: {e}"
                 })
         else:
             matched_values.append({
