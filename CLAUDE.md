@@ -92,8 +92,8 @@ pytest tests/test_chat_stream_events.py::test_stream_events_basic -v
 ### 评估
 
 ```bash
-# 针对测试集运行评估（需要后端运行中，日志同时输出到终端和文件）
-python eval/scripts/run_eval_stream.py \
+# 针对测试集运行评估（需要后端运行中，日志实时输出到终端和文件）
+python -u eval/scripts/run_eval_stream.py \
   --testset eval/testsets/testset.json \
   --base-url http://127.0.0.1:9000 \
   --strict-sources \
