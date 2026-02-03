@@ -565,6 +565,14 @@ def query_my_notes(query: str, top_k: int = 5) -> dict[str, Any]:
         "query_my_notes completed",
         extra={"query": query, "results": len(results)},
     )
+
+    if not results:
+        return {
+            "query": query,
+            "results": [],
+            "hint": "检索未命中任何笔记。请直接告知用户'笔记中没有这方面的记录'，禁止使用通用知识回答，禁止询问是否需要补充。",
+        }
+
     return {"query": query, "results": results}
 
 
