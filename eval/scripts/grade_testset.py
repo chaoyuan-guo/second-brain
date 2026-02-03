@@ -21,6 +21,13 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from eval.scripts.eval_config import (
+    get_config,
+    get_pass_threshold,
+    get_scoring_weights,
+    load_eval_config,
+)
+
 DEFAULT_API_BASE_URL = "https://space.ai-builders.com/backend/v1"
 DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 
@@ -29,44 +36,6 @@ NOTES_DIR = Path(__file__).resolve().parents[2] / "data" / "notes" / "my_markdow
 
 # 源文档内容缓存
 _source_content_cache: Dict[str, str] = {}
-
-UNKNOWN_PATTERNS = [
-    r"未知",
-    r"不知道",
-    r"无法确定",
-    r"无相关信息",
-    r"文档未覆盖",
-    r"没有.*信息",
-    r"未提及",
-    r"没有.*相关",
-    r"笔记.*没有",
-    r"未找到",
-    r"无法回答",
-]
-
-# 排除模式：包含这些模式时不应被判定为 unknown
-UNKNOWN_EXCLUSION_PATTERNS = [
-    r"虽然.*但",
-    r"虽然.*不过",
-    r"虽然没有.*可以",
-    r"虽然未.*但",
-]
-
-# 语义匹配配置
-SEMANTIC_SIMILARITY_THRESHOLD = 0.75  # 语义相似度阈值
-SEMANTIC_MATCH_WEIGHT = 0.7  # 语义匹配给予 70% 权重（精确匹配为 100%）
-
-# 通过阈值配置（按题型）
-PASS_THRESHOLDS = {
-    "understanding": 0.7,
-    "reasoning": 0.65,  # 允许部分推理错误
-    "negative": 0.8,    # 对诚实性要求更高
-    "statistics": 0.7,
-    "skill": 0.7,
-    "web_search": 0.6,  # 联网搜索结果不确定性较高
-    "multi_turn": 0.7,
-    "default": 0.7,     # 默认阈值（从 0.6 提高到 0.7）
-}
 
 # 全局 embedding 缓存
 _embedding_cache: Dict[str, List[float]] = {}
@@ -81,12 +50,16 @@ def is_unknown(answer: str) -> bool:
 
     改进：排除"虽然没有...但是..."这类结构，避免误判。
     """
+    config = get_config()
+    unknown_patterns = config.unknown_detection.patterns
+    exclusion_patterns = config.unknown_detection.exclusion_patterns
+
     # 先检查排除模式
-    for pat in UNKNOWN_EXCLUSION_PATTERNS:
+    for pat in exclusion_patterns:
         if re.search(pat, answer):
             return False
     # 再检查 unknown 模式
-    for pat in UNKNOWN_PATTERNS:
+    for pat in unknown_patterns:
         if re.search(pat, answer):
             return True
     return False
@@ -98,13 +71,17 @@ def is_unknown_with_confidence(answer: str) -> tuple:
     Returns:
         (is_unknown: bool, confidence: float, matched_pattern: str)
     """
+    config = get_config()
+    unknown_patterns = config.unknown_detection.patterns
+    exclusion_patterns = config.unknown_detection.exclusion_patterns
+
     # 先检查排除模式
-    for pat in UNKNOWN_EXCLUSION_PATTERNS:
+    for pat in exclusion_patterns:
         if re.search(pat, answer):
             return False, 0.0, ""
 
     # 检查 unknown 模式
-    for pat in UNKNOWN_PATTERNS:
+    for pat in unknown_patterns:
         match = re.search(pat, answer)
         if match:
             # 如果匹配在答案开头附近（前100字符），置信度更高
@@ -286,19 +263,22 @@ def compute_semantic_similarity(text1: str, text2: str) -> float:
 def semantic_match(
     answer: str,
     target: str,
-    threshold: float = SEMANTIC_SIMILARITY_THRESHOLD
+    threshold: Optional[float] = None
 ) -> Tuple[bool, float, str]:
     """检查答案是否语义匹配目标文本。
 
     Args:
         answer: 答案文本
         target: 目标文本
-        threshold: 相似度阈值
+        threshold: 相似度阈值，默认从配置获取
 
     Returns:
         (is_match: bool, similarity: float, match_type: str)
         match_type: "exact" | "semantic" | "none"
     """
+    if threshold is None:
+        threshold = get_config().thresholds.semantic_similarity_threshold
+
     # 先精确匹配
     if contains_normalized(answer, target):
         return True, 1.0, "exact"
@@ -386,6 +366,181 @@ def compute_recall_at_k(
             agg[str(k)]["sum"] += recall_value
             agg[str(k)]["count"] += 1.0
         results.append({"id": question.get("id"), "recall": recall_map})
+
+    summary: Dict[str, Dict[str, float]] = {}
+    for k, values in agg.items():
+        count = values["count"]
+        summary[k] = {
+            "mean_recall": (values["sum"] / count) if count else 0.0,
+            "count": count,
+        }
+    return summary, results
+
+
+def match_chunk(
+    chunk_spec: Dict[str, Any],
+    metadata_record: Dict[str, Any]
+) -> Tuple[bool, float]:
+    """检查单个 chunk 是否匹配规格。
+
+    Args:
+        chunk_spec: chunk 规格，包含:
+            - source: 源文件名
+            - chunk_index: chunk 索引（可选）
+            - heading_path: 标题路径（可选，精确匹配）
+            - heading_path_pattern: 标题路径正则（可选）
+            - chunk_type: chunk 类型（可选）
+            - weight: 权重（默认 1.0）
+        metadata_record: 元数据记录
+
+    Returns:
+        (is_match: bool, weight: float)
+    """
+    weight = chunk_spec.get("weight", 1.0)
+
+    # 源文件匹配
+    expected_source = chunk_spec.get("source", "")
+    if expected_source:
+        record_source = normalize_source_path(str(metadata_record.get("source_path", "")))
+        if normalize_source_path(expected_source) != record_source:
+            return False, 0.0
+
+    # chunk_index 精确匹配
+    if "chunk_index" in chunk_spec:
+        expected_idx = chunk_spec["chunk_index"]
+        record_idx = metadata_record.get("chunk_index")
+        if record_idx != expected_idx:
+            return False, 0.0
+
+    # heading_path 精确匹配
+    if "heading_path" in chunk_spec:
+        expected_path = chunk_spec["heading_path"]
+        record_path = metadata_record.get("heading_path", "")
+        if expected_path != record_path:
+            return False, 0.0
+
+    # heading_path_pattern 正则匹配
+    if "heading_path_pattern" in chunk_spec:
+        pattern = chunk_spec["heading_path_pattern"]
+        record_path = metadata_record.get("heading_path", "")
+        if not re.search(pattern, record_path, re.IGNORECASE):
+            return False, 0.0
+
+    # chunk_type 匹配
+    if "chunk_type" in chunk_spec:
+        expected_type = chunk_spec["chunk_type"]
+        record_type = metadata_record.get("chunk_type", "")
+        if expected_type != record_type:
+            return False, 0.0
+
+    return True, weight
+
+
+def compute_chunk_recall_at_k(
+    questions: List[Dict[str, Any]],
+    k_values: List[int],
+) -> Tuple[Dict[str, Dict[str, float]], List[Dict[str, Any]]]:
+    """计算 chunk 级别的 recall@k。
+
+    支持 expected_chunks 字段进行 chunk 级别匹配，向后兼容文档级匹配。
+
+    Args:
+        questions: 题目列表
+        k_values: k 值列表
+
+    Returns:
+        (summary, results) 元组
+    """
+    import numpy as np  # type: ignore
+
+    index, metadata = load_retrieval_assets()
+    k_max = max(k_values) if k_values else 0
+    results: List[Dict[str, Any]] = []
+    agg: Dict[str, Dict[str, float]] = {}
+    query_cache: Dict[str, List[float]] = {}
+
+    for question in questions:
+        expected_chunks = question.get("expected_chunks", [])
+        expected_sources = [
+            normalize_source_path(s)
+            for s in (question.get("expected_sources") or question.get("sources") or [])
+        ]
+        chunk_match_mode = question.get("chunk_match_mode", "any")  # "any" 或 "all"
+
+        # 如果没有 expected_chunks，回退到文档级匹配
+        use_chunk_level = bool(expected_chunks)
+
+        case_type = str(question.get("case_type") or "").strip().lower()
+        q_type = str(question.get("type") or "").strip().lower()
+        allow_any_source = case_type == "multi_source" or q_type == "multi_doc"
+
+        if (not expected_sources and not expected_chunks) or k_max == 0:
+            results.append({"id": question.get("id"), "recall": {}, "chunk_level": use_chunk_level})
+            continue
+
+        query = str(question.get("query") or "")
+        if not query:
+            results.append({"id": question.get("id"), "recall": {}, "chunk_level": use_chunk_level})
+            continue
+
+        if query not in query_cache:
+            query_cache[query] = embed_query(query)
+        embedding = np.array(query_cache[query], dtype="float32").reshape(1, -1)
+        distances, indices = index.search(embedding, min(k_max, index.ntotal))
+
+        # 收集检索到的 chunks 信息
+        retrieved_records: List[Dict[str, Any]] = []
+        for idx in indices[0]:
+            if idx == -1 or idx >= len(metadata):
+                continue
+            retrieved_records.append(metadata[idx])
+
+        recall_map: Dict[str, float] = {}
+        for k in k_values:
+            top_k_records = retrieved_records[:k]
+
+            if use_chunk_level:
+                # Chunk 级别匹配
+                total_weight = sum(c.get("weight", 1.0) for c in expected_chunks)
+                matched_weight = 0.0
+                matched_chunks = []
+
+                for chunk_spec in expected_chunks:
+                    for record in top_k_records:
+                        is_match, weight = match_chunk(chunk_spec, record)
+                        if is_match:
+                            matched_weight += weight
+                            matched_chunks.append(chunk_spec)
+                            break  # 每个 chunk_spec 只匹配一次
+
+                if chunk_match_mode == "any":
+                    # 只要匹配到任意一个就算成功
+                    recall_value = 1.0 if matched_chunks else 0.0
+                else:
+                    # 按权重计算召回率
+                    recall_value = matched_weight / total_weight if total_weight > 0 else 0.0
+            else:
+                # 文档级匹配（向后兼容）
+                top_k_sources = [
+                    normalize_source_path(str(r.get("source_path", "")))
+                    for r in top_k_records
+                ]
+                if allow_any_source:
+                    recall_value = 1.0 if any(s in top_k_sources for s in expected_sources) else 0.0
+                else:
+                    hits = sum(1 for s in expected_sources if s in top_k_sources)
+                    recall_value = hits / max(len(expected_sources), 1)
+
+            recall_map[str(k)] = recall_value
+            agg.setdefault(str(k), {"sum": 0.0, "count": 0.0})
+            agg[str(k)]["sum"] += recall_value
+            agg[str(k)]["count"] += 1.0
+
+        results.append({
+            "id": question.get("id"),
+            "recall": recall_map,
+            "chunk_level": use_chunk_level
+        })
 
     summary: Dict[str, Dict[str, float]] = {}
     for k, values in agg.items():
@@ -557,8 +712,9 @@ def evaluate_content_score(
                 }
             else:
                 # 懒惰拒绝：未尝试检索就回答不知道，扣分
+                lazy_penalty = get_config().unknown_detection.lazy_rejection_penalty
                 return {
-                    "score": confidence * 0.5,
+                    "score": confidence * lazy_penalty,
                     "matched_must_have": [],
                     "matched_should_have": [],
                     "matched_evidence": [],
@@ -605,7 +761,8 @@ def evaluate_content_score(
             # 尝试语义匹配
             is_match, similarity, match_type = semantic_match(answer, text)
             if is_match and match_type == "semantic":
-                earned_weight += weight * SEMANTIC_MATCH_WEIGHT
+                semantic_match_weight = get_config().thresholds.semantic_match_weight
+                earned_weight += weight * semantic_match_weight
                 matched_must.append({"text": text, "match_type": "semantic", "similarity": similarity})
                 semantic_matches.append(text)
 
@@ -648,7 +805,8 @@ def evaluate_content_score(
             # 尝试语义匹配
             is_match, similarity, match_type = semantic_match(answer, text)
             if is_match and match_type == "semantic":
-                evidence_weight += weight * SEMANTIC_MATCH_WEIGHT
+                semantic_match_weight = get_config().thresholds.semantic_match_weight
+                evidence_weight += weight * semantic_match_weight
                 matched_ev.append({"text": text, "match_type": "semantic", "similarity": similarity})
                 semantic_matches.append(text)
 
@@ -799,6 +957,9 @@ def check_call_order_violations(call_order: List[str]) -> float:
     - 检索工具（query_my_notes, read_note_file）应在代码执行（run_code_interpreter）之前
     - 返回违规惩罚分数 (0~1)，0 表示无违规
     """
+    config = get_config()
+    max_penalty = config.tool_evaluation.order_violation_max_penalty
+
     retrieval_tools = {"query_my_notes", "read_note_file"}
     execution_tools = {"run_code_interpreter"}
 
@@ -812,7 +973,7 @@ def check_call_order_violations(call_order: List[str]) -> float:
             # 在代码执行之后又调用检索工具，可能是顺序不当
             penalty += 0.1
 
-    return min(penalty, 0.3)  # 最多扣 30%
+    return min(penalty, max_penalty)
 
 
 def evaluate_tool_behavior(
@@ -886,7 +1047,9 @@ def evaluate_tool_behavior(
     order_violations = check_call_order_violations(call_order)
 
     # 应用惩罚
-    final_score = base_score * (1 - redundancy_ratio * 0.2) * (1 - order_violations)
+    config = get_config()
+    redundancy_penalty_rate = config.tool_evaluation.redundancy_penalty_rate
+    final_score = base_score * (1 - redundancy_ratio * redundancy_penalty_rate) * (1 - order_violations)
 
     return {
         "score": final_score,
@@ -925,12 +1088,13 @@ def evaluate_question(
             "details": {...}
         }
     """
-    # 获取权重配置
-    scoring = question.get("scoring", {})
-    retrieval_weight = scoring.get("retrieval_weight", 0.3)
-    content_weight = scoring.get("content_weight", 0.5)
-    citation_weight = scoring.get("citation_weight", 0.2)
-    tool_weight = scoring.get("tool_weight", 0.0)  # 默认不计入工具评分
+    # 获取权重配置（优先级：题目配置 > 类别配置 > 默认配置）
+    category = question.get("category", "default")
+    weights = get_scoring_weights(question, category)
+    retrieval_weight = weights.retrieval_weight
+    content_weight = weights.content_weight
+    citation_weight = weights.citation_weight
+    tool_weight = weights.tool_weight
 
     # 计算各维度得分
     content_result = evaluate_content_score(question, answer, tool_events)
@@ -963,8 +1127,7 @@ def evaluate_question(
     )
 
     # 按题型获取通过阈值
-    category = question.get("category", "default")
-    pass_threshold = PASS_THRESHOLDS.get(category, PASS_THRESHOLDS["default"])
+    pass_threshold = get_pass_threshold(category)
     passed = total_score >= pass_threshold
 
     result = {
@@ -995,8 +1158,17 @@ def main() -> None:
     parser.add_argument("--require-sources", action="store_true", help="Require answers to include source paths")
     parser.add_argument("--recall-k", default="1,3,5,10", help="Compute recall@k (comma-separated integers, default: 1,3,5,10)")
     parser.add_argument("--tool-traces", help="Path to tool traces JSON for tool behavior evaluation")
+    parser.add_argument("--config", help="Path to evaluation config JSON (default: eval/config/eval_config.json)")
 
     args = parser.parse_args()
+
+    # 加载评估配置
+    if args.config:
+        load_eval_config(Path(args.config))
+    else:
+        load_eval_config()
+
+    config = get_config()
 
     testset = load_json(Path(args.testset))
     answers = load_json(Path(args.answers))
@@ -1024,7 +1196,8 @@ def main() -> None:
     recall_summary = {}
     recall_results = []
     recall_map: Dict[str, float] = {}
-    recall_k_for_scoring = 5  # 用于评分的 k 值
+    recall_k_for_scoring = config.recall.k_for_scoring  # 从配置获取用于评分的 k 值
+    use_chunk_level = config.recall.use_chunk_level  # 是否使用 chunk 级别评估
 
     if args.recall_k:
         raw_values = [item.strip() for item in args.recall_k.split(",") if item.strip()]
@@ -1038,7 +1211,11 @@ def main() -> None:
                 continue
         if k_values:
             try:
-                recall_summary, recall_results = compute_recall_at_k(questions, k_values)
+                # 根据配置选择使用 chunk 级别还是文档级别评估
+                if use_chunk_level:
+                    recall_summary, recall_results = compute_chunk_recall_at_k(questions, k_values)
+                else:
+                    recall_summary, recall_results = compute_recall_at_k(questions, k_values)
                 # 构建 {question_id: recall_score} 映射
                 for r in recall_results:
                     qid = r.get("id")
@@ -1095,12 +1272,16 @@ def main() -> None:
 
     # 构建报告
     avg_score = total_score_sum / len(results) if results else 0.0
-    perfect_count = sum(1 for r in results if r.get("total_score", 0) >= 0.95)
-    
+    perfect_threshold = config.thresholds.perfect_score_threshold
+    perfect_count = sum(1 for r in results if r.get("total_score", 0) >= perfect_threshold)
+
     report = {
         "meta": {
             "testset_name": meta.get("name", "unknown"),
-            "scoring_mode": "partial"
+            "scoring_mode": "partial",
+            "config_version": config.version,
+            "perfect_threshold": perfect_threshold,
+            "use_chunk_level": use_chunk_level
         },
         "summary": {
             "total": len(results),
@@ -1120,7 +1301,7 @@ def main() -> None:
         Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"✓ 评估完成: {passed}/{len(results)} 通过 ({report['summary']['pass_rate']:.1%})")
         print(f"  平均得分: {avg_score:.2f}")
-        print(f"  满分率: {report['summary']['perfect_rate']:.1%}")
+        print(f"  满分率: {report['summary']['perfect_rate']:.1%} (阈值: {perfect_threshold})")
         print(f"  报告已保存至: {args.output}")
     else:
         print(json.dumps(report, ensure_ascii=False, indent=2))
