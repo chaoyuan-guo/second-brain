@@ -1229,8 +1229,12 @@ def main() -> None:
     passed = 0
     total_score_sum = 0.0
 
-    for q in questions:
+    print(f"\n评估 {len(questions)} 道题目...")
+    print("-" * 80)
+
+    for i, q in enumerate(questions, 1):
         qid = q["id"]
+        category = q.get("category", "unknown")
         answer = answers.get(qid, "")
 
         # 获取该题目的 recall score，默认为 1.0
@@ -1242,11 +1246,28 @@ def main() -> None:
         # 部分得分模式
         eval_result = evaluate_question(q, answer, recall_score=recall_score, tool_events=tool_events)
         total_score_sum += eval_result["total_score"]
-        if eval_result["passed"]:
+        is_passed = eval_result["passed"]
+        if is_passed:
             passed += 1
+
+        # 打印每道题的评估结果
+        status = "✓" if is_passed else "✗"
+        score = eval_result["total_score"]
+        content_score = eval_result["content_score"]
+        retrieval_score = eval_result["retrieval_score"]
+        citation_score = eval_result["citation_score"]
+
+        # 获取内容评估详情
+        content_details = eval_result["details"].get("content", {})
+        details_str = content_details.get("details", "")
+
+        print(f"[{i:02d}/{len(questions)}] {status} {qid}")
+        print(f"       分数: {score:.2f} (内容:{content_score:.2f} 检索:{retrieval_score:.2f} 引用:{citation_score:.2f})")
+        print(f"       类别: {category} | {details_str}")
+
         results.append({
             "id": qid,
-            "passed": eval_result["passed"],
+            "passed": is_passed,
             "total_score": eval_result["total_score"],
             "retrieval_score": eval_result["retrieval_score"],
             "content_score": eval_result["content_score"],
@@ -1254,6 +1275,8 @@ def main() -> None:
             "tool_score": eval_result["tool_score"],
             "details": eval_result["details"]
         })
+
+    print("-" * 80)
 
     # 统计各类别
     category_stats = {}
