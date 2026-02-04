@@ -88,8 +88,9 @@ class UnknownDetectionConfig:
         r"未提及",
         r"没有.*相关",
         r"笔记.*没有",
-        r"未找到",
+        r"未.*找到",  # 改为 未.*找到 以匹配"未在笔记中找到"
         r"无法回答",
+        r"没有.*记录",  # 新增：匹配"没有这方面的记录"
     ])
     exclusion_patterns: List[str] = field(default_factory=lambda: [
         r"虽然.*但",
@@ -98,6 +99,8 @@ class UnknownDetectionConfig:
         r"虽然未.*但",
     ])
     lazy_rejection_penalty: float = 0.5
+    # "说了不知道 + 提供补充选项"的得分（用户体验合理，不应判为 hallucination）
+    soft_unknown_score: float = 0.8
 
 
 @dataclass

@@ -735,13 +735,18 @@ def evaluate_content_score(
         config = get_config()
         unknown_patterns = config.unknown_detection.patterns
         exclusion_patterns = config.unknown_detection.exclusion_patterns
-        soft_exclusion_patterns = [
-            pat
-            for pat in exclusion_patterns
-            if any(key in pat for key in ("补充", "通用知识", "不限于笔记"))
-        ]
-        hard_exclusion_patterns = [
-            pat for pat in exclusion_patterns if pat not in soft_exclusion_patterns
+
+        # hard_exclusion: "虽然...但是..."这类转折结构，表示实际上给出了答案
+        hard_exclusion_patterns = exclusion_patterns
+
+        # soft_exclusion: 直接检测回答中是否包含"补充选项"相关表述
+        # 这类回答是合理的用户体验：先说笔记没有，再询问是否用通用知识补充
+        soft_exclusion_keywords = [
+            r"通用知识",
+            r"不限于笔记",
+            r"允许.*补充",
+            r"用.*补充",
+            r"可以.*补充",
         ]
 
         base_unknown = any(re.search(pat, answer_text) for pat in unknown_patterns)
@@ -749,7 +754,7 @@ def evaluate_content_score(
             re.search(pat, answer_text) for pat in hard_exclusion_patterns
         )
         has_soft_exclusion = any(
-            re.search(pat, answer_text) for pat in soft_exclusion_patterns
+            re.search(pat, answer_text) for pat in soft_exclusion_keywords
         )
         is_unk = base_unknown and not has_hard_exclusion
         confidence = 0.9 if (is_unk and has_soft_exclusion) else (1.0 if is_unk else 0.0)
@@ -795,6 +800,21 @@ def evaluate_content_score(
                     "details": details
                 }
         else:
+            # 没有匹配到 unknown pattern
+            # 但如果包含"补充选项"相关表述，说明模型意图是说"不知道"，只是表述方式不同
+            # 这种情况给予部分分数，而非直接判 hallucination
+            if has_soft_exclusion:
+                soft_score = config.unknown_detection.soft_unknown_score
+                return {
+                    "score": soft_score,
+                    "matched_must_have": [],
+                    "matched_should_have": [],
+                    "matched_evidence": [],
+                    "is_unknown_answer": True,
+                    "behavior": "soft_unknown",
+                    "attempted_retrieval": attempted_retrieval,
+                    "details": "包含补充选项表述，视为合理的未知回答"
+                }
             return {
                 "score": 0.0,
                 "matched_must_have": [],
