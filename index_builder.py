@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple
 
 import faiss
+import httpx
 import numpy as np
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -353,7 +354,14 @@ def main() -> None:
         raise EnvironmentError("SUPER_MIND_API_KEY is missing from environment/.env file")
 
     api_base_url = os.getenv("SUPER_MIND_API_BASE_URL", DEFAULT_API_BASE_URL)
-    client = OpenAI(api_key=api_key, base_url=api_base_url)
+    http_client = None
+    try:
+        client = OpenAI(api_key=api_key, base_url=api_base_url)
+    except TypeError as exc:
+        if "proxy_ssl_context" not in str(exc):
+            raise
+        http_client = httpx.Client(trust_env=False)
+        client = OpenAI(api_key=api_key, base_url=api_base_url, http_client=http_client)
 
     source_dir = args.source_dir.expanduser().resolve()
     markdown_files = discover_markdown_files(source_dir)
@@ -390,6 +398,8 @@ def main() -> None:
         args.metadata_output.parent.mkdir(parents=True, exist_ok=True)
         save_metadata(chunks, args.metadata_output)
         print(f"Saved metadata to {args.metadata_output}.")
+    if http_client is not None:
+        http_client.close()
 
 
 if __name__ == "__main__":
