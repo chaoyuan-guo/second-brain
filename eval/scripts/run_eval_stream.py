@@ -13,12 +13,13 @@ import argparse
 import json
 import socket
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import quote
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
@@ -46,6 +47,7 @@ def stream_chat(
     payload: dict,
     timeout: int,
     extra_headers: Optional[Dict[str, str]] = None,
+    stage_cb: Optional[Callable[[str], None]] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """发送流式聊天请求并收集答案和工具事件。
 
@@ -64,7 +66,12 @@ def stream_chat(
     answer_parts: List[str] = []
     tool_events: List[Dict[str, Any]] = []
 
+    if stage_cb:
+        stage_cb("connect_start")
     with urlrequest.urlopen(req, timeout=timeout) as resp:
+        if stage_cb:
+            stage_cb("response_opened")
+        saw_first_chunk = False
         while True:
             raw = resp.readline()
             if not raw:
@@ -72,6 +79,9 @@ def stream_chat(
             line = raw.decode("utf-8", errors="ignore").strip()
             if not line:
                 continue
+            if stage_cb and not saw_first_chunk:
+                stage_cb("first_chunk")
+                saw_first_chunk = True
             try:
                 event = json.loads(line)
             except json.JSONDecodeError:
@@ -96,6 +106,8 @@ def stream_chat(
             elif event_type == "done":
                 break
 
+    if stage_cb:
+        stage_cb("response_done")
     return "".join(answer_parts).strip(), tool_events
 
 
@@ -104,6 +116,7 @@ def chat_once(
     payload: dict,
     timeout: int,
     extra_headers: Optional[Dict[str, str]] = None,
+    stage_cb: Optional[Callable[[str], None]] = None,
 ) -> str:
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urlrequest.Request(url, data=data, method="POST")
@@ -112,8 +125,14 @@ def chat_once(
         for key, val in extra_headers.items():
             req.add_header(key, val)
 
+    if stage_cb:
+        stage_cb("connect_start")
     with urlrequest.urlopen(req, timeout=timeout) as resp:
+        if stage_cb:
+            stage_cb("response_opened")
         raw = resp.read().decode("utf-8", errors="ignore")
+    if stage_cb:
+        stage_cb("response_done")
     try:
         payload_json = json.loads(raw)
     except json.JSONDecodeError:
@@ -135,6 +154,7 @@ def run_eval(
     strict_sources: bool,
     concurrency: int,
     limit: Optional[int] = None,
+    stage_log: bool = True,
 ) -> Tuple[Dict[str, str], Dict[str, List[Dict[str, Any]]]]:
     """运行评估，返回答案和工具追踪。
 
@@ -159,16 +179,46 @@ def run_eval(
                     quote(source, safe="/._-") for source in sources
                 )
         tool_events: List[Dict[str, Any]] = []
+        stage = "init"
+
+        def _stage_cb(next_stage: str) -> None:
+            nonlocal stage
+            stage = next_stage
+            if stage_log:
+                print(f"[stage] {qid} {next_stage}", file=sys.stderr)
+
         try:
             if mode == "chat":
-                answer = chat_once(url, payload, timeout, request_headers)
+                if stage_log:
+                    print(f"[stage] {qid} request_start", file=sys.stderr)
+                answer = chat_once(
+                    url,
+                    payload,
+                    timeout,
+                    request_headers,
+                    stage_cb=_stage_cb,
+                )
             else:
-                answer, tool_events = stream_chat(url, payload, timeout, request_headers)
+                if stage_log:
+                    print(f"[stage] {qid} request_start", file=sys.stderr)
+                answer, tool_events = stream_chat(
+                    url,
+                    payload,
+                    timeout,
+                    request_headers,
+                    stage_cb=_stage_cb,
+                )
         except (TimeoutError, socket.timeout):
+            if stage_log:
+                print(f"[stage] {qid} timeout stage={stage}", file=sys.stderr)
             answer = "[timeout]"
         except urlerror.HTTPError as exc:
+            if stage_log:
+                print(f"[stage] {qid} http_error stage={stage}", file=sys.stderr)
             answer = f"[http_error] {exc.code} {exc.reason}"
         except urlerror.URLError as exc:
+            if stage_log:
+                print(f"[stage] {qid} url_error stage={stage}", file=sys.stderr)
             answer = f"[url_error] {exc.reason}"
         if pause > 0:
             time.sleep(pause)
@@ -210,6 +260,13 @@ def main() -> None:
     parser.add_argument("--concurrency", type=int, default=5)
     parser.add_argument("--limit", type=int)
     parser.add_argument("-H", "--header", action="append", default=[], help="Extra header, e.g. 'Authorization: Bearer x'")
+    parser.add_argument(
+        "--no-stage-log",
+        action="store_false",
+        dest="stage_log",
+        help="Disable stage markers",
+    )
+    parser.set_defaults(stage_log=True)
     parser.add_argument("--out", default="eval/reports/answers.json")
     parser.add_argument("--report", help="Optional report JSON path; runs grader after answering")
     parser.add_argument("--strict-sources", action="store_true", help="Require answers to include note sources")
@@ -230,6 +287,7 @@ def main() -> None:
         strict_sources=args.strict_sources,
         concurrency=args.concurrency,
         limit=args.limit,
+        stage_log=args.stage_log,
     )
 
     out_path = Path(args.out)
