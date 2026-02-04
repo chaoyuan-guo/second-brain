@@ -3,6 +3,7 @@
 
 部分得分机制：
 - retrieval_score: 检索得分 (0~1)
+- actual_retrieval_score: 实际检索得分 (0~1)
 - content_score: 内容得分 (0~1)
 - citation_score: 引用得分 (0~1)
 - total_score: 加权总分 (0~1)
@@ -375,6 +376,48 @@ def compute_recall_at_k(
             "count": count,
         }
     return summary, results
+
+
+def compute_actual_retrieval_score(
+    question: Dict[str, Any],
+    tool_events: Optional[List[Dict[str, Any]]],
+) -> Optional[float]:
+    """基于模型实际读取的文件计算召回率。"""
+
+    expected_sources = [
+        normalize_source_path(s)
+        for s in (question.get("expected_sources") or question.get("sources") or [])
+    ]
+    if not expected_sources:
+        return 1.0
+    if tool_events is None:
+        return None
+
+    case_type = str(question.get("case_type") or "").strip().lower()
+    q_type = str(question.get("type") or "").strip().lower()
+    allow_any_source = case_type == "multi_source" or q_type == "multi_doc"
+
+    actual_sources = set()
+    for event in tool_events:
+        if event.get("tool_name") != "read_note_file":
+            continue
+        if event.get("stage") != "end":
+            continue
+        args = event.get("arguments") or {}
+        if not isinstance(args, dict):
+            continue
+        file_path = args.get("file_path") or args.get("path") or ""
+        if file_path:
+            actual_sources.add(normalize_source_path(str(file_path)))
+
+    if not actual_sources:
+        return 0.0
+
+    if allow_any_source:
+        return 1.0 if any(s in actual_sources for s in expected_sources) else 0.0
+
+    hits = sum(1 for s in expected_sources if s in actual_sources)
+    return hits / len(expected_sources)
 
 
 def match_chunk(
@@ -1080,6 +1123,7 @@ def evaluate_question(
     Returns:
         {
             "retrieval_score": float,
+            "actual_retrieval_score": float | None,
             "content_score": float,
             "citation_score": float,
             "tool_score": float,
@@ -1099,6 +1143,7 @@ def evaluate_question(
     # 计算各维度得分
     content_result = evaluate_content_score(question, answer, tool_events)
     citation_result = evaluate_citation_score(question, answer)
+    actual_retrieval_score = compute_actual_retrieval_score(question, tool_events)
 
     # 使用传入的 recall_score 作为检索得分
     retrieval_score = recall_score
@@ -1132,6 +1177,7 @@ def evaluate_question(
 
     result = {
         "retrieval_score": retrieval_score,
+        "actual_retrieval_score": actual_retrieval_score,
         "content_score": content_result["score"],
         "citation_score": citation_result["score"],
         "tool_score": tool_score,
@@ -1140,7 +1186,11 @@ def evaluate_question(
         "pass_threshold": pass_threshold,
         "details": {
             "content": content_result,
-            "citation": citation_result
+            "citation": citation_result,
+            "retrieval": {
+                "recall_score": retrieval_score,
+                "actual_retrieval_score": actual_retrieval_score,
+            },
         }
     }
 
@@ -1255,6 +1305,7 @@ def main() -> None:
         score = eval_result["total_score"]
         content_score = eval_result["content_score"]
         retrieval_score = eval_result["retrieval_score"]
+        actual_retrieval_score = eval_result.get("actual_retrieval_score")
         citation_score = eval_result["citation_score"]
 
         # 获取内容评估详情
@@ -1262,7 +1313,16 @@ def main() -> None:
         details_str = content_details.get("details", "")
 
         print(f"[{i:02d}/{len(questions)}] {status} {qid}")
-        print(f"       分数: {score:.2f} (内容:{content_score:.2f} 检索:{retrieval_score:.2f} 引用:{citation_score:.2f})")
+        actual_display = (
+            f"{actual_retrieval_score:.2f}"
+            if isinstance(actual_retrieval_score, (int, float))
+            else "N/A"
+        )
+        print(
+            "       分数: "
+            f"{score:.2f} (内容:{content_score:.2f} 检索:{retrieval_score:.2f} "
+            f"实际检索:{actual_display} 引用:{citation_score:.2f})"
+        )
         print(f"       类别: {category} | {details_str}")
 
         results.append({
@@ -1270,6 +1330,7 @@ def main() -> None:
             "passed": is_passed,
             "total_score": eval_result["total_score"],
             "retrieval_score": eval_result["retrieval_score"],
+            "actual_retrieval_score": eval_result.get("actual_retrieval_score"),
             "content_score": eval_result["content_score"],
             "citation_score": eval_result["citation_score"],
             "tool_score": eval_result["tool_score"],

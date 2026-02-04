@@ -35,6 +35,7 @@ class Chunk:
     heading_path: str
     document_title: str
     chunk_type: str
+    search_text: str = ""
 
 
 @dataclass
@@ -146,6 +147,27 @@ def split_markdown_sections(text: str, fallback_title: str) -> Tuple[List[Sectio
     return sections, document_title
 
 
+def build_search_text(
+    text: str,
+    *,
+    heading_path: str,
+    document_title: str,
+    preview_words: int = 200,
+) -> str:
+    """Generate enriched text used for embeddings."""
+
+    normalized_title = re.sub(r"(III|II)", r" \1 ", document_title)
+    normalized_title = " ".join(normalized_title.split())
+    preview = " ".join(text.split()[:preview_words])
+    parts = [
+        f"Title: {normalized_title}",
+        f"Section: {heading_path}",
+    ]
+    if preview:
+        parts.append(preview)
+    return " ".join(parts).strip()
+
+
 def load_chunks(
     files: Sequence[Path],
     root: Path,
@@ -168,6 +190,11 @@ def load_chunks(
         for section in sections:
             summary_text = summarize_text(section.text, word_limit=summary_word_limit)
             if summary_text:
+                search_text = build_search_text(
+                    summary_text,
+                    heading_path=section.heading_path,
+                    document_title=document_title,
+                )
                 collected.append(
                     Chunk(
                         text=summary_text,
@@ -176,6 +203,7 @@ def load_chunks(
                         heading_path=section.heading_path,
                         document_title=document_title,
                         chunk_type="summary",
+                        search_text=search_text,
                     )
                 )
                 chunk_counter += 1
@@ -187,6 +215,11 @@ def load_chunks(
             ) or ([section.text] if section.text else [])
 
             for detail in detail_chunks:
+                search_text = build_search_text(
+                    detail,
+                    heading_path=section.heading_path,
+                    document_title=document_title,
+                )
                 collected.append(
                     Chunk(
                         text=detail,
@@ -195,6 +228,7 @@ def load_chunks(
                         heading_path=section.heading_path,
                         document_title=document_title,
                         chunk_type="detail",
+                        search_text=search_text,
                     )
                 )
                 chunk_counter += 1
@@ -216,7 +250,7 @@ def embed_chunks(
     """Convert text chunks into vectors using OpenAI embeddings API."""
 
     vectors: List[List[float]] = []
-    texts = [chunk.text for chunk in chunks]
+    texts = [chunk.search_text or chunk.text for chunk in chunks]
 
     for batch in batched(texts, batch_size):
         response = client.embeddings.create(model=model, input=batch)
@@ -249,6 +283,7 @@ def save_metadata(chunks: List[Chunk], path: Path) -> None:
             "document_title": chunk.document_title,
             "chunk_type": chunk.chunk_type,
             "text": chunk.text,
+            "search_text": chunk.search_text,
         }
         for idx, chunk in enumerate(chunks)
     ]

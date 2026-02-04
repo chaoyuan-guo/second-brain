@@ -573,7 +573,11 @@ def query_my_notes(query: str, top_k: int = 5) -> dict[str, Any]:
             "hint": "检索未命中任何笔记。请直接告知用户'笔记中没有这方面的记录'，禁止使用通用知识回答，禁止询问是否需要补充。",
         }
 
-    return {"query": query, "results": results}
+    return {
+        "query": query,
+        "results": results,
+        "hint": "以上是检索到的摘要片段。如需获取完整内容，请使用 read_note_file 工具读取对应的源文件。",
+    }
 
 
 def load_skill(skill_name: str) -> dict[str, str]:

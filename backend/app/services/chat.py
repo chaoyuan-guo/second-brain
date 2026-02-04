@@ -56,6 +56,9 @@ logger = app_logger
 
 _UNKNOWN_REPLACEMENTS: dict[str, str] = {}
 _SANITIZE_TAIL = 0
+MAX_TOOL_ARGUMENT_CHARS = 8000
+MAX_TOOL_ARGUMENT_VALUE_CHARS = 1200
+MAX_TOOL_ARGUMENT_ITEMS = 50
 
 
 def _streaming_timeout() -> httpx.Timeout:
@@ -331,7 +334,7 @@ def _format_tool_status_message(
         if url:
             prefix += f"：{url}"
     if tool_name == "read_note_file":
-        path = str(arguments.get("path") or "").strip()
+        path = str(arguments.get("file_path") or arguments.get("path") or "").strip()
         if path:
             prefix += f"：{path}"
     if tool_name == "load_skill":
@@ -452,6 +455,45 @@ def _truncate_tool_text(text: str, *, max_chars: int = MAX_TOOL_OUTPUT_CHARS) ->
         return text, False
     truncated = text[:max_chars]
     return f"{truncated}\n\n...[truncated {len(text) - max_chars} chars]", True
+
+
+def _truncate_tool_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    """截断过长的工具参数，避免工具事件体积过大。"""
+
+    def _truncate_value(value: Any) -> Any:
+        if isinstance(value, str):
+            if len(value) <= MAX_TOOL_ARGUMENT_VALUE_CHARS:
+                return value
+            tail = len(value) - MAX_TOOL_ARGUMENT_VALUE_CHARS
+            return f"{value[:MAX_TOOL_ARGUMENT_VALUE_CHARS]}...[truncated {tail} chars]"
+        if isinstance(value, list):
+            trimmed = [_truncate_value(item) for item in value[:MAX_TOOL_ARGUMENT_ITEMS]]
+            if len(value) > MAX_TOOL_ARGUMENT_ITEMS:
+                trimmed.append(f"...[truncated {len(value) - MAX_TOOL_ARGUMENT_ITEMS} items]")
+            return trimmed
+        if isinstance(value, dict):
+            items = list(value.items())
+            trimmed_items = items[:MAX_TOOL_ARGUMENT_ITEMS]
+            output = {k: _truncate_value(v) for k, v in trimmed_items}
+            if len(items) > MAX_TOOL_ARGUMENT_ITEMS:
+                output["_truncated"] = f"{len(items) - MAX_TOOL_ARGUMENT_ITEMS} more keys"
+            return output
+        return value
+
+    truncated = _truncate_value(arguments)
+    try:
+        serialized = json.dumps(truncated, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        return {"_truncated": "unserializable arguments"}
+
+    if len(serialized) <= MAX_TOOL_ARGUMENT_CHARS:
+        return truncated
+
+    minimal: dict[str, Any] = {}
+    for key in list(arguments.keys())[:MAX_TOOL_ARGUMENT_ITEMS]:
+        minimal[key] = _truncate_value(arguments[key])
+    minimal["_truncated"] = "arguments too large"
+    return minimal
 
 
 def _truncate_for_log(text: str, *, max_chars: int = 400) -> str:
@@ -611,9 +653,13 @@ READ_NOTE_FILE_TOOL_SCHEMA = {
         "parameters": {
             "type": "object",
             "properties": {
-                "path": {
+                "file_path": {
                     "type": "string",
                     "description": "data/notes/my_markdowns 下的相对路径或其完整路径。",
+                },
+                "path": {
+                    "type": "string",
+                    "description": "同 file_path，旧参数名（兼容）。",
                 },
                 "offset": {
                     "type": "integer",
@@ -629,7 +675,7 @@ READ_NOTE_FILE_TOOL_SCHEMA = {
                     "description": "单次读取的最大字符数。",
                 },
             },
-            "required": ["path"],
+            "required": ["file_path"],
         },
     },
 }
@@ -1411,6 +1457,11 @@ async def run_chat_conversation(
                 continue
 
             tool_count = tool_invocations + 1
+            event_arguments = _truncate_tool_arguments(arguments)
+            if tool_name == "read_note_file":
+                file_path = arguments.get("file_path") or arguments.get("path")
+                if file_path and "file_path" not in event_arguments:
+                    event_arguments["file_path"] = file_path
             if event_callback and tool_name:
                 try:
                     event_callback(
@@ -1421,6 +1472,7 @@ async def run_chat_conversation(
                             "tool_call_id": tool_call_id,
                             "tool_count": tool_count,
                             "trace_id": trace_id,
+                            "arguments": event_arguments,
                             "message": _format_tool_status_message(
                                 tool_name=tool_name,
                                 tool_index=tool_count,
@@ -1454,6 +1506,7 @@ async def run_chat_conversation(
                                     "tool_name": tool_name,
                                     "tool_call_id": tool_call_id,
                                     "tool_count": tool_count,
+                                    "arguments": event_arguments,
                                     "message": _format_tool_status_message(
                                         tool_name=tool_name,
                                         tool_index=tool_count,
@@ -1500,6 +1553,7 @@ async def run_chat_conversation(
                                 "tool_name": tool_name,
                                 "tool_call_id": tool_call_id,
                                 "tool_count": tool_count,
+                                "arguments": event_arguments,
                                 "message": _format_tool_status_message(
                                     tool_name=tool_name,
                                     tool_index=tool_count,
@@ -1532,6 +1586,7 @@ async def run_chat_conversation(
                                     "tool_name": tool_name,
                                     "tool_call_id": tool_call_id,
                                     "tool_count": tool_count,
+                                    "arguments": event_arguments,
                                     "message": _format_tool_status_message(
                                         tool_name=tool_name,
                                         tool_index=tool_count,
@@ -1572,6 +1627,7 @@ async def run_chat_conversation(
                                 "tool_name": tool_name,
                                 "tool_call_id": tool_call_id,
                                 "tool_count": tool_count,
+                                "arguments": event_arguments,
                                 "message": _format_tool_status_message(
                                     tool_name=tool_name,
                                     tool_index=tool_count,
@@ -1638,6 +1694,7 @@ async def run_chat_conversation(
                                 "tool_name": tool_name,
                                 "tool_call_id": tool_call_id,
                                 "tool_count": tool_count,
+                                "arguments": event_arguments,
                                 "latency_ms": round(
                                     (time.perf_counter() - tool_started_at) * 1000, 2
                                 ),
@@ -1664,7 +1721,7 @@ async def run_chat_conversation(
                 continue
 
             if tool_name == "read_note_file":
-                path = arguments.get("path")
+                path = arguments.get("file_path") or arguments.get("path")
                 offset = arguments.get("offset", 0)
                 limit_chars = arguments.get("limit_chars", 60000)
                 tool_started_at = time.perf_counter()
@@ -1725,6 +1782,7 @@ async def run_chat_conversation(
                                 "tool_name": tool_name,
                                 "tool_call_id": tool_call_id,
                                 "tool_count": tool_count,
+                                "arguments": event_arguments,
                                 "latency_ms": round(
                                     (time.perf_counter() - tool_started_at) * 1000, 2
                                 ),
@@ -1802,6 +1860,7 @@ async def run_chat_conversation(
                                 "tool_name": tool_name,
                                 "tool_call_id": tool_call_id,
                                 "tool_count": tool_count,
+                                "arguments": event_arguments,
                                 "latency_ms": round(
                                     (time.perf_counter() - tool_started_at) * 1000, 2
                                 ),
@@ -1996,6 +2055,7 @@ async def run_chat_conversation(
                                 "tool_call_id": tool_call_id,
                                 "tool_count": tool_count,
                                 "trace_id": trace_id,
+                                "arguments": event_arguments,
                                 "latency_ms": round(
                                     (time.perf_counter() - tool_started_at) * 1000, 2
                                 ),
@@ -2063,6 +2123,7 @@ async def run_chat_conversation(
                             "tool_call_id": tool_call_id,
                             "tool_count": tool_count,
                             "trace_id": trace_id,
+                            "arguments": event_arguments,
                             "message": _format_tool_status_message(
                                 tool_name=tool_name,
                                 tool_index=tool_count,
