@@ -18,6 +18,7 @@ from openai import APIError
 from ..core.config import (
     CHAT_API_MAX_RETRIES,
     CHAT_API_RETRY_BACKOFF_SECONDS,
+    CHAT_TOTAL_TIMEOUT_SECONDS,
     MAX_TOOL_TURNS,
     MAX_TOOL_OUTPUT_CHARS,
     OPENAI_DEFAULT_TIMEOUT_SECONDS,
@@ -38,7 +39,6 @@ from .clients import chat_client, chat_model_name
 from .exceptions import ToolExecutionError
 from .skills import build_skills_prompt
 from .tools import (
-    async_call_with_retries,
     call_mcp_python_interpreter,
     ensure_mcp_ready,
     is_retryable_status,
@@ -889,9 +889,7 @@ async def generate_title(payload: ChatRequest) -> ChatTitleResponse:
         else:
             completion_kwargs["max_tokens"] = 32
 
-        completion = await async_call_with_retries(
-            lambda: chat_client.chat.completions.create(**completion_kwargs)
-        )
+        completion = await chat_client.chat.completions.create(**completion_kwargs)
     except Exception:
         logger.exception("Failed to generate session title")
         return ChatTitleResponse(title="新的对话")
@@ -989,12 +987,10 @@ async def _request_completion(
         },
     )
 
-    completion = await async_call_with_retries(
-        lambda: chat_client.chat.completions.create(
-            model=chat_model_name,
-            messages=messages,
-            tools=tools,
-        )
+    completion = await chat_client.chat.completions.create(
+        model=chat_model_name,
+        messages=messages,
+        tools=tools,
     )
 
     logger.info(
@@ -1052,14 +1048,12 @@ async def _request_streaming_completion(
     for attempt in range(1, CHAT_API_MAX_RETRIES + 1):
         tool_call_in_progress = False
         try:
-            stream = await async_call_with_retries(
-                lambda: chat_client.chat.completions.create(
-                    model=chat_model_name,
-                    messages=messages,
-                    tools=tools,
-                    stream=True,
-                    timeout=_streaming_timeout(),
-                )
+            stream = await chat_client.chat.completions.create(
+                model=chat_model_name,
+                messages=messages,
+                tools=tools,
+                stream=True,
+                timeout=_streaming_timeout(),
             )
 
             content_parts: List[str] = []
@@ -1232,12 +1226,10 @@ async def _request_streaming_completion(
                 "error": str(last_exception) if last_exception else None,
             },
         )
-    completion = await async_call_with_retries(
-        lambda: chat_client.chat.completions.create(
-            model=chat_model_name,
-            messages=messages,
-            tools=tools,
-        )
+    completion = await chat_client.chat.completions.create(
+        model=chat_model_name,
+        messages=messages,
+        tools=tools,
     )
 
     if not completion.choices:
@@ -2182,7 +2174,17 @@ async def execute_chat(
     event_callback: Optional[Callable[[dict[str, Any]], None]] = None,
     eval_context: Optional[dict[str, object]] = None,
 ) -> ChatResponse:
-    return await run_chat_conversation(payload, stream_callback, event_callback, eval_context)
+    trace_id = uuid.uuid4().hex[:8]
+    try:
+        async with asyncio.timeout(CHAT_TOTAL_TIMEOUT_SECONDS):
+            return await run_chat_conversation(payload, stream_callback, event_callback, eval_context)
+    except asyncio.TimeoutError:
+        logger.error(
+            "Chat conversation total timeout after %s seconds",
+            CHAT_TOTAL_TIMEOUT_SECONDS,
+            extra={"trace_id": trace_id},
+        )
+        raise HTTPException(status_code=504, detail="Request timeout")
 
 
 async def stream_chat_response(

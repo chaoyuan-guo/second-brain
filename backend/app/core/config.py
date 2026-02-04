@@ -114,6 +114,14 @@ OPENAI_DEFAULT_TIMEOUT_SECONDS = 120.0
 # 该值过大可能导致上游 stream=True 偶发卡住时前端长期无输出。
 OPENAI_STREAM_READ_TIMEOUT_SECONDS = 120.0
 
+# OpenAI SDK 内置重试次数（默认 2 次）。
+# 该值控制 SDK 内部的自动重试，减少后可加快超时失败的返回速度。
+OPENAI_MAX_RETRIES = 2
+
+# 单个对话请求的全局超时（秒）。
+# 该值略小于客户端超时（如 eval 脚本的 300 秒），确保后端先返回超时错误。
+CHAT_TOTAL_TIMEOUT_SECONDS = 270
+
 
 def _parse_allowed_origins(raw: str | None) -> List[str]:
     origins = raw or DEFAULT_ALLOWED_ORIGINS
@@ -234,5 +242,7 @@ __all__ = [
     "MAX_TOOL_OUTPUT_CHARS",
     "OPENAI_DEFAULT_TIMEOUT_SECONDS",
     "OPENAI_STREAM_READ_TIMEOUT_SECONDS",
+    "OPENAI_MAX_RETRIES",
+    "CHAT_TOTAL_TIMEOUT_SECONDS",
     "is_truthy",
 ]

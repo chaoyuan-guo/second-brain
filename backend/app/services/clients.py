@@ -5,7 +5,7 @@ from __future__ import annotations
 from openai import AsyncOpenAI, OpenAI
 
 from ..core.config import settings
-from ..core.config import OPENAI_DEFAULT_TIMEOUT_SECONDS
+from ..core.config import OPENAI_DEFAULT_TIMEOUT_SECONDS, OPENAI_MAX_RETRIES
 from ..core.logging import app_logger
 
 
@@ -14,6 +14,7 @@ def _create_clients() -> tuple[OpenAI, AsyncOpenAI, str]:
         api_key=settings.api_key,
         base_url=settings.api_base_url,
         timeout=OPENAI_DEFAULT_TIMEOUT_SECONDS,
+        max_retries=OPENAI_MAX_RETRIES,
     )
 
     if settings.use_azure_chat:
@@ -37,6 +38,7 @@ def _create_clients() -> tuple[OpenAI, AsyncOpenAI, str]:
             api_key=settings.azure_api_key,
             base_url=azure_v1_base,
             timeout=OPENAI_DEFAULT_TIMEOUT_SECONDS,
+            max_retries=OPENAI_MAX_RETRIES,
         )
         chat_model_name = settings.azure_chat_model_name
         app_logger.info(
@@ -48,6 +50,7 @@ def _create_clients() -> tuple[OpenAI, AsyncOpenAI, str]:
             api_key=settings.api_key,
             base_url=settings.api_base_url,
             timeout=OPENAI_DEFAULT_TIMEOUT_SECONDS,
+            max_retries=OPENAI_MAX_RETRIES,
         )
         chat_model_name = settings.chat_model_name
 
