@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import re
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -730,7 +731,28 @@ def evaluate_content_score(
 
     # 处理 negative case
     if question.get("allow_unknown") and unknown_indicators:
-        is_unk, confidence, _ = is_unknown_with_confidence(answer)
+        answer_text = answer or ""
+        config = get_config()
+        unknown_patterns = config.unknown_detection.patterns
+        exclusion_patterns = config.unknown_detection.exclusion_patterns
+        soft_exclusion_patterns = [
+            pat
+            for pat in exclusion_patterns
+            if any(key in pat for key in ("补充", "通用知识", "不限于笔记"))
+        ]
+        hard_exclusion_patterns = [
+            pat for pat in exclusion_patterns if pat not in soft_exclusion_patterns
+        ]
+
+        base_unknown = any(re.search(pat, answer_text) for pat in unknown_patterns)
+        has_hard_exclusion = any(
+            re.search(pat, answer_text) for pat in hard_exclusion_patterns
+        )
+        has_soft_exclusion = any(
+            re.search(pat, answer_text) for pat in soft_exclusion_patterns
+        )
+        is_unk = base_unknown and not has_hard_exclusion
+        confidence = 0.9 if (is_unk and has_soft_exclusion) else (1.0 if is_unk else 0.0)
 
         # 检查是否尝试了检索
         attempted_retrieval = False
@@ -743,6 +765,9 @@ def evaluate_content_score(
         if is_unk:
             if attempted_retrieval:
                 # 正确行为：尝试检索后回答不知道
+                details = "正确识别为未知问题（已尝试检索）"
+                if has_soft_exclusion:
+                    details += "，包含补充选项"
                 return {
                     "score": confidence,
                     "matched_must_have": [],
@@ -751,11 +776,14 @@ def evaluate_content_score(
                     "is_unknown_answer": True,
                     "behavior": "correct_rejection",
                     "attempted_retrieval": True,
-                    "details": "正确识别为未知问题（已尝试检索）"
+                    "details": details
                 }
             else:
                 # 懒惰拒绝：未尝试检索就回答不知道，扣分
                 lazy_penalty = get_config().unknown_detection.lazy_rejection_penalty
+                details = "回答不知道但未尝试检索（扣分）"
+                if has_soft_exclusion:
+                    details += "，包含补充选项"
                 return {
                     "score": confidence * lazy_penalty,
                     "matched_must_have": [],
@@ -764,7 +792,7 @@ def evaluate_content_score(
                     "is_unknown_answer": True,
                     "behavior": "lazy_rejection",
                     "attempted_retrieval": False,
-                    "details": "回答不知道但未尝试检索（扣分）"
+                    "details": details
                 }
         else:
             return {
@@ -1228,11 +1256,34 @@ def main() -> None:
     if args.tool_traces:
         try:
             tool_traces = load_json(Path(args.tool_traces))
-        except Exception:
-            pass
+            if not isinstance(tool_traces, dict):
+                print(
+                    f"⚠ 工具追踪格式异常: {args.tool_traces}",
+                    file=sys.stderr,
+                )
+                tool_traces = {}
+            else:
+                print(
+                    f"✓ 已加载工具追踪: {len(tool_traces)} 条",
+                    file=sys.stderr,
+                )
+        except Exception as exc:
+            print(
+                f"⚠ 无法加载工具追踪 {args.tool_traces}: {exc}",
+                file=sys.stderr,
+            )
+            tool_traces = {}
 
     meta = testset.get("meta", {})
     questions = testset.get("questions", [])
+    if args.tool_traces:
+        if not tool_traces:
+            print("⚠ 工具追踪为空，actual_retrieval_score 将显示 N/A。", file=sys.stderr)
+        elif len(tool_traces) < len(questions):
+            print(
+                "⚠ 工具追踪数量少于题目数，部分题目的 actual_retrieval_score 可能缺失。",
+                file=sys.stderr,
+            )
 
     # 预计算所有评估文本的 embedding（用于语义匹配）
     print("预计算 embedding 缓存...")

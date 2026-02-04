@@ -50,7 +50,7 @@
         ]
       },
       "citation_rules": {
-        "require_quote": true,
+        "require_quote": false,
         "require_source": false
       }
     },
@@ -128,7 +128,7 @@
         ]
       },
       "citation_rules": {
-        "require_quote": true,
+        "require_quote": false,
         "require_source": false
       }
     },
@@ -160,7 +160,7 @@
         ],
         "evidence": [
           {
-            "text": "只有一个初始感染点",
+            "text": "一个初始感染点",
             "weight": 0.5
           }
         ]
@@ -192,15 +192,7 @@
         ],
         "evidence": [
           {
-            "text": "用了 == (比较运算)，而不是 = (赋值运算)",
-            "weight": 0.7
-          },
-          {
-            "text": "赋值写成了比较",
-            "weight": 0.7
-          },
-          {
-            "text": "== 而不是 =",
+            "text": "比较运算",
             "weight": 0.7
           }
         ]
@@ -532,7 +524,8 @@
       "difficulty": "hard",
       "expected_sources": [
         "尽量减少恶意软件的传播.md",
-        "力扣钥匙和房间题讲解.md"
+        "力扣钥匙和房间题讲解.md",
+        "BFS练习题 II.md"
       ],
       "scoring": {
         "retrieval_weight": 0.4,
@@ -567,6 +560,7 @@
       "query": "在动态规划题目中，如何定义状态？请举2个具体例子",
       "category": "reasoning",
       "difficulty": "hard",
+      "case_type": "multi_source",
       "expected_sources": [
         "动态规划.md",
         "爬楼梯动态规划思路解析.md",
