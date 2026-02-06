@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -299,6 +300,19 @@ def main() -> None:
     tool_traces_path = out_path.parent / (out_path.stem + "_tool_traces.json")
     tool_traces_path.write_text(json.dumps(tool_traces, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"✓ 工具追踪已保存至: {tool_traces_path}")
+
+    # 确保文件写入完成（避免评分脚本读取到不完整数据）
+    os.sync()
+
+    # 验证文件完整性
+    try:
+        with open(out_path, 'r', encoding='utf-8') as f:
+            json.load(f)
+        with open(tool_traces_path, 'r', encoding='utf-8') as f:
+            loaded_traces = json.load(f)
+        print(f"✓ 文件完整性验证通过 (tool_traces: {len(loaded_traces)} 条)")
+    except Exception as e:
+        print(f"⚠ 文件完整性验证失败: {e}", file=sys.stderr)
 
     if args.report:
         print(f"\n开始评分...")
