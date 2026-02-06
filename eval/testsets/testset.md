@@ -4,18 +4,42 @@
 
 | 指标 | 数值 |
 |------|------|
-| 总题目数 | 52 |
+| 总题目数 | 67 |
 
 ## 类别分布
 
-| 类别 | 数量 |
-|------|------|
-| understanding | 24 |
-| reasoning | 13 |
-| negative | 6 |
-| statistics | 5 |
-| web_search | 2 |
-| skill | 1 |
+| 类别 | 数量 | 说明 |
+|------|------|------|
+| understanding | 24 | 理解类：单文档内容理解 |
+| reasoning | 19 | 推理类：跨文档比较、归纳总结 |
+| negative | 10 | 负例类：应回答"不知道"的问题 |
+| statistics | 9 | 统计类：数值计算、数据分析 |
+| skill | 3 | 技能类：需要使用特定技能工具 |
+| web_search | 2 | 联网类：需要联网搜索的问题 |
+
+## 改进特性
+
+### 同义词/正则匹配
+- 支持全局同义词（如"动态规划" ↔ "DP"/"dynamic programming"）
+- 支持题目级同义词配置
+- 支持正则表达式匹配
+
+### 精确 Negative 题目
+- Q53-Q56：问的是"笔记中明确不存在的内容"
+- 设计原则：引用具体笔记上下文，但问不存在的细节
+
+### 动态验证
+- Statistics 题目支持 `$stats.xxx` 动态值引用
+- 通过 `precompute_stats.py` 预计算统计数据
+
+### 检索指标
+- 记录实际检索结果
+- 计算 precision/recall/f1 指标
+- 生成检索分析报告
+
+### 权重调整
+- citation 权重从 0.2 降至 0.1（加分项）
+- 各类别权重更加合理
 
 ---
 
@@ -27,6 +51,7 @@
 - **类别**: understanding
 - **难度**: easy
 - **期望来源**: 二叉树 Perfect Complete Full 区别.md
+- **同义词**: evidence 中配置了公式的多种表达形式
 
 ### Q02_maze_exit_bug
 
@@ -152,30 +177,35 @@
 - **问题**: Dijkstra 算法的时间复杂度是多少？
 - **类别**: negative
 - **难度**: easy
+- **设计理由**: 笔记中未涉及 Dijkstra 算法
 
 ### Q20_rbtree_unknown
 
 - **问题**: 如何实现红黑树的插入操作？
 - **类别**: negative
 - **难度**: medium
+- **设计理由**: 笔记中未涉及红黑树
 
 ### Q21_quicksort_unknown
 
 - **问题**: 快速排序的最坏情况时间复杂度是什么？
 - **类别**: negative
 - **难度**: easy
+- **设计理由**: 笔记中未涉及快速排序
 
 ### Q22_hashtable_unknown
 
 - **问题**: 哈希表解决冲突的方法有哪些？
 - **类别**: negative
 - **难度**: easy
+- **设计理由**: 笔记中未涉及哈希表冲突解决
 
 ### Q23_avl_unknown
 
 - **问题**: AVL树的旋转操作有哪几种？
 - **类别**: negative
 - **难度**: medium
+- **设计理由**: 笔记中未涉及 AVL 树
 
 ### Q24_submissions_result_counts
 
@@ -395,3 +425,129 @@
 - **难度**: hard
 - **期望来源**: 动态规划.md, BFS练习题 II.md, 滑动谜题BFS解题思路.md
 - **备注**: 跨主题关联：需要理解两种算法的联系并从笔记中找到例证
+
+---
+
+## 新增精确 Negative 题目 (Q53-Q56)
+
+### Q53_neg_nonexistent_problem_number
+
+- **问题**: 笔记中的力扣题目 1024 是关于什么问题的？
+- **类别**: negative
+- **难度**: easy
+- **设计理由**: 笔记中没有 1024 这个题号
+
+### Q54_neg_nonexistent_variable
+
+- **问题**: 在腐烂橘子题解中，变量 visited_set 的作用是什么？
+- **类别**: negative
+- **难度**: medium
+- **设计理由**: 腐烂橘子题解用原地修改，没有 visited_set 变量
+
+### Q55_neg_nonexistent_complexity
+
+- **问题**: 滑动谜题笔记中提到的 O(n!) 复杂度是针对什么情况的？
+- **类别**: negative
+- **难度**: medium
+- **设计理由**: 滑动谜题笔记只提到 6!=720，没有 O(n!) 的讨论
+
+### Q56_neg_nonexistent_section
+
+- **问题**: BFS练习题笔记的「性能优化」章节讲了什么内容？
+- **类别**: negative
+- **难度**: easy
+- **设计理由**: BFS练习题笔记中没有「性能优化」章节
+
+---
+
+## 新增 Statistics 题目 (Q57-Q60)
+
+### Q57_stat_most_common_tag
+
+- **问题**: leetcode_submissions.md 中哪个标签的题目数量最多？
+- **类别**: statistics
+- **难度**: medium
+- **期望来源**: leetcode_submissions.md
+- **验证点**: 动态规划标签
+
+### Q58_stat_runtime_error_count
+
+- **问题**: 我的 LeetCode 提交记录中有多少次 Runtime Error？
+- **类别**: statistics
+- **难度**: easy
+- **期望来源**: leetcode_submissions.md
+- **验证方式**: 动态验证（$stats.xxx）
+
+### Q59_stat_pass_rate
+
+- **问题**: 计算我的 LeetCode 提交通过率是多少？
+- **类别**: statistics
+- **难度**: medium
+- **期望来源**: leetcode_submissions.md
+- **期望工具**: run_code_interpreter
+
+### Q60_stat_date_range
+
+- **问题**: 我的 LeetCode 提交记录覆盖了哪个时间范围？
+- **类别**: statistics
+- **难度**: easy
+- **期望来源**: leetcode_submissions.md
+
+---
+
+## 新增 Skill 题目 (Q61-Q62)
+
+### Q61_skill_wrong_answer_analysis
+
+- **问题**: 统计我提交 Wrong Answer 次数最多的题目是哪些？列出前3名
+- **类别**: skill
+- **难度**: hard
+- **期望来源**: leetcode_submissions.md
+- **期望工具**: run_code_interpreter, load_skill
+
+### Q62_skill_daily_submission
+
+- **问题**: 计算我平均每天提交多少次 LeetCode？
+- **类别**: skill
+- **难度**: medium
+- **期望来源**: leetcode_submissions.md
+- **期望工具**: run_code_interpreter
+
+---
+
+## 新增 Reasoning 跨文档题目 (Q63-Q67)
+
+### Q63_reason_bfs_common_patterns
+
+- **问题**: BFS练习题和滑动谜题两篇笔记中，共同提到了哪些 BFS 技巧或变体？
+- **类别**: reasoning
+- **难度**: hard
+- **期望来源**: BFS练习题 II.md, 滑动谜题BFS解题思路.md
+
+### Q64_reason_state_concept
+
+- **问题**: 动态规划和 BFS 都涉及「状态」概念，它们的定义有什么异同？
+- **类别**: reasoning
+- **难度**: hard
+- **期望来源**: 动态规划.md, 滑动谜题BFS解题思路.md
+
+### Q65_reason_graph_modeling
+
+- **问题**: 比较「账户合并」和「水壶问题」两道题的建图思路有什么共同点？
+- **类别**: reasoning
+- **难度**: hard
+- **期望来源**: BFS练习题 II.md
+
+### Q66_reason_recursive_iterative
+
+- **问题**: 哪些题目同时给出了递归和迭代两种解法？
+- **类别**: reasoning
+- **难度**: medium
+- **期望来源**: 动态规划.md, 递归遍历.md
+
+### Q67_reason_common_bugs
+
+- **问题**: 笔记中提到的代码 bug 有哪些共同的错误模式？
+- **类别**: reasoning
+- **难度**: hard
+- **期望来源**: BFS练习题 II.md, 力扣迷宫最近出口题解.md

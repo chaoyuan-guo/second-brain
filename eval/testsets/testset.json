@@ -3,8 +3,8 @@
     "name": "agentic_rag_eval",
     "language": "zh",
     "notes_dir": "data/notes/my_markdowns",
-    "total_questions": 52,
-    "description": "部分得分机制、多维度评分、完整工具覆盖、复杂推理题型"
+    "total_questions": 67,
+    "description": "部分得分机制、多维度评分、完整工具覆盖、复杂推理题型、同义词匹配、动态验证"
   },
   "questions": [
     {
@@ -41,11 +41,13 @@
         "evidence": [
           {
             "text": "2^(h+1)-1",
-            "weight": 0.3
+            "weight": 0.3,
+            "synonyms": ["2的h+1次方减1", "2**(h+1)-1", "2^{h+1}-1"]
           },
           {
             "text": "2^h - 1",
-            "weight": 0.3
+            "weight": 0.3,
+            "synonyms": ["2的h次方减1", "2**h-1", "2^{h}-1"]
           }
         ]
       },
@@ -2028,6 +2030,585 @@
         "require_source": true
       },
       "notes": "跨主题关联：需要理解两种算法的联系并从笔记中找到例证"
+    },
+    {
+      "id": "Q53_neg_nonexistent_problem_number",
+      "query": "笔记中的力扣题目 1024 是关于什么问题的？",
+      "category": "negative",
+      "difficulty": "easy",
+      "expected_sources": [],
+      "allow_unknown": true,
+      "scoring": {
+        "retrieval_weight": 0.25,
+        "content_weight": 0.65,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [],
+        "unknown_indicators": [
+          "不知道",
+          "没有",
+          "未提及",
+          "未找到",
+          "无法确定",
+          "没有记录",
+          "不存在",
+          "没有这道"
+        ],
+        "hallucination_indicators": [
+          "代码如下",
+          "具体实现",
+          "步骤是",
+          "方法是",
+          "```"
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": false
+      },
+      "notes": "精确 Negative：笔记中没有 1024 这个题号"
+    },
+    {
+      "id": "Q54_neg_nonexistent_variable",
+      "query": "在腐烂橘子题解中，变量 visited_set 的作用是什么？",
+      "category": "negative",
+      "difficulty": "medium",
+      "expected_sources": [],
+      "allow_unknown": true,
+      "scoring": {
+        "retrieval_weight": 0.25,
+        "content_weight": 0.65,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [],
+        "unknown_indicators": [
+          "没有",
+          "未提及",
+          "未找到",
+          "不存在",
+          "没有这个变量",
+          "没有使用",
+          "原地修改"
+        ],
+        "hallucination_indicators": [
+          "visited_set 用于",
+          "visited_set 是",
+          "visited_set 的作用"
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": false
+      },
+      "notes": "精确 Negative：腐烂橘子题解用原地修改，没有 visited_set 变量"
+    },
+    {
+      "id": "Q55_neg_nonexistent_complexity",
+      "query": "滑动谜题笔记中提到的 O(n!) 复杂度是针对什么情况的？",
+      "category": "negative",
+      "difficulty": "medium",
+      "expected_sources": [],
+      "allow_unknown": true,
+      "scoring": {
+        "retrieval_weight": 0.25,
+        "content_weight": 0.65,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [],
+        "unknown_indicators": [
+          "没有",
+          "未提及",
+          "不存在",
+          "没有提到 O(n!)",
+          "只提到了 720",
+          "是 6! 而不是 n!"
+        ],
+        "hallucination_indicators": [
+          "O(n!) 是",
+          "O(n!) 用于",
+          "O(n!) 表示"
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": false
+      },
+      "notes": "精确 Negative：滑动谜题笔记只提到 6!=720，没有 O(n!) 的讨论"
+    },
+    {
+      "id": "Q56_neg_nonexistent_section",
+      "query": "BFS练习题笔记的「性能优化」章节讲了什么内容？",
+      "category": "negative",
+      "difficulty": "easy",
+      "expected_sources": [],
+      "allow_unknown": true,
+      "scoring": {
+        "retrieval_weight": 0.25,
+        "content_weight": 0.65,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [],
+        "unknown_indicators": [
+          "没有",
+          "不存在",
+          "没有这个章节",
+          "找不到",
+          "没有「性能优化」"
+        ],
+        "hallucination_indicators": [
+          "性能优化章节",
+          "优化章节讲述",
+          "在性能优化部分"
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": false
+      },
+      "notes": "精确 Negative：BFS练习题笔记中没有「性能优化」章节"
+    },
+    {
+      "id": "Q57_stat_most_common_tag",
+      "query": "leetcode_submissions.md 中哪个标签的题目数量最多？",
+      "category": "statistics",
+      "difficulty": "medium",
+      "expected_sources": [
+        "leetcode_submissions.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.15,
+        "content_weight": 0.75,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "标签",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "动态规划",
+            "weight": 0.3,
+            "synonyms": ["DP", "dynamic programming"]
+          },
+          {
+            "text": "最多",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": true
+      },
+      "notes": "Statistics：标签统计"
+    },
+    {
+      "id": "Q58_stat_runtime_error_count",
+      "query": "我的 LeetCode 提交记录中有多少次 Runtime Error？",
+      "category": "statistics",
+      "difficulty": "easy",
+      "expected_sources": [
+        "leetcode_submissions.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.15,
+        "content_weight": 0.75,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "Runtime Error",
+            "weight": 0.3,
+            "synonyms": ["运行时错误", "RE"]
+          }
+        ],
+        "numeric_validations": [
+          {
+            "pattern": "Runtime Error[^0-9]*?(\\d+)|(\\d+)[^0-9]*?Runtime Error|RE[^0-9]*?(\\d+)",
+            "expected_value": "$stats.leetcode_submissions.submission_results.Runtime Error",
+            "tolerance": 5,
+            "weight": 0.5,
+            "note": "动态验证：从预计算统计中获取期望值"
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": true
+      },
+      "notes": "Statistics：使用动态验证"
+    },
+    {
+      "id": "Q59_stat_pass_rate",
+      "query": "计算我的 LeetCode 提交通过率是多少？",
+      "category": "statistics",
+      "difficulty": "medium",
+      "expected_sources": [
+        "leetcode_submissions.md"
+      ],
+      "expected_tools": ["run_code_interpreter"],
+      "scoring": {
+        "retrieval_weight": 0.15,
+        "content_weight": 0.70,
+        "citation_weight": 0.10,
+        "tool_weight": 0.05
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "%",
+            "weight": 0.3
+          },
+          {
+            "text": "通过率",
+            "weight": 0.3,
+            "synonyms": ["AC率", "成功率"]
+          }
+        ],
+        "should_have": [
+          {
+            "text": "Accepted",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": true
+      },
+      "notes": "Statistics：需要计算百分比"
+    },
+    {
+      "id": "Q60_stat_date_range",
+      "query": "我的 LeetCode 提交记录覆盖了哪个时间范围？",
+      "category": "statistics",
+      "difficulty": "easy",
+      "expected_sources": [
+        "leetcode_submissions.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.15,
+        "content_weight": 0.75,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "2024",
+            "weight": 0.4
+          }
+        ],
+        "should_have": [
+          {
+            "text": "至",
+            "weight": 0.2,
+            "synonyms": ["到", "~", "-"]
+          },
+          {
+            "text": "月",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": true
+      },
+      "notes": "Statistics：日期范围"
+    },
+    {
+      "id": "Q61_skill_wrong_answer_analysis",
+      "query": "统计我提交 Wrong Answer 次数最多的题目是哪些？列出前3名",
+      "category": "skill",
+      "difficulty": "hard",
+      "expected_sources": [
+        "leetcode_submissions.md"
+      ],
+      "expected_tools": ["run_code_interpreter", "load_skill"],
+      "scoring": {
+        "retrieval_weight": 0.20,
+        "content_weight": 0.70,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "Wrong Answer",
+            "weight": 0.3,
+            "synonyms": ["WA", "错误答案"]
+          }
+        ],
+        "should_have": [
+          {
+            "text": "次",
+            "weight": 0.2
+          },
+          {
+            "text": "题目",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": true
+      },
+      "notes": "Skill：需要代码分析提交记录"
+    },
+    {
+      "id": "Q62_skill_daily_submission",
+      "query": "计算我平均每天提交多少次 LeetCode？",
+      "category": "skill",
+      "difficulty": "medium",
+      "expected_sources": [
+        "leetcode_submissions.md"
+      ],
+      "expected_tools": ["run_code_interpreter"],
+      "scoring": {
+        "retrieval_weight": 0.20,
+        "content_weight": 0.70,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "平均",
+            "weight": 0.3
+          },
+          {
+            "text": "次",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "天",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": true
+      },
+      "notes": "Skill：需要计算日均值"
+    },
+    {
+      "id": "Q63_reason_bfs_common_patterns",
+      "query": "BFS练习题和滑动谜题两篇笔记中，共同提到了哪些 BFS 技巧或变体？",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "BFS练习题 II.md",
+        "滑动谜题BFS解题思路.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.40,
+        "content_weight": 0.50,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "visited",
+            "weight": 0.3,
+            "synonyms": ["访问标记", "已访问"]
+          },
+          {
+            "text": "队列",
+            "weight": 0.3,
+            "synonyms": ["queue", "deque"]
+          }
+        ],
+        "should_have": [
+          {
+            "text": "多源",
+            "weight": 0.2
+          },
+          {
+            "text": "双向",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "Reasoning：跨文档比较"
+    },
+    {
+      "id": "Q64_reason_state_concept",
+      "query": "动态规划和 BFS 都涉及「状态」概念，它们的定义有什么异同？",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "动态规划.md",
+        "滑动谜题BFS解题思路.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.40,
+        "content_weight": 0.50,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "状态",
+            "weight": 0.4
+          }
+        ],
+        "should_have": [
+          {
+            "text": "转移",
+            "weight": 0.2
+          },
+          {
+            "text": "搜索",
+            "weight": 0.2
+          },
+          {
+            "text": "图",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "Reasoning：概念对比"
+    },
+    {
+      "id": "Q65_reason_graph_modeling",
+      "query": "比较「账户合并」和「水壶问题」两道题的建图思路有什么共同点？",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "BFS练习题 II.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.40,
+        "content_weight": 0.50,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "图",
+            "weight": 0.3
+          },
+          {
+            "text": "状态",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "节点",
+            "weight": 0.2
+          },
+          {
+            "text": "边",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "Reasoning：建图思路比较"
+    },
+    {
+      "id": "Q66_reason_recursive_iterative",
+      "query": "哪些题目同时给出了递归和迭代两种解法？",
+      "category": "reasoning",
+      "difficulty": "medium",
+      "expected_sources": [
+        "动态规划.md",
+        "递归遍历.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.40,
+        "content_weight": 0.50,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "递归",
+            "weight": 0.3
+          },
+          {
+            "text": "迭代",
+            "weight": 0.3,
+            "synonyms": ["循环", "非递归"]
+          }
+        ],
+        "should_have": [
+          {
+            "text": "两种",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "Reasoning：解法比较"
+    },
+    {
+      "id": "Q67_reason_common_bugs",
+      "query": "笔记中提到的代码 bug 有哪些共同的错误模式？",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "BFS练习题 II.md",
+        "力扣迷宫最近出口题解.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.40,
+        "content_weight": 0.50,
+        "citation_weight": 0.10
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "bug",
+            "weight": 0.3,
+            "synonyms": ["错误", "问题"]
+          }
+        ],
+        "should_have": [
+          {
+            "text": "边界",
+            "weight": 0.2
+          },
+          {
+            "text": "初始化",
+            "weight": 0.2
+          },
+          {
+            "text": "条件",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "Reasoning：错误模式总结"
     }
   ]
 }
