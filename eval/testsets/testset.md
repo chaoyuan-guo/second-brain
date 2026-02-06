@@ -4,16 +4,16 @@
 
 | 指标 | 数值 |
 |------|------|
-| 总题目数 | 47 |
+| 总题目数 | 52 |
 
 ## 类别分布
 
 | 类别 | 数量 |
 |------|------|
 | understanding | 24 |
-| reasoning | 10 |
+| reasoning | 13 |
 | negative | 6 |
-| statistics | 4 |
+| statistics | 5 |
 | web_search | 2 |
 | skill | 1 |
 
@@ -117,7 +117,7 @@
 - **问题**: 哪些题目用到了连通分量的概念？列举题目名称
 - **类别**: reasoning
 - **难度**: hard
-- **期望来源**: 尽量减少恶意软件的传播.md, 力扣钥匙和房间题讲解.md
+- **期望来源**: 尽量减少恶意软件的传播.md, 力扣钥匙和房间题讲解.md, BFS练习题 II.md
 
 ### Q15_dp_state_examples
 
@@ -240,12 +240,14 @@
 - **问题**: Python 3.13 有什么新特性？
 - **类别**: web_search
 - **难度**: medium
+- **备注**: 测试联网降级：本地无结果时应触发 web_search 工具
 
 ### Q33_web_search_current_events
 
 - **问题**: 2025 年 LeetCode 周赛排名第一的选手是谁？
 - **类别**: web_search
 - **难度**: hard
+- **备注**: 测试联网搜索时事信息
 
 ### Q34_skill_load_explicit
 
@@ -253,6 +255,7 @@
 - **类别**: skill
 - **难度**: medium
 - **期望来源**: leetcode_submissions.md
+- **备注**: 测试 load_skill 工具的显式加载
 
 ### Q35_multi_file_analysis
 
@@ -260,6 +263,7 @@
 - **类别**: reasoning
 - **难度**: hard
 - **期望来源**: 滑动谜题BFS解题思路.md, BFS练习题 II.md, 最小高度树剥洋葱找树中心.md
+- **备注**: 测试多轮工具调用：需要查询多个文件并进行对比分析
 
 ### Q36_code_interpreter_stats
 
@@ -268,6 +272,7 @@
 - **难度**: medium
 - **期望工具**: run_code_interpreter
 - **工具权重**: 0.1
+- **备注**: 测试 run_code_interpreter 的文件统计场景
 
 ### Q37_code_interpreter_complexity
 
@@ -277,12 +282,14 @@
 - **期望来源**: leetcode_submissions.md
 - **期望工具**: run_code_interpreter
 - **工具权重**: 0.1
+- **备注**: 测试 run_code_interpreter 的数据分析场景
 
 ### Q38_negative_graceful
 
 - **问题**: 笔记中有关于红黑树的讲解吗？
 - **类别**: negative
 - **难度**: easy
+- **备注**: 测试本地无结果时的优雅处理
 
 ### Q39_binary_matrix_shortest_path
 
@@ -346,3 +353,45 @@
 - **类别**: understanding
 - **难度**: hard
 - **期望来源**: 常数空间连接二叉树下一层指针.md
+
+### Q48_multi_doc_comparison
+
+- **问题**: 对比所有 BFS 相关笔记，哪个问题的状态空间最大？请列出各题目的状态空间大小并给出结论
+- **类别**: reasoning
+- **难度**: hard
+- **期望来源**: 滑动谜题BFS解题思路.md, BFS练习题 II.md, 最小高度树剥洋葱找树中心.md, 力扣迷宫最近出口题解.md
+- **备注**: 多文档对比 + 推理：需要查询多个 BFS 相关文档并对比分析
+
+### Q49_pattern_summary
+
+- **问题**: 找出我做过的所有使用「多源 BFS」技巧的题目，并总结它们的共同模式
+- **类别**: reasoning
+- **难度**: hard
+- **期望来源**: BFS练习题 II.md
+- **备注**: 多轮检索 + 归纳：需要检索多个文档并总结共同模式
+
+### Q50_submission_monthly_analysis
+
+- **问题**: 用代码分析 leetcode_submissions.md，找出提交次数最多的月份，并计算该月的通过率
+- **类别**: statistics
+- **难度**: hard
+- **期望来源**: leetcode_submissions.md
+- **期望工具**: run_code_interpreter
+- **工具权重**: 0.1
+- **备注**: 检索 + 代码执行：需要先检索文件内容，再用代码分析计算
+
+### Q51_algorithm_evolution
+
+- **问题**: 从我的笔记中，总结 BFS 和 DFS 在不同场景下的选择策略，至少给出3个具体例子
+- **类别**: reasoning
+- **难度**: hard
+- **期望来源**: BFS练习题 II.md, DFS&回溯算法.md, 滑动谜题BFS解题思路.md, 力扣钥匙和房间题讲解.md
+- **备注**: 多文档综合 + 归纳：需要从多个文档中提取信息并进行综合分析
+
+### Q52_cross_topic_connection
+
+- **问题**: 动态规划和 BFS 有什么联系？在我的笔记中有哪些题目同时涉及这两种方法？
+- **类别**: reasoning
+- **难度**: hard
+- **期望来源**: 动态规划.md, BFS练习题 II.md, 滑动谜题BFS解题思路.md
+- **备注**: 跨主题关联：需要理解两种算法的联系并从笔记中找到例证
