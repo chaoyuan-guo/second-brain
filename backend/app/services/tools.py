@@ -31,7 +31,7 @@ from ..core.config import (
 )
 from ..core.logging import app_logger
 from ..repositories.notes import load_index, load_metadata
-from .clients import chat_client, client, chat_model_name
+from .clients import chat_client, client, chat_client_sync, chat_model_name
 from .exceptions import ToolExecutionError
 from .embedded_interpreter import embedded_python_interpreter
 from .skills import load_skill_content
@@ -534,6 +534,56 @@ def build_embedding(text: str) -> List[float]:
     return response.data[0].embedding
 
 
+QUERY_REWRITE_PROMPT = """将以下搜索查询改写为多个同义变体，用于提升检索召回率。
+
+要求：
+1. 保持原意，不要改变搜索目标
+2. 包含中文同义词、英文术语、常见别名
+3. 如果涉及算法/数据结构，包含相关变体（如 BFS=广度优先=层序遍历）
+4. 返回 JSON 数组，包含原 query 和 3-4 个变体
+
+查询: {query}
+
+返回格式: ["原query", "变体1", "变体2", "变体3"]"""
+
+
+def rewrite_query(query: str) -> List[str]:
+    """用 LLM 生成 query 变体列表，提升检索召回率。"""
+    try:
+        response = call_with_retries(
+            lambda: chat_client_sync.chat.completions.create(
+                model=chat_model_name,
+                messages=[
+                    {"role": "user", "content": QUERY_REWRITE_PROMPT.format(query=query)}
+                ],
+                temperature=0.3,
+                max_completion_tokens=200,
+            )
+        )
+        content = response.choices[0].message.content or ""
+        content = content.strip()
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+        variants = json.loads(content)
+        if not isinstance(variants, list):
+            variants = [query]
+        if query not in variants:
+            variants.insert(0, query)
+        logger.info(
+            "Query rewrite completed",
+            extra={"original": query, "variants": variants[:5]},
+        )
+        return variants[:5]
+    except Exception as exc:
+        logger.warning(
+            "Query rewrite failed, using original query",
+            extra={"query": query, "error": str(exc)},
+        )
+        return [query]
+
+
 def query_my_notes(query: str, top_k: int = 5) -> dict[str, Any]:
     if not query:
         raise ValueError("query 不能为空")
@@ -541,17 +591,33 @@ def query_my_notes(query: str, top_k: int = 5) -> dict[str, Any]:
     index = load_index()
     metadata = load_metadata()
 
-    embedding = np.array(build_embedding(query), dtype="float32").reshape(1, -1)
-    distances, indices = index.search(embedding, min(top_k, index.ntotal))
+    query_variants = rewrite_query(query)
+
+    all_results: List[tuple[float, int]] = []
+    seen_chunks: set[tuple[str | None, int | None]] = set()
+
+    for variant in query_variants:
+        embedding = np.array(build_embedding(variant), dtype="float32").reshape(1, -1)
+        distances, indices = index.search(embedding, min(top_k * 2, index.ntotal))
+
+        for score, idx in zip(distances[0], indices[0]):
+            if idx == -1 or idx >= len(metadata):
+                continue
+            chunk_key = (metadata[idx].get("source_path"), metadata[idx].get("chunk_index"))
+            if chunk_key in seen_chunks:
+                continue
+            seen_chunks.add(chunk_key)
+            all_results.append((float(score), int(idx)))
+
+    all_results.sort(key=lambda x: x[0])
+    top_results = all_results[:top_k]
 
     results: List[dict[str, Any]] = []
-    for score, idx in zip(distances[0], indices[0]):
-        if idx == -1 or idx >= len(metadata):
-            continue
+    for score, idx in top_results:
         record = metadata[idx]
         results.append(
             {
-                "score": float(score),
+                "score": score,
                 "source_path": record.get("source_path"),
                 "chunk_index": record.get("chunk_index"),
                 "heading_path": record.get("heading_path"),
@@ -563,7 +629,11 @@ def query_my_notes(query: str, top_k: int = 5) -> dict[str, Any]:
 
     logger.info(
         "query_my_notes completed",
-        extra={"query": query, "results": len(results)},
+        extra={
+            "query": query,
+            "variants_count": len(query_variants),
+            "results": len(results),
+        },
     )
 
     if not results:
