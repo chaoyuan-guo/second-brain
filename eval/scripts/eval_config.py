@@ -110,6 +110,12 @@ class SynonymConfig:
 
 
 @dataclass
+class SemanticCategoryConfig:
+    """语义类别配置"""
+    categories: Dict[str, List[str]] = field(default_factory=dict)
+
+
+@dataclass
 class EvalConfig:
     """评估系统配置"""
     version: str = "1.0"
@@ -120,6 +126,7 @@ class EvalConfig:
     tool_evaluation: ToolEvaluationConfig = field(default_factory=ToolEvaluationConfig)
     unknown_detection: UnknownDetectionConfig = field(default_factory=UnknownDetectionConfig)
     synonyms: SynonymConfig = field(default_factory=SynonymConfig)
+    semantic_categories: SemanticCategoryConfig = field(default_factory=SemanticCategoryConfig)
 
 
 # 全局配置实例
@@ -195,6 +202,13 @@ def _parse_synonym_config(data: Dict[str, Any]) -> SynonymConfig:
     )
 
 
+def _parse_semantic_category_config(data: Dict[str, Any]) -> SemanticCategoryConfig:
+    """解析语义类别配置"""
+    return SemanticCategoryConfig(
+        categories=data
+    )
+
+
 def load_eval_config(config_path: Optional[Path] = None) -> EvalConfig:
     """加载评估配置。
 
@@ -245,6 +259,8 @@ def load_eval_config(config_path: Optional[Path] = None) -> EvalConfig:
         config.unknown_detection = _parse_unknown_detection_config(data["unknown_detection"])
     if "synonyms" in data:
         config.synonyms = _parse_synonym_config(data["synonyms"])
+    if "semantic_categories" in data:
+        config.semantic_categories = _parse_semantic_category_config(data["semantic_categories"])
 
     # 始终更新全局缓存，确保 get_config() 返回正确的配置
     _config = config

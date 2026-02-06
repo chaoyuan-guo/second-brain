@@ -25,6 +25,43 @@ from urllib import error as urlerror
 from urllib import request as urlrequest
 
 
+# 预计算统计数据路径
+PRECOMPUTED_STATS_PATH = Path(__file__).resolve().parents[1] / "config" / "precomputed_stats.json"
+NOTES_DIR = Path(__file__).resolve().parents[2] / "data" / "notes" / "my_markdowns"
+
+
+def ensure_precomputed_stats() -> None:
+    """确保预计算统计数据是最新的。
+
+    检查逻辑：
+    1. 如果预计算文件不存在，需要更新
+    2. 如果任何笔记文件比预计算文件更新，需要更新
+    """
+    need_update = not PRECOMPUTED_STATS_PATH.exists()
+
+    if PRECOMPUTED_STATS_PATH.exists():
+        stats_mtime = PRECOMPUTED_STATS_PATH.stat().st_mtime
+        for note_file in NOTES_DIR.glob("*.md"):
+            if note_file.stat().st_mtime > stats_mtime:
+                need_update = True
+                break
+
+    if need_update:
+        print("检测到笔记文件更新，重新计算统计数据...")
+        try:
+            from eval.scripts.precompute_stats import compute_stats
+
+            stats = compute_stats(NOTES_DIR)
+            PRECOMPUTED_STATS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            PRECOMPUTED_STATS_PATH.write_text(
+                json.dumps(stats, ensure_ascii=False, indent=2),
+                encoding="utf-8"
+            )
+            print(f"✓ 预计算统计数据已更新: {PRECOMPUTED_STATS_PATH}")
+        except Exception as exc:
+            print(f"⚠ 预计算统计数据更新失败: {exc}", file=sys.stderr)
+
+
 def load_testset(path: Path) -> List[dict]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     return payload.get("questions", [])
@@ -280,6 +317,9 @@ def main() -> None:
     parser.add_argument("--strict-sources", action="store_true", help="Require answers to include note sources")
     parser.add_argument("--recall-k", default="1,3,5,10", help="Compute recall@k (comma-separated integers, default: 1,3,5,10)")
     args = parser.parse_args()
+
+    # 确保预计算统计数据是最新的
+    ensure_precomputed_stats()
 
     questions = load_testset(Path(args.testset))
     headers = parse_headers(args.header)

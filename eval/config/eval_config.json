@@ -63,6 +63,12 @@
     }
   },
 
+  "semantic_categories": {
+    "negation": ["没有", "未找到", "不存在", "无", "未", "不含", "缺少", "尚无", "暂无", "未发现", "找不到"],
+    "existence": ["有", "存在", "包含", "含有", "记录了", "提及", "涉及"],
+    "uncertainty": ["不确定", "可能", "也许", "大概", "似乎"]
+  },
+
   "thresholds": {
     "pass_thresholds": {
       "understanding": 0.7,

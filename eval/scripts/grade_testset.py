@@ -148,7 +148,29 @@ def is_unknown_with_confidence(answer: str) -> tuple:
     return False, 0.0, ""
 
 
+def strip_markdown(text: str) -> str:
+    """剥离 Markdown 格式标记。"""
+    # 移除行内代码反引号
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    # 移除加粗/斜体标记
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+    text = re.sub(r'\*([^*]+)\*', r'\1', text)
+    text = re.sub(r'__([^_]+)__', r'\1', text)
+    text = re.sub(r'_([^_]+)_', r'\1', text)
+    return text
+
+
+def normalize_math_expr(text: str) -> str:
+    """归一化数学表达式中的空格。"""
+    # 移除运算符周围空格: "2^(h+1) - 1" -> "2^(h+1)-1"
+    text = re.sub(r'\s*([+\-*/^=])\s*', r'\1', text)
+    return text
+
+
 def normalize_text(text: str) -> str:
+    """增强的文本归一化。"""
+    text = strip_markdown(text)
+    text = normalize_math_expr(text)
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
@@ -196,6 +218,14 @@ def contains_normalized(
         for global_syn in config.synonyms.global_synonyms[needle]:
             if normalize_text(global_syn) in normalized_haystack:
                 return True, global_syn
+
+    # 5. 语义类别匹配
+    if hasattr(config, 'semantic_categories') and config.semantic_categories.categories:
+        for category, patterns in config.semantic_categories.categories.items():
+            if needle in patterns:
+                for pattern in patterns:
+                    if normalize_text(pattern) in normalized_haystack:
+                        return True, f"semantic:{category}:{pattern}"
 
     return False, ""
 
@@ -291,6 +321,89 @@ def quote_matches_source(quote: str, source_path: str) -> bool:
                 return True
 
     return False
+
+
+def extract_source_claims(answer: str) -> List[Dict[str, str]]:
+    """从答案中提取来源声明。
+
+    提取模式：
+    - "在 xxx.md 中提到/记录/有"
+    - "来源: xxx.md"
+    - "根据 xxx.md"
+    - "xxx.md 中记载"
+
+    Returns:
+        List[{"source": str, "context": str}]
+    """
+    patterns = [
+        r'在\s*[`「\[]?([^`」\]\s]+\.md)[`」\]]?\s*中[有提到记录]',
+        r'来源[：:]\s*[`「\[]?([^`」\]\s]+\.md)',
+        r'根据\s*[`「\[]?([^`」\]\s]+\.md)',
+        r'[`「\[]?([^`」\]\s]+\.md)[`」\]]?\s*中[记载显示]',
+    ]
+    claims = []
+    for pattern in patterns:
+        for match in re.finditer(pattern, answer):
+            claims.append({
+                'source': match.group(1),
+                'context': answer[max(0, match.start()-50):match.end()+100]
+            })
+    return claims
+
+
+def verify_negative_answer(
+    question: Dict[str, Any],
+    answer: str,
+    tool_events: Optional[List[Dict[str, Any]]] = None
+) -> Optional[Dict[str, Any]]:
+    """验证 Negative 题目的答案，检测虚假来源声明。
+
+    对于 allow_unknown=True 的题目，检查：
+    1. 答案是否声称了某个来源
+    2. 如果声称了来源，验证该来源是否真的包含相关信息
+
+    Args:
+        question: 题目配置
+        answer: 答案文本
+        tool_events: 工具调用事件（可选）
+
+    Returns:
+        如果检测到虚假来源声明，返回评估结果；否则返回 None 使用标准评估
+    """
+    if not question.get("allow_unknown"):
+        return None
+
+    claims = extract_source_claims(answer)
+    if not claims:
+        return None  # 没有来源声明，使用标准评估
+
+    # 验证每个来源声明
+    for claim in claims:
+        source = claim['source']
+        source_path = NOTES_DIR / source
+
+        # 检查声称的来源是否存在
+        if not source_path.exists():
+            # 来源文件不存在，但可能是路径问题，尝试模糊匹配
+            found = False
+            for file in NOTES_DIR.glob("*.md"):
+                if normalize_source_path(file.name) == normalize_source_path(source):
+                    found = True
+                    source_path = file
+                    break
+
+            if not found:
+                return {
+                    "score": 0.0,
+                    "behavior": "false_citation",
+                    "matched_must_have": [],
+                    "matched_should_have": [],
+                    "matched_evidence": [],
+                    "is_unknown_answer": False,
+                    "details": f"声称的来源不存在: {source}"
+                }
+
+    return None  # 来源存在，使用标准评估
 
 
 def normalize_source_path(value: str) -> str:
@@ -1000,6 +1113,11 @@ def evaluate_content_score(
 
     # 处理 negative case
     if question.get("allow_unknown") and unknown_indicators:
+        # 先检查是否有虚假来源声明
+        false_citation_result = verify_negative_answer(question, answer, tool_events)
+        if false_citation_result:
+            return false_citation_result
+
         answer_text = answer or ""
         config = get_config()
         unknown_patterns = config.unknown_detection.patterns

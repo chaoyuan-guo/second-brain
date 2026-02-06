@@ -2302,8 +2302,9 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "2024",
-            "weight": 0.4
+            "text": "2025",
+            "weight": 0.4,
+            "synonyms": ["2026"]
           }
         ],
         "should_have": [
