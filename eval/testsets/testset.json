@@ -162,6 +162,14 @@
           {
             "text": "一个初始感染点",
             "weight": 0.5
+          },
+          {
+            "text": "一个感染源",
+            "weight": 0.5
+          },
+          {
+            "text": "只有.*一个感染",
+            "weight": 0.5
           }
         ]
       },
@@ -193,6 +201,14 @@
         "evidence": [
           {
             "text": "比较运算",
+            "weight": 0.7
+          },
+          {
+            "text": "比较",
+            "weight": 0.7
+          },
+          {
+            "text": "相等判断",
             "weight": 0.7
           }
         ]
@@ -680,8 +696,8 @@
         "力扣74搜索二维矩阵讲解.md"
       ],
       "scoring": {
-        "retrieval_weight": 0.4,
-        "content_weight": 0.4,
+        "retrieval_weight": 0.2,
+        "content_weight": 0.6,
         "citation_weight": 0.2
       },
       "content_rules": {
