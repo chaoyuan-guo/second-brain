@@ -381,9 +381,14 @@ def main() -> None:
             report_cmd += ["--recall-k", args.recall_k]
         if args.testset:
             report_cmd += ["--testset", args.testset]
+        # 设置 PYTHONPATH 确保模块可以正确导入
+        env = os.environ.copy()
+        project_root = str(Path(__file__).resolve().parents[2])
+        env["PYTHONPATH"] = project_root + os.pathsep + env.get("PYTHONPATH", "")
         subprocess.run(
             report_cmd,
             check=False,
+            env=env,
         )
 
     print(

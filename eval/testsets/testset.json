@@ -42,12 +42,20 @@
           {
             "text": "2^(h+1)-1",
             "weight": 0.3,
-            "synonyms": ["2的h+1次方减1", "2**(h+1)-1", "2^{h+1}-1"]
+            "synonyms": [
+              "2的h+1次方减1",
+              "2**(h+1)-1",
+              "2^{h+1}-1"
+            ]
           },
           {
             "text": "2^h - 1",
             "weight": 0.3,
-            "synonyms": ["2的h次方减1", "2**h-1", "2^{h}-1"]
+            "synonyms": [
+              "2的h次方减1",
+              "2**h-1",
+              "2^{h}-1"
+            ]
           }
         ]
       },
@@ -163,15 +171,19 @@
         "evidence": [
           {
             "text": "一个初始感染点",
-            "weight": 0.5
-          },
-          {
-            "text": "一个感染源",
-            "weight": 0.5
-          },
-          {
-            "text": "只有.*一个感染",
-            "weight": 0.5
+            "weight": 0.5,
+            "synonyms": [
+              "一个感染源",
+              "只有.*一个感染",
+              "只有它.*一个",
+              "只有它.*1.*个",
+              "只有.*1.*个初始",
+              "唯一一个",
+              "只有一个初始",
+              "恰好只有一个",
+              "仅有一个",
+              "1 个初始感染"
+            ]
           }
         ]
       },
@@ -203,15 +215,16 @@
         "evidence": [
           {
             "text": "比较运算",
-            "weight": 0.7
-          },
-          {
-            "text": "比较",
-            "weight": 0.7
-          },
-          {
-            "text": "相等判断",
-            "weight": 0.7
+            "weight": 0.7,
+            "synonyms": [
+              "比较",
+              "相等判断",
+              "赋值写成了比较",
+              "用了 == 而不是 =",
+              "== 而不是 =",
+              "应该用 =",
+              "不是赋值"
+            ]
           }
         ]
       },
@@ -953,7 +966,6 @@
         "require_source": false
       }
     },
-
     {
       "id": "Q26_sliding_puzzle_bfs",
       "query": "滑动谜题这道题为什么要用 BFS 而不是 DFS？状态空间有多大？",
@@ -1353,7 +1365,9 @@
       "category": "statistics",
       "difficulty": "medium",
       "expected_sources": [],
-      "expected_tools": ["run_code_interpreter"],
+      "expected_tools": [
+        "run_code_interpreter"
+      ],
       "scoring": {
         "retrieval_weight": 0.1,
         "content_weight": 0.6,
@@ -1392,7 +1406,9 @@
       "expected_sources": [
         "leetcode_submissions.md"
       ],
-      "expected_tools": ["run_code_interpreter"],
+      "expected_tools": [
+        "run_code_interpreter"
+      ],
       "scoring": {
         "retrieval_weight": 0.2,
         "content_weight": 0.5,
@@ -1897,7 +1913,9 @@
       "expected_sources": [
         "leetcode_submissions.md"
       ],
-      "expected_tools": ["run_code_interpreter"],
+      "expected_tools": [
+        "run_code_interpreter"
+      ],
       "scoring": {
         "retrieval_weight": 0.2,
         "content_weight": 0.5,
@@ -2041,7 +2059,7 @@
       "scoring": {
         "retrieval_weight": 0.25,
         "content_weight": 0.65,
-        "citation_weight": 0.10
+        "citation_weight": 0.1
       },
       "content_rules": {
         "must_have": [],
@@ -2079,7 +2097,7 @@
       "scoring": {
         "retrieval_weight": 0.25,
         "content_weight": 0.65,
-        "citation_weight": 0.10
+        "citation_weight": 0.1
       },
       "content_rules": {
         "must_have": [],
@@ -2105,38 +2123,51 @@
       "notes": "精确 Negative：腐烂橘子题解用原地修改，没有 visited_set 变量"
     },
     {
-      "id": "Q55_neg_nonexistent_complexity",
-      "query": "滑动谜题笔记中提到的 O(n!) 复杂度是针对什么情况的？",
-      "category": "negative",
+      "id": "Q55_factorial_complexity",
+      "query": "笔记中哪些题目涉及 O(n!) 复杂度？",
+      "category": "understanding",
       "difficulty": "medium",
-      "expected_sources": [],
-      "allow_unknown": true,
+      "expected_sources": [
+        "leetcode_submissions.md",
+        "DFS&回溯算法.md"
+      ],
+      "allow_unknown": false,
       "scoring": {
         "retrieval_weight": 0.25,
         "content_weight": 0.65,
-        "citation_weight": 0.10
+        "citation_weight": 0.1
       },
       "content_rules": {
-        "must_have": [],
-        "unknown_indicators": [
-          "没有",
-          "未提及",
-          "不存在",
-          "没有提到 O(n!)",
-          "只提到了 720",
-          "是 6! 而不是 n!"
+        "must_have": [
+          {
+            "text": "n!",
+            "weight": 0.3
+          },
+          {
+            "text": "排列",
+            "weight": 0.3,
+            "synonyms": [
+              "permutation",
+              "全排列"
+            ]
+          }
         ],
-        "hallucination_indicators": [
-          "O(n!) 是",
-          "O(n!) 用于",
-          "O(n!) 表示"
+        "evidence": [
+          {
+            "text": "优美的排列",
+            "weight": 0.4,
+            "synonyms": [
+              "beautiful-arrangement",
+              "beautiful arrangement"
+            ]
+          }
         ]
       },
       "citation_rules": {
         "require_quote": false,
         "require_source": false
       },
-      "notes": "精确 Negative：滑动谜题笔记只提到 6!=720，没有 O(n!) 的讨论"
+      "notes": "理解题：笔记中优美的排列、N皇后等题目涉及 O(n!) 复杂度"
     },
     {
       "id": "Q56_neg_nonexistent_section",
@@ -2148,7 +2179,7 @@
       "scoring": {
         "retrieval_weight": 0.25,
         "content_weight": 0.65,
-        "citation_weight": 0.10
+        "citation_weight": 0.1
       },
       "content_rules": {
         "must_have": [],
@@ -2182,7 +2213,7 @@
       "scoring": {
         "retrieval_weight": 0.15,
         "content_weight": 0.75,
-        "citation_weight": 0.10
+        "citation_weight": 0.1
       },
       "content_rules": {
         "must_have": [
@@ -2195,7 +2226,10 @@
           {
             "text": "动态规划",
             "weight": 0.3,
-            "synonyms": ["DP", "dynamic programming"]
+            "synonyms": [
+              "DP",
+              "dynamic programming"
+            ]
           },
           {
             "text": "最多",
@@ -2220,14 +2254,17 @@
       "scoring": {
         "retrieval_weight": 0.15,
         "content_weight": 0.75,
-        "citation_weight": 0.10
+        "citation_weight": 0.1
       },
       "content_rules": {
         "must_have": [
           {
             "text": "Runtime Error",
             "weight": 0.3,
-            "synonyms": ["运行时错误", "RE"]
+            "synonyms": [
+              "运行时错误",
+              "RE"
+            ]
           }
         ],
         "numeric_validations": [
@@ -2254,11 +2291,13 @@
       "expected_sources": [
         "leetcode_submissions.md"
       ],
-      "expected_tools": ["run_code_interpreter"],
+      "expected_tools": [
+        "run_code_interpreter"
+      ],
       "scoring": {
         "retrieval_weight": 0.15,
-        "content_weight": 0.70,
-        "citation_weight": 0.10,
+        "content_weight": 0.7,
+        "citation_weight": 0.1,
         "tool_weight": 0.05
       },
       "content_rules": {
@@ -2270,7 +2309,10 @@
           {
             "text": "通过率",
             "weight": 0.3,
-            "synonyms": ["AC率", "成功率"]
+            "synonyms": [
+              "AC率",
+              "成功率"
+            ]
           }
         ],
         "should_have": [
@@ -2297,21 +2339,27 @@
       "scoring": {
         "retrieval_weight": 0.15,
         "content_weight": 0.75,
-        "citation_weight": 0.10
+        "citation_weight": 0.1
       },
       "content_rules": {
         "must_have": [
           {
             "text": "2025",
             "weight": 0.4,
-            "synonyms": ["2026"]
+            "synonyms": [
+              "2026"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "至",
             "weight": 0.2,
-            "synonyms": ["到", "~", "-"]
+            "synonyms": [
+              "到",
+              "~",
+              "-"
+            ]
           },
           {
             "text": "月",
@@ -2333,18 +2381,24 @@
       "expected_sources": [
         "leetcode_submissions.md"
       ],
-      "expected_tools": ["run_code_interpreter", "load_skill"],
+      "expected_tools": [
+        "run_code_interpreter",
+        "load_skill"
+      ],
       "scoring": {
-        "retrieval_weight": 0.20,
-        "content_weight": 0.70,
-        "citation_weight": 0.10
+        "retrieval_weight": 0.2,
+        "content_weight": 0.7,
+        "citation_weight": 0.1
       },
       "content_rules": {
         "must_have": [
           {
             "text": "Wrong Answer",
             "weight": 0.3,
-            "synonyms": ["WA", "错误答案"]
+            "synonyms": [
+              "WA",
+              "错误答案"
+            ]
           }
         ],
         "should_have": [
@@ -2372,11 +2426,13 @@
       "expected_sources": [
         "leetcode_submissions.md"
       ],
-      "expected_tools": ["run_code_interpreter"],
+      "expected_tools": [
+        "run_code_interpreter"
+      ],
       "scoring": {
-        "retrieval_weight": 0.20,
-        "content_weight": 0.70,
-        "citation_weight": 0.10
+        "retrieval_weight": 0.2,
+        "content_weight": 0.7,
+        "citation_weight": 0.1
       },
       "content_rules": {
         "must_have": [
@@ -2412,21 +2468,27 @@
         "滑动谜题BFS解题思路.md"
       ],
       "scoring": {
-        "retrieval_weight": 0.40,
-        "content_weight": 0.50,
-        "citation_weight": 0.10
+        "retrieval_weight": 0.4,
+        "content_weight": 0.5,
+        "citation_weight": 0.1
       },
       "content_rules": {
         "must_have": [
           {
             "text": "visited",
             "weight": 0.3,
-            "synonyms": ["访问标记", "已访问"]
+            "synonyms": [
+              "访问标记",
+              "已访问"
+            ]
           },
           {
             "text": "队列",
             "weight": 0.3,
-            "synonyms": ["queue", "deque"]
+            "synonyms": [
+              "queue",
+              "deque"
+            ]
           }
         ],
         "should_have": [
@@ -2456,9 +2518,9 @@
         "滑动谜题BFS解题思路.md"
       ],
       "scoring": {
-        "retrieval_weight": 0.40,
-        "content_weight": 0.50,
-        "citation_weight": 0.10
+        "retrieval_weight": 0.4,
+        "content_weight": 0.5,
+        "citation_weight": 0.1
       },
       "content_rules": {
         "must_have": [
@@ -2497,9 +2559,9 @@
         "BFS练习题 II.md"
       ],
       "scoring": {
-        "retrieval_weight": 0.40,
-        "content_weight": 0.50,
-        "citation_weight": 0.10
+        "retrieval_weight": 0.4,
+        "content_weight": 0.5,
+        "citation_weight": 0.1
       },
       "content_rules": {
         "must_have": [
@@ -2539,9 +2601,9 @@
         "递归遍历.md"
       ],
       "scoring": {
-        "retrieval_weight": 0.40,
-        "content_weight": 0.50,
-        "citation_weight": 0.10
+        "retrieval_weight": 0.4,
+        "content_weight": 0.5,
+        "citation_weight": 0.1
       },
       "content_rules": {
         "must_have": [
@@ -2552,7 +2614,10 @@
           {
             "text": "迭代",
             "weight": 0.3,
-            "synonyms": ["循环", "非递归"]
+            "synonyms": [
+              "循环",
+              "非递归"
+            ]
           }
         ],
         "should_have": [
@@ -2578,16 +2643,19 @@
         "力扣迷宫最近出口题解.md"
       ],
       "scoring": {
-        "retrieval_weight": 0.40,
-        "content_weight": 0.50,
-        "citation_weight": 0.10
+        "retrieval_weight": 0.4,
+        "content_weight": 0.5,
+        "citation_weight": 0.1
       },
       "content_rules": {
         "must_have": [
           {
             "text": "bug",
             "weight": 0.3,
-            "synonyms": ["错误", "问题"]
+            "synonyms": [
+              "错误",
+              "问题"
+            ]
           }
         ],
         "should_have": [
