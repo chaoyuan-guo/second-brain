@@ -104,6 +104,12 @@ class UnknownDetectionConfig:
 
 
 @dataclass
+class SynonymConfig:
+    """同义词配置"""
+    global_synonyms: Dict[str, List[str]] = field(default_factory=dict)
+
+
+@dataclass
 class EvalConfig:
     """评估系统配置"""
     version: str = "1.0"
@@ -113,6 +119,7 @@ class EvalConfig:
     recall: RecallConfig = field(default_factory=RecallConfig)
     tool_evaluation: ToolEvaluationConfig = field(default_factory=ToolEvaluationConfig)
     unknown_detection: UnknownDetectionConfig = field(default_factory=UnknownDetectionConfig)
+    synonyms: SynonymConfig = field(default_factory=SynonymConfig)
 
 
 # 全局配置实例
@@ -181,6 +188,13 @@ def _parse_unknown_detection_config(data: Dict[str, Any]) -> UnknownDetectionCon
     return config
 
 
+def _parse_synonym_config(data: Dict[str, Any]) -> SynonymConfig:
+    """解析同义词配置"""
+    return SynonymConfig(
+        global_synonyms=data.get("global", {})
+    )
+
+
 def load_eval_config(config_path: Optional[Path] = None) -> EvalConfig:
     """加载评估配置。
 
@@ -229,6 +243,8 @@ def load_eval_config(config_path: Optional[Path] = None) -> EvalConfig:
         config.tool_evaluation = _parse_tool_evaluation_config(data["tool_evaluation"])
     if "unknown_detection" in data:
         config.unknown_detection = _parse_unknown_detection_config(data["unknown_detection"])
+    if "synonyms" in data:
+        config.synonyms = _parse_synonym_config(data["synonyms"])
 
     # 始终更新全局缓存，确保 get_config() 返回正确的配置
     _config = config

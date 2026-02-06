@@ -4,32 +4,62 @@
 
   "scoring": {
     "default_weights": {
-      "retrieval_weight": 0.3,
-      "content_weight": 0.5,
-      "citation_weight": 0.2,
+      "retrieval_weight": 0.35,
+      "content_weight": 0.55,
+      "citation_weight": 0.10,
       "tool_weight": 0.0
     },
     "category_weights": {
+      "understanding": {
+        "retrieval_weight": 0.30,
+        "content_weight": 0.60,
+        "citation_weight": 0.10
+      },
       "reasoning": {
-        "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "retrieval_weight": 0.40,
+        "content_weight": 0.50,
+        "citation_weight": 0.10
       },
       "statistics": {
-        "retrieval_weight": 0.2,
-        "content_weight": 0.6,
-        "citation_weight": 0.2
+        "retrieval_weight": 0.15,
+        "content_weight": 0.75,
+        "citation_weight": 0.10
       },
       "negative": {
-        "retrieval_weight": 0.2,
-        "content_weight": 0.6,
-        "citation_weight": 0.2
+        "retrieval_weight": 0.25,
+        "content_weight": 0.65,
+        "citation_weight": 0.10
+      },
+      "skill": {
+        "retrieval_weight": 0.20,
+        "content_weight": 0.70,
+        "citation_weight": 0.10
       },
       "web_search": {
         "retrieval_weight": 0.1,
         "content_weight": 0.7,
         "citation_weight": 0.2
       }
+    }
+  },
+
+  "synonyms": {
+    "global": {
+      "时间复杂度": ["time complexity", "时间开销", "运行时间"],
+      "空间复杂度": ["space complexity", "内存占用", "空间开销"],
+      "动态规划": ["DP", "dynamic programming", "状态转移"],
+      "广度优先": ["BFS", "breadth-first", "层序遍历"],
+      "深度优先": ["DFS", "depth-first"],
+      "二分查找": ["binary search", "二分搜索", "bisect"],
+      "连通分量": ["connected component", "连通块"],
+      "队列": ["queue", "deque"],
+      "栈": ["stack"],
+      "哈希表": ["hash table", "hashmap", "dict", "dictionary"],
+      "并查集": ["union find", "disjoint set"],
+      "记忆化": ["memoization", "memo", "缓存"],
+      "回溯": ["backtrack", "backtracking"],
+      "贪心": ["greedy"],
+      "滑动窗口": ["sliding window"]
     }
   },
 

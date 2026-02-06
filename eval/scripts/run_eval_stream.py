@@ -96,14 +96,21 @@ def stream_chat(
                     answer_parts.append(delta)
             elif event_type == "tool":
                 # 收集工具调用事件（包含参数用于冗余检测）
-                tool_events.append({
+                tool_event = {
                     "stage": event.get("stage"),
                     "tool_name": event.get("tool_name"),
                     "tool_call_id": event.get("tool_call_id"),
-                    "arguments": event.get("arguments"),  # 新增：收集参数
+                    "arguments": event.get("arguments"),
                     "latency_ms": event.get("latency_ms"),
                     "error": event.get("error"),
-                })
+                }
+                # 收集检索结果（用于 precision/recall 计算）
+                if event.get("tool_name") == "query_my_notes" and event.get("stage") == "end":
+                    result = event.get("result")
+                    if isinstance(result, dict):
+                        tool_event["retrieved_sources"] = result.get("sources", [])
+                        tool_event["retrieved_chunks"] = result.get("chunks", [])
+                tool_events.append(tool_event)
             elif event_type == "done":
                 break
 
