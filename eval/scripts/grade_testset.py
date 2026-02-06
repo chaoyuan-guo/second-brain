@@ -36,11 +36,67 @@ DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 # 笔记目录路径
 NOTES_DIR = Path(__file__).resolve().parents[2] / "data" / "notes" / "my_markdowns"
 
+# 预计算统计数据路径
+PRECOMPUTED_STATS_PATH = Path(__file__).resolve().parents[1] / "config" / "precomputed_stats.json"
+
 # 源文档内容缓存
 _source_content_cache: Dict[str, str] = {}
 
 # 全局 embedding 缓存
 _embedding_cache: Dict[str, List[float]] = {}
+
+# 预计算统计数据缓存
+_precomputed_stats: Optional[Dict[str, Any]] = None
+
+
+def load_precomputed_stats() -> Dict[str, Any]:
+    """加载预计算的统计数据。"""
+    global _precomputed_stats
+    if _precomputed_stats is not None:
+        return _precomputed_stats
+
+    if PRECOMPUTED_STATS_PATH.exists():
+        try:
+            _precomputed_stats = json.loads(PRECOMPUTED_STATS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            _precomputed_stats = {}
+    else:
+        _precomputed_stats = {}
+    return _precomputed_stats
+
+
+def resolve_dynamic_value(value: Any) -> Any:
+    """解析动态值引用（如 $stats.xxx）。
+
+    支持格式：
+    - $stats.leetcode_submissions.submission_results.Accepted
+    - $stats.leetcode_submissions.pass_rate
+
+    Args:
+        value: 值，可能是动态引用字符串
+
+    Returns:
+        解析后的实际值，如果无法解析则返回原值
+    """
+    if not isinstance(value, str) or not value.startswith("$stats."):
+        return value
+
+    # 解析 $stats.xxx.yyy.zzz 格式
+    path = value[7:]  # 去掉 "$stats."
+    parts = path.split(".")
+
+    stats = load_precomputed_stats()
+    current = stats
+
+    try:
+        for part in parts:
+            if isinstance(current, dict):
+                current = current[part]
+            else:
+                return value  # 无法继续解析，返回原值
+        return current
+    except (KeyError, TypeError):
+        return value  # 解析失败，返回原值
 
 
 def load_json(path: Path) -> Dict[str, Any]:
@@ -96,10 +152,52 @@ def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
-def contains_normalized(haystack: str, needle: str) -> bool:
+def contains_normalized(
+    haystack: str,
+    needle: str,
+    synonyms: Optional[List[str]] = None
+) -> Tuple[bool, str]:
+    """检查文本是否包含目标或其同义词。
+
+    Args:
+        haystack: 待搜索的文本
+        needle: 目标文本
+        synonyms: 题目级同义词列表（可选）
+
+    Returns:
+        (is_match: bool, matched_term: str)
+    """
     if not haystack or not needle:
-        return False
-    return normalize_text(needle) in normalize_text(haystack)
+        return False, ""
+
+    normalized_haystack = normalize_text(haystack)
+
+    # 1. 精确匹配
+    if normalize_text(needle) in normalized_haystack:
+        return True, needle
+
+    # 2. 正则匹配（如果 needle 包含正则元字符）
+    if re.search(r'[\\^$.*+?{}[\]|()]', needle):
+        try:
+            if re.search(needle, haystack, re.IGNORECASE):
+                return True, f"regex:{needle}"
+        except re.error:
+            pass
+
+    # 3. 题目级同义词匹配
+    if synonyms:
+        for syn in synonyms:
+            if normalize_text(syn) in normalized_haystack:
+                return True, syn
+
+    # 4. 全局同义词匹配
+    config = get_config()
+    if hasattr(config, 'synonyms') and needle in config.synonyms.global_synonyms:
+        for global_syn in config.synonyms.global_synonyms[needle]:
+            if normalize_text(global_syn) in normalized_haystack:
+                return True, global_syn
+
+    return False, ""
 
 
 def extract_quotes(answer: str) -> List[str]:
@@ -215,14 +313,14 @@ def load_retrieval_assets() -> Tuple[Any, List[Dict[str, Any]]]:
     return index, metadata
 
 
-def embed_query(query: str) -> List[float]:
+def _get_openai_client():
+    """获取 OpenAI 客户端（单例模式）。"""
     try:
         from dotenv import load_dotenv  # type: ignore
-    except Exception:
-        load_dotenv = None
-
-    if load_dotenv:
         load_dotenv()
+    except Exception:
+        pass
+
     try:
         from openai import OpenAI  # type: ignore
     except Exception as exc:  # pragma: no cover - optional dependency
@@ -232,11 +330,67 @@ def embed_query(query: str) -> List[float]:
     if not api_key:
         raise RuntimeError("Missing API key for embeddings")
     base_url = os.getenv("SUPER_MIND_API_BASE_URL", DEFAULT_API_BASE_URL)
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    return OpenAI(api_key=api_key, base_url=base_url)
+
+
+def embed_query(query: str) -> List[float]:
+    """获取单个文本的 embedding。"""
+    client = _get_openai_client()
     response = client.embeddings.create(model=DEFAULT_EMBEDDING_MODEL, input=query)
     if not response.data:
         raise RuntimeError("Empty embedding response")
     return response.data[0].embedding
+
+
+def embed_batch(texts: List[str], batch_size: int = 100) -> Dict[str, List[float]]:
+    """批量获取多个文本的 embedding。
+
+    Args:
+        texts: 文本列表
+        batch_size: 每批次最大文本数（OpenAI 限制）
+
+    Returns:
+        {text: embedding} 字典
+    """
+    if not texts:
+        return {}
+
+    client = _get_openai_client()
+    result: Dict[str, List[float]] = {}
+
+    # 去重并过滤已缓存的
+    unique_texts = [t for t in set(texts) if t and t not in _embedding_cache]
+
+    if not unique_texts:
+        return {t: _embedding_cache[t] for t in texts if t in _embedding_cache}
+
+    # 分批处理
+    for i in range(0, len(unique_texts), batch_size):
+        batch = unique_texts[i:i + batch_size]
+        try:
+            response = client.embeddings.create(model=DEFAULT_EMBEDDING_MODEL, input=batch)
+            for j, data in enumerate(response.data):
+                text = batch[j]
+                embedding = data.embedding
+                _embedding_cache[text] = embedding
+                result[text] = embedding
+        except Exception as exc:
+            # 批量失败时回退到单个调用
+            print(f"⚠ 批量 embedding 失败，回退到串行: {exc}", file=sys.stderr)
+            for text in batch:
+                try:
+                    if text not in _embedding_cache:
+                        _embedding_cache[text] = embed_query(text)
+                    result[text] = _embedding_cache[text]
+                except Exception:
+                    pass
+
+    # 补充已缓存的结果
+    for t in texts:
+        if t in _embedding_cache and t not in result:
+            result[t] = _embedding_cache[t]
+
+    return result
 
 
 def get_cached_embedding(text: str) -> List[float]:
@@ -301,21 +455,31 @@ def semantic_match(
 
 
 def precompute_embeddings(questions: List[Dict[str, Any]]) -> None:
-    """预计算所有评估文本的 embedding 并缓存。"""
+    """预计算所有评估文本的 embedding 并缓存（批量调用）。"""
     texts = set()
+
     for q in questions:
+        # 收集 query（用于 recall@k 计算）
+        query = q.get("query", "")
+        if query and len(query) >= 5:
+            texts.add(query)
+
+        # 收集 content_rules 中的文本（用于语义匹配）
         rules = q.get("content_rules", {})
         for item in rules.get("must_have", []) + rules.get("evidence", []):
             text = item.get("text") if isinstance(item, dict) else str(item)
             if text and len(text) >= 5:
                 texts.add(text)
 
-    # 批量预计算
-    for text in texts:
-        try:
-            get_cached_embedding(text)
-        except Exception:
-            pass  # 忽略单个失败，继续处理其他
+    # 过滤已缓存的
+    texts_to_embed = [t for t in texts if t not in _embedding_cache]
+
+    if not texts_to_embed:
+        return
+
+    # 批量调用 API
+    print(f"  批量计算 {len(texts_to_embed)} 个 embedding...", file=sys.stderr)
+    embed_batch(texts_to_embed)
 
 
 def compute_recall_at_k(
@@ -328,7 +492,6 @@ def compute_recall_at_k(
     k_max = max(k_values) if k_values else 0
     results: List[Dict[str, Any]] = []
     agg: Dict[str, Dict[str, float]] = {}
-    query_cache: Dict[str, List[float]] = {}
 
     for question in questions:
         expected_sources = [normalize_source_path(s) for s in (question.get("expected_sources") or question.get("sources") or [])]
@@ -342,9 +505,9 @@ def compute_recall_at_k(
         if not query:
             results.append({"id": question.get("id"), "recall": {}})
             continue
-        if query not in query_cache:
-            query_cache[query] = embed_query(query)
-        embedding = np.array(query_cache[query], dtype="float32").reshape(1, -1)
+        # 使用全局缓存（已在 precompute_embeddings 中批量计算）
+        query_embedding = get_cached_embedding(query)
+        embedding = np.array(query_embedding, dtype="float32").reshape(1, -1)
         distances, indices = index.search(embedding, min(k_max, index.ntotal))
         retrieved_sources: List[str] = []
         for idx in indices[0]:
@@ -419,6 +582,86 @@ def compute_actual_retrieval_score(
 
     hits = sum(1 for s in expected_sources if s in actual_sources)
     return hits / len(expected_sources)
+
+
+def compute_retrieval_metrics(
+    question: Dict[str, Any],
+    tool_events: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    """计算检索的 precision 和 recall。
+
+    Args:
+        question: 题目配置
+        tool_events: 工具调用事件列表
+
+    Returns:
+        {
+            "precision": float (0~1),
+            "recall": float (0~1),
+            "f1": float (0~1),
+            "retrieved_sources": List[str],
+            "expected_sources": List[str],
+            "relevant_retrieved": List[str],
+            "missed_sources": List[str],
+            "irrelevant_sources": List[str]
+        }
+    """
+    expected_sources = set(
+        normalize_source_path(s)
+        for s in (question.get("expected_sources") or question.get("sources") or [])
+    )
+
+    if not expected_sources or tool_events is None:
+        return {
+            "precision": 1.0 if not expected_sources else 0.0,
+            "recall": 1.0 if not expected_sources else 0.0,
+            "f1": 1.0 if not expected_sources else 0.0,
+            "retrieved_sources": [],
+            "expected_sources": list(expected_sources),
+            "relevant_retrieved": [],
+            "missed_sources": list(expected_sources),
+            "irrelevant_sources": []
+        }
+
+    # 从工具事件中收集检索到的源文档
+    retrieved_sources = set()
+    for event in tool_events:
+        # 从 query_my_notes 工具的结果收集
+        if event.get("tool_name") == "query_my_notes" and event.get("stage") == "end":
+            sources = event.get("retrieved_sources", [])
+            for src in sources:
+                if isinstance(src, str):
+                    retrieved_sources.add(normalize_source_path(src))
+                elif isinstance(src, dict) and "source_path" in src:
+                    retrieved_sources.add(normalize_source_path(src["source_path"]))
+
+        # 也从 read_note_file 收集实际读取的文件
+        if event.get("tool_name") == "read_note_file" and event.get("stage") == "end":
+            args = event.get("arguments") or {}
+            if isinstance(args, dict):
+                file_path = args.get("file_path") or args.get("path") or ""
+                if file_path:
+                    retrieved_sources.add(normalize_source_path(str(file_path)))
+
+    # 计算指标
+    relevant_retrieved = retrieved_sources & expected_sources
+    missed_sources = expected_sources - retrieved_sources
+    irrelevant_sources = retrieved_sources - expected_sources
+
+    precision = len(relevant_retrieved) / len(retrieved_sources) if retrieved_sources else 0.0
+    recall = len(relevant_retrieved) / len(expected_sources) if expected_sources else 1.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+    return {
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "retrieved_sources": list(retrieved_sources),
+        "expected_sources": list(expected_sources),
+        "relevant_retrieved": list(relevant_retrieved),
+        "missed_sources": list(missed_sources),
+        "irrelevant_sources": list(irrelevant_sources)
+    }
 
 
 def match_chunk(
@@ -501,7 +744,6 @@ def compute_chunk_recall_at_k(
     k_max = max(k_values) if k_values else 0
     results: List[Dict[str, Any]] = []
     agg: Dict[str, Dict[str, float]] = {}
-    query_cache: Dict[str, List[float]] = {}
 
     for question in questions:
         expected_chunks = question.get("expected_chunks", [])
@@ -527,9 +769,9 @@ def compute_chunk_recall_at_k(
             results.append({"id": question.get("id"), "recall": {}, "chunk_level": use_chunk_level})
             continue
 
-        if query not in query_cache:
-            query_cache[query] = embed_query(query)
-        embedding = np.array(query_cache[query], dtype="float32").reshape(1, -1)
+        # 使用全局缓存（已在 precompute_embeddings 中批量计算）
+        query_embedding = get_cached_embedding(query)
+        embedding = np.array(query_embedding, dtype="float32").reshape(1, -1)
         distances, indices = index.search(embedding, min(k_max, index.ntotal))
 
         # 收集检索到的 chunks 信息
@@ -635,7 +877,34 @@ def evaluate_numeric_validations(
 
         total_weight += weight
 
+        # 解析动态值引用
+        expected = resolve_dynamic_value(expected)
+
+        # 如果动态值解析失败（仍是字符串引用），跳过此校验
         if not pattern or expected is None:
+            continue
+        if isinstance(expected, str) and expected.startswith("$stats."):
+            # 动态值未解析成功，跳过
+            matched_values.append({
+                "expected": expected,
+                "actual": None,
+                "passed": False,
+                "pattern": pattern,
+                "error": "动态值未解析（预计算数据不存在）"
+            })
+            continue
+
+        # 确保 expected 是数字
+        try:
+            expected = float(expected)
+        except (TypeError, ValueError):
+            matched_values.append({
+                "expected": expected,
+                "actual": None,
+                "passed": False,
+                "pattern": pattern,
+                "error": f"期望值不是数字: {expected}"
+            })
             continue
 
         match = re.search(pattern, answer, re.IGNORECASE | re.DOTALL)
@@ -836,18 +1105,21 @@ def evaluate_content_score(
         if isinstance(item, dict):
             text = item.get("text", "")
             weight = item.get("weight", 0.2)
+            item_synonyms = item.get("synonyms", [])
         else:
             text = str(item)
             weight = 1.0 / max(len(must_have), 1)
+            item_synonyms = []
 
         total_weight += weight
         if not text:
             continue
 
-        # 先尝试精确匹配
-        if contains_normalized(answer, text):
+        # 使用增强的匹配函数（支持同义词、正则）
+        is_match, matched_term = contains_normalized(answer, text, item_synonyms)
+        if is_match:
             earned_weight += weight
-            matched_must.append({"text": text, "match_type": "exact"})
+            matched_must.append({"text": text, "match_type": "exact", "matched_term": matched_term})
         elif use_semantic_match and len(text) >= 5:
             # 尝试语义匹配
             is_match, similarity, match_type = semantic_match(answer, text)
@@ -864,13 +1136,17 @@ def evaluate_content_score(
         if isinstance(item, dict):
             text = item.get("text", "")
             weight = item.get("weight", 0.1)
+            item_synonyms = item.get("synonyms", [])
         else:
             text = str(item)
             weight = 0.1
+            item_synonyms = []
 
-        if text and contains_normalized(answer, text):
-            bonus_weight += weight
-            matched_should.append(text)
+        if text:
+            is_match, matched_term = contains_normalized(answer, text, item_synonyms)
+            if is_match:
+                bonus_weight += weight
+                matched_should.append(text)
 
     # 计算 evidence 得分
     matched_ev = []
@@ -880,18 +1156,21 @@ def evaluate_content_score(
         if isinstance(item, dict):
             text = item.get("text", "")
             weight = item.get("weight", 0.3)
+            item_synonyms = item.get("synonyms", [])
         else:
             text = str(item)
             weight = 0.3
+            item_synonyms = []
 
         evidence_total += weight
         if not text:
             continue
 
-        # 先尝试精确匹配
-        if contains_normalized(answer, text):
+        # 使用增强的匹配函数
+        is_match, matched_term = contains_normalized(answer, text, item_synonyms)
+        if is_match:
             evidence_weight += weight
-            matched_ev.append({"text": text, "match_type": "exact"})
+            matched_ev.append({"text": text, "match_type": "exact", "matched_term": matched_term})
         elif use_semantic_match and len(text) >= 5:
             # 尝试语义匹配
             is_match, similarity, match_type = semantic_match(answer, text)
@@ -1193,6 +1472,9 @@ def evaluate_question(
     citation_result = evaluate_citation_score(question, answer)
     actual_retrieval_score = compute_actual_retrieval_score(question, tool_events)
 
+    # 计算检索指标（precision/recall/f1）
+    retrieval_metrics = compute_retrieval_metrics(question, tool_events)
+
     # 使用传入的 recall_score 作为检索得分
     retrieval_score = recall_score
 
@@ -1238,6 +1520,7 @@ def evaluate_question(
             "retrieval": {
                 "recall_score": retrieval_score,
                 "actual_retrieval_score": actual_retrieval_score,
+                "metrics": retrieval_metrics,
             },
         }
     }
@@ -1246,6 +1529,75 @@ def evaluate_question(
         result["details"]["tool"] = tool_result
 
     return result
+
+
+def compute_retrieval_analysis(
+    results: List[Dict[str, Any]],
+    questions: List[Dict[str, Any]]
+) -> Dict[str, Any]:
+    """汇总检索指标分析。
+
+    Args:
+        results: 评估结果列表
+        questions: 题目列表
+
+    Returns:
+        {
+            "avg_precision": float,
+            "avg_recall": float,
+            "avg_f1": float,
+            "questions_with_missed_sources": List[str],
+            "common_missed_sources": Dict[str, int],
+            "common_irrelevant_sources": Dict[str, int]
+        }
+    """
+    precision_sum = 0.0
+    recall_sum = 0.0
+    f1_sum = 0.0
+    count = 0
+
+    questions_with_missed = []
+    missed_sources_counter: Dict[str, int] = {}
+    irrelevant_sources_counter: Dict[str, int] = {}
+
+    for result, question in zip(results, questions):
+        metrics = result.get("details", {}).get("retrieval", {}).get("metrics", {})
+        if not metrics:
+            continue
+
+        precision_sum += metrics.get("precision", 0)
+        recall_sum += metrics.get("recall", 0)
+        f1_sum += metrics.get("f1", 0)
+        count += 1
+
+        # 记录有遗漏源的问题
+        missed = metrics.get("missed_sources", [])
+        if missed:
+            questions_with_missed.append(question.get("id", ""))
+            for src in missed:
+                missed_sources_counter[src] = missed_sources_counter.get(src, 0) + 1
+
+        # 记录常见的不相关源
+        irrelevant = metrics.get("irrelevant_sources", [])
+        for src in irrelevant:
+            irrelevant_sources_counter[src] = irrelevant_sources_counter.get(src, 0) + 1
+
+    return {
+        "avg_precision": precision_sum / count if count > 0 else 0.0,
+        "avg_recall": recall_sum / count if count > 0 else 0.0,
+        "avg_f1": f1_sum / count if count > 0 else 0.0,
+        "questions_with_missed_sources": questions_with_missed,
+        "common_missed_sources": dict(sorted(
+            missed_sources_counter.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:10]),
+        "common_irrelevant_sources": dict(sorted(
+            irrelevant_sources_counter.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:10])
+    }
 
 
 def main() -> None:
@@ -1425,6 +1777,9 @@ def main() -> None:
         stats["pass_rate"] = stats["passed"] / stats["total"] if stats["total"] > 0 else 0.0
         stats["avg_score"] = stats["score_sum"] / stats["total"] if stats["total"] > 0 else 0.0
 
+    # 计算检索指标汇总
+    retrieval_analysis = compute_retrieval_analysis(results, questions)
+
     # 构建报告
     avg_score = total_score_sum / len(results) if results else 0.0
     perfect_threshold = config.thresholds.perfect_score_threshold
@@ -1447,6 +1802,7 @@ def main() -> None:
             "perfect_rate": perfect_count / len(results) if results else 0.0
         },
         "category_stats": category_stats,
+        "retrieval_analysis": retrieval_analysis,
         "results": results,
         "recall_summary": recall_summary,
         "recall_results": recall_results,
