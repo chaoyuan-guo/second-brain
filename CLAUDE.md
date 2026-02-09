@@ -102,6 +102,13 @@ python -u eval/scripts/run_eval_stream.py \
   --report eval/reports/report.json \
   2>&1 | tee eval/reports/eval.log
 
+# 只运行指定题目（按 ID 前缀匹配，逗号分隔）
+python -u eval/scripts/run_eval_stream.py \
+  --question-ids Q14,Q17,Q52 \
+  --base-url http://127.0.0.1:9000 \
+  --strict-sources --recall-k 5 \
+  --report eval/reports/report.json
+
 # 评分答案
 python eval/scripts/grade_testset.py \
   --testset eval/testsets/testset.json \

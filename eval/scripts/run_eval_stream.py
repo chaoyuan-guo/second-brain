@@ -5,6 +5,7 @@ Usage:
   python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000
   python eval/scripts/run_eval_stream.py --testset eval/testsets/testset.json --out eval/reports/answers.json
   python eval/scripts/run_eval_stream.py --report eval/reports/report.json
+  python eval/scripts/run_eval_stream.py --question-ids Q14,Q17,Q52
 """
 
 from __future__ import annotations
@@ -304,6 +305,11 @@ def main() -> None:
     parser.add_argument("--pause", type=float, default=0.0)
     parser.add_argument("--concurrency", type=int, default=5)
     parser.add_argument("--limit", type=int)
+    parser.add_argument(
+        "--question-ids",
+        help="Comma-separated question ID prefixes to run, e.g. 'Q14,Q17,Q52'. "
+             "Matches by prefix so 'Q14' matches 'Q14_component_problems'.",
+    )
     parser.add_argument("-H", "--header", action="append", default=[], help="Extra header, e.g. 'Authorization: Bearer x'")
     parser.add_argument(
         "--no-stage-log",
@@ -323,6 +329,15 @@ def main() -> None:
 
     questions = load_testset(Path(args.testset))
     headers = parse_headers(args.header)
+
+    if args.question_ids:
+        prefixes = tuple(p.strip() for p in args.question_ids.split(",") if p.strip())
+        before = len(questions)
+        questions = [q for q in questions if q["id"].startswith(prefixes)]
+        print(f"按 ID 过滤: {before} → {len(questions)} 题 (匹配: {', '.join(prefixes)})")
+        if not questions:
+            print("⚠ 没有匹配的题目，请检查 --question-ids 参数", file=sys.stderr)
+            sys.exit(1)
 
     answers, tool_traces = run_eval(
         questions,
