@@ -715,7 +715,7 @@ QUERY_MY_NOTES_TOOL_SCHEMA = {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 20,
-                    "default": 5,
+                    "default": 8,
                     "description": "返回的匹配数量。",
                 },
             },

@@ -584,7 +584,7 @@ def rewrite_query(query: str) -> List[str]:
         return [query]
 
 
-def query_my_notes(query: str, top_k: int = 5) -> dict[str, Any]:
+def query_my_notes(query: str, top_k: int = 8) -> dict[str, Any]:
     if not query:
         raise ValueError("query 不能为空")
 
@@ -615,15 +615,20 @@ def query_my_notes(query: str, top_k: int = 5) -> dict[str, Any]:
     results: List[dict[str, Any]] = []
     for score, idx in top_results:
         record = metadata[idx]
+        heading_path = record.get("heading_path", "")
+        text = record.get("text", "")
+        # 将 heading_path 拼接到 text 前面，帮助模型理解内容所属章节
+        display_text = f"[{heading_path}]\n{text}" if heading_path else text
+
         results.append(
             {
                 "score": score,
                 "source_path": record.get("source_path"),
                 "chunk_index": record.get("chunk_index"),
-                "heading_path": record.get("heading_path"),
+                "heading_path": heading_path,
                 "document_title": record.get("document_title"),
                 "chunk_type": record.get("chunk_type"),
-                "text": record.get("text"),
+                "text": display_text,
             }
         )
 
