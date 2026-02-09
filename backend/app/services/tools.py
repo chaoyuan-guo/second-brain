@@ -534,17 +534,18 @@ def build_embedding(text: str) -> List[float]:
     return response.data[0].embedding
 
 
-QUERY_REWRITE_PROMPT = """将以下搜索查询改写为多个同义变体，用于提升检索召回率。
+QUERY_REWRITE_PROMPT = """将以下搜索查询改写为多个变体，用于提升检索召回率。
 
 要求：
 1. 保持原意，不要改变搜索目标
-2. 包含中文同义词、英文术语、常见别名
-3. 如果涉及算法/数据结构，包含相关变体（如 BFS=广度优先=层序遍历）
-4. 返回 JSON 数组，包含原 query 和 3-4 个变体
+2. 包含中文同义词、英文术语、常见别名（如 BFS=广度优先=层序遍历）
+3. 如果查询涉及多个主题（如"A 和 B 的联系"），额外生成按子主题拆分的变体（如单独搜 A、单独搜 B）
+4. 每个变体应简洁聚焦，不超过 10 个词
+5. 返回 JSON 数组，包含原 query 和 3-5 个变体
 
 查询: {query}
 
-返回格式: ["原query", "变体1", "变体2", "变体3"]"""
+返回格式: ["原query", "变体1", "变体2", ...]"""
 
 
 def rewrite_query(query: str) -> List[str]:

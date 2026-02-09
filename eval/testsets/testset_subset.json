@@ -1,0 +1,334 @@
+{
+  "meta": {
+    "name": "agentic_rag_eval",
+    "language": "zh",
+    "notes_dir": "data/notes/my_markdowns",
+    "total_questions": 7,
+    "description": "针对失败 case 的子集测试"
+  },
+  "questions": [
+    {
+      "id": "Q04_malware_strategy",
+      "query": "在「尽量减少恶意软件的传播」题目中，删除哪个节点能拯救最多节点？",
+      "category": "understanding",
+      "difficulty": "medium",
+      "expected_sources": [
+        "尽量减少恶意软件的传播.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.3,
+        "content_weight": 0.5,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "连通分量",
+            "weight": 0.4
+          }
+        ],
+        "should_have": [
+          {
+            "text": "唯一",
+            "weight": 0.1
+          }
+        ],
+        "evidence": [
+          {
+            "text": "一个初始感染点",
+            "weight": 0.5,
+            "synonyms": [
+              "一个感染源",
+              "只有.*一个感染",
+              "只有它.*一个",
+              "只有它.*1.*个",
+              "只有.*1.*个初始",
+              "唯一一个",
+              "只有一个初始",
+              "恰好只有一个",
+              "仅有一个",
+              "1 个初始感染"
+            ]
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": false
+      }
+    },
+    {
+      "id": "Q14_component_problems",
+      "query": "哪些题目用到了连通分量的概念？列举题目名称",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "尽量减少恶意软件的传播.md",
+        "力扣钥匙和房间题讲解.md",
+        "BFS练习题 II.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.4,
+        "content_weight": 0.4,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "恶意软件",
+            "weight": 0.3
+          },
+          {
+            "text": "连通",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "钥匙",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": false,
+        "require_source": false
+      }
+    },
+    {
+      "id": "Q17_bfs_level_size",
+      "query": "在 BFS 层序遍历中，如何确保每次只处理一层的节点？",
+      "category": "reasoning",
+      "difficulty": "medium",
+      "expected_sources": [
+        "BFS练习题 II.md",
+        "BFS求二叉树最大层和.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.4,
+        "content_weight": 0.4,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "len(queue)",
+            "weight": 0.4
+          },
+          {
+            "text": "层",
+            "weight": 0.2
+          }
+        ],
+        "evidence": [
+          {
+            "text": "level_size = len(queue)",
+            "weight": 0.4
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": false
+      }
+    },
+    {
+      "id": "Q52_cross_topic_connection",
+      "query": "动态规划和 BFS 有什么联系？在我的笔记中有哪些题目同时涉及这两种方法？",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "动态规划.md",
+        "BFS练习题 II.md",
+        "滑动谜题BFS解题思路.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.4,
+        "content_weight": 0.4,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "状态",
+            "weight": 0.3
+          },
+          {
+            "text": "转移",
+            "weight": 0.2
+          }
+        ],
+        "should_have": [
+          {
+            "text": "图",
+            "weight": 0.2
+          },
+          {
+            "text": "最短",
+            "weight": 0.15
+          },
+          {
+            "text": "路径",
+            "weight": 0.15
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "跨主题关联：需要理解两种算法的联系并从笔记中找到例证"
+    },
+    {
+      "id": "Q86_cross_tree_traversal_methods",
+      "query": "比较层序遍历(BFS)和递归遍历(DFS)在处理二叉树问题时的差异，各自适合什么场景？请从多篇笔记中举例说明",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "BFS练习题 II.md",
+        "递归遍历.md",
+        "DFS&回溯算法.md",
+        "二叉树锯齿形层序遍历解析.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.4,
+        "content_weight": 0.4,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "层序",
+            "weight": 0.2,
+            "synonyms": [
+              "BFS",
+              "广度优先"
+            ]
+          },
+          {
+            "text": "递归",
+            "weight": 0.2,
+            "synonyms": [
+              "DFS",
+              "深度优先"
+            ]
+          },
+          {
+            "text": "场景",
+            "weight": 0.2,
+            "synonyms": [
+              "适合",
+              "应用"
+            ]
+          }
+        ],
+        "should_have": [
+          {
+            "text": "最短",
+            "weight": 0.2
+          },
+          {
+            "text": "路径",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "跨文档推理：需要从多篇笔记中综合对比两种遍历方式"
+    },
+    {
+      "id": "Q87_cross_graph_modeling_patterns",
+      "query": "从笔记中归纳将非图问题建模成图的常见模式，包括：什么是节点？什么是边？请举至少3个不同的例子",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "力扣除法求值题讲解.md",
+        "最小基因变化题解.md",
+        "跳跃游戏III题解.md",
+        "二叉树距离为K节点解析.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.4,
+        "content_weight": 0.4,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "节点",
+            "weight": 0.3
+          },
+          {
+            "text": "边",
+            "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "建模",
+            "weight": 0.2
+          },
+          {
+            "text": "图",
+            "weight": 0.2
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "跨文档推理：需要从多个题目中归纳建图的共同模式"
+    },
+    {
+      "id": "Q89_cross_bfs_state_representation",
+      "query": "BFS中状态表示有哪些不同形式？分别适用于什么类型的问题？请从滑动谜题、最小基因变化、二进制矩阵最短路径等题目中总结",
+      "category": "reasoning",
+      "difficulty": "hard",
+      "expected_sources": [
+        "滑动谜题BFS解题思路.md",
+        "最小基因变化题解.md",
+        "二进制矩阵最短路径题讲解.md"
+      ],
+      "scoring": {
+        "retrieval_weight": 0.4,
+        "content_weight": 0.4,
+        "citation_weight": 0.2
+      },
+      "content_rules": {
+        "must_have": [
+          {
+            "text": "状态",
+            "weight": 0.4
+          },
+          {
+            "text": "表示",
+            "weight": 0.3,
+            "synonyms": [
+              "表达",
+              "编码"
+            ]
+          }
+        ],
+        "should_have": [
+          {
+            "text": "字符串",
+            "weight": 0.2
+          },
+          {
+            "text": "坐标",
+            "weight": 0.1
+          }
+        ]
+      },
+      "citation_rules": {
+        "require_quote": true,
+        "require_source": true
+      },
+      "notes": "跨文档推理：需要从多道BFS题目中归纳状态表示模式"
+    }
+  ]
+}

@@ -709,7 +709,7 @@ QUERY_MY_NOTES_TOOL_SCHEMA = {
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "针对笔记内容的自然语言查询或关键词。",
+                    "description": "针对笔记内容的自然语言查询，应简洁聚焦（不超过 10 个词）。跨主题问题请分多次调用，每次聚焦一个子主题。",
                 },
                 "top_k": {
                     "type": "integer",
