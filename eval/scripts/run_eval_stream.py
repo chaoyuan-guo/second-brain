@@ -300,7 +300,7 @@ def main() -> None:
     parser.add_argument("--base-url", default="http://127.0.0.1:9000")
     parser.add_argument("--endpoint", default="/chat/stream")
     parser.add_argument("--mode", choices=["stream", "chat"], default="stream")
-    parser.add_argument("--timeout", type=int, default=180)
+    parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--pause", type=float, default=0.0)
     parser.add_argument("--concurrency", type=int, default=5)
     parser.add_argument("--limit", type=int)
