@@ -45,6 +45,9 @@ _source_content_cache: Dict[str, str] = {}
 # 全局 embedding 缓存
 _embedding_cache: Dict[str, List[float]] = {}
 
+# query rewrite 缓存（避免重复 LLM 调用）
+_rewrite_cache: Dict[str, List[str]] = {}
+
 # 预计算统计数据缓存
 _precomputed_stats: Optional[Dict[str, Any]] = None
 
@@ -581,6 +584,55 @@ def _get_openai_client():
     return OpenAI(api_key=api_key, base_url=base_url)
 
 
+# 复用 tools.py 中的 QUERY_REWRITE_PROMPT
+QUERY_REWRITE_PROMPT = """将以下搜索查询改写为多个变体，用于提升检索召回率。
+
+要求：
+1. 保持原意，不要改变搜索目标
+2. 包含中文同义词、英文术语、常见别名（如 BFS=广度优先=层序遍历）
+3. 如果查询涉及多个主题（如"A 和 B 的联系"），额外生成按子主题拆分的变体（如单独搜 A、单独搜 B）
+4. 每个变体应简洁聚焦，不超过 10 个词
+5. 返回 JSON 数组，包含原 query 和 3-5 个变体
+
+查询: {query}
+
+返回格式: ["原query", "变体1", "变体2", ...]"""
+
+DEFAULT_CHAT_MODEL = "gpt-5"
+
+
+def rewrite_query(query: str) -> List[str]:
+    """用 LLM 生成 query 变体列表，与 tools.py 中逻辑一致。"""
+    if query in _rewrite_cache:
+        return _rewrite_cache[query]
+    try:
+        client = _get_openai_client()
+        model = os.getenv("SUPER_MIND_CHAT_MODEL", DEFAULT_CHAT_MODEL)
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": QUERY_REWRITE_PROMPT.format(query=query)}],
+            temperature=0.3,
+            max_completion_tokens=200,
+        )
+        content = (response.choices[0].message.content or "").strip()
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+        variants = json.loads(content)
+        if not isinstance(variants, list):
+            _rewrite_cache[query] = [query]
+            return [query]
+        if query not in variants:
+            variants.insert(0, query)
+        result = variants[:5]
+        _rewrite_cache[query] = result
+        return result
+    except Exception:
+        _rewrite_cache[query] = [query]
+        return [query]
+
+
 def embed_query(query: str) -> List[float]:
     """获取单个文本的 embedding。"""
     client = _get_openai_client()
@@ -711,6 +763,10 @@ def precompute_embeddings(questions: List[Dict[str, Any]]) -> None:
         query = q.get("query", "")
         if query and len(query) >= 5:
             texts.add(query)
+            # 预计算变体 embedding（用于多路召回 recall@k）
+            for variant in rewrite_query(query):
+                if variant and len(variant) >= 3:
+                    texts.add(variant)
 
         # 收集 content_rules 中的文本（用于语义匹配）
         rules = q.get("content_rules", {})
@@ -766,6 +822,93 @@ def compute_recall_at_k(
             if source_path:
                 retrieved_sources.append(normalize_source_path(str(source_path)))
 
+        recall_map: Dict[str, float] = {}
+        for k in k_values:
+            top_k = retrieved_sources[:k]
+            if allow_any_source:
+                recall_value = 1.0 if any(s in top_k for s in expected_sources) else 0.0
+            else:
+                hits = sum(1 for s in expected_sources if s in top_k)
+                recall_value = hits / max(len(expected_sources), 1)
+            recall_map[str(k)] = recall_value
+            agg.setdefault(str(k), {"sum": 0.0, "count": 0.0})
+            agg[str(k)]["sum"] += recall_value
+            agg[str(k)]["count"] += 1.0
+        results.append({"id": question.get("id"), "recall": recall_map})
+
+    summary: Dict[str, Dict[str, float]] = {}
+    for k, values in agg.items():
+        count = values["count"]
+        summary[k] = {
+            "mean_recall": (values["sum"] / count) if count else 0.0,
+            "count": count,
+        }
+    return summary, results
+
+
+def compute_multipath_recall_at_k(
+    questions: List[Dict[str, Any]],
+    k_values: List[int],
+) -> Tuple[Dict[str, Dict[str, float]], List[Dict[str, Any]]]:
+    """多路召回版 recall@k，模拟后端实际检索行为。
+
+    与单路召回的区别：
+    1. 为每个 query 生成 3-5 个变体（使用 rewrite_query）
+    2. 每个变体独立检索 top-k*2 条结果
+    3. 合并所有结果，去重（按 source_path + chunk_index）
+    4. 按距离排序，取最终的 top-k
+
+    这与后端 tools.py:query_my_notes 的实现保持一致。
+    """
+    import numpy as np  # type: ignore
+
+    index, metadata = load_retrieval_assets()
+    k_max = max(k_values) if k_values else 0
+    results: List[Dict[str, Any]] = []
+    agg: Dict[str, Dict[str, float]] = {}
+
+    for question in questions:
+        expected_sources = [normalize_source_path(s) for s in (question.get("expected_sources") or question.get("sources") or [])]
+        case_type = str(question.get("case_type") or "").strip().lower()
+        q_type = str(question.get("type") or "").strip().lower()
+        allow_any_source = case_type == "multi_source" or q_type == "multi_doc"
+
+        if not expected_sources or k_max == 0:
+            results.append({"id": question.get("id"), "recall": {}})
+            continue
+
+        query = str(question.get("query") or "")
+        if not query:
+            results.append({"id": question.get("id"), "recall": {}})
+            continue
+
+        # 多路召回：生成变体 → 各自检索 → 合并去重
+        variants = rewrite_query(query)
+        all_results: List[Tuple[float, int]] = []
+        seen_chunks: set = set()
+
+        for variant in variants:
+            emb = np.array(get_cached_embedding(variant), dtype="float32").reshape(1, -1)
+            distances, indices = index.search(emb, min(k_max * 2, index.ntotal))
+            for dist, idx in zip(distances[0], indices[0]):
+                if idx == -1 or idx >= len(metadata):
+                    continue
+                chunk_key = (metadata[idx].get("source_path"), metadata[idx].get("chunk_index"))
+                if chunk_key in seen_chunks:
+                    continue
+                seen_chunks.add(chunk_key)
+                all_results.append((float(dist), int(idx)))
+
+        all_results.sort(key=lambda x: x[0])
+
+        # 从合并结果中提取 source_path
+        retrieved_sources: List[str] = []
+        for _, idx in all_results:
+            sp = metadata[idx].get("source_path")
+            if sp:
+                retrieved_sources.append(normalize_source_path(str(sp)))
+
+        # 计算各 k 值的 recall
         recall_map: Dict[str, float] = {}
         for k in k_values:
             top_k = retrieved_sources[:k]
@@ -1979,6 +2122,8 @@ def main() -> None:
     # 先计算 recall@k，构建 recall_map
     recall_summary = {}
     recall_results = []
+    baseline_recall_summary = {}
+    baseline_recall_results = []
     recall_map: Dict[str, float] = {}
     recall_k_for_scoring = config.recall.k_for_scoring  # 从配置获取用于评分的 k 值
     use_chunk_level = config.recall.use_chunk_level  # 是否使用 chunk 级别评估
@@ -1995,12 +2140,14 @@ def main() -> None:
                 continue
         if k_values:
             try:
-                # 根据配置选择使用 chunk 级别还是文档级别评估
+                # 单路召回（baseline）
                 if use_chunk_level:
-                    recall_summary, recall_results = compute_chunk_recall_at_k(questions, k_values)
+                    baseline_recall_summary, baseline_recall_results = compute_chunk_recall_at_k(questions, k_values)
                 else:
-                    recall_summary, recall_results = compute_recall_at_k(questions, k_values)
-                # 构建 {question_id: recall_score} 映射
+                    baseline_recall_summary, baseline_recall_results = compute_recall_at_k(questions, k_values)
+                # 多路召回（主指标）
+                recall_summary, recall_results = compute_multipath_recall_at_k(questions, k_values)
+                # 用多路召回的结果构建评分 recall_map
                 for r in recall_results:
                     qid = r.get("id")
                     recall_value = r.get("recall", {}).get(str(recall_k_for_scoring), 1.0)
@@ -2117,6 +2264,8 @@ def main() -> None:
         "results": results,
         "recall_summary": recall_summary,
         "recall_results": recall_results,
+        "baseline_recall_summary": baseline_recall_summary,
+        "baseline_recall_results": baseline_recall_results,
     }
 
     if args.output:
