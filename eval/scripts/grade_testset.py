@@ -293,14 +293,67 @@ def load_source_content(source_path: str) -> str:
     return ""
 
 
-def quote_matches_source(quote: str, source_path: str) -> bool:
+def get_quote_context(quote: str, source_content: str, window_size: int = 100) -> Optional[Dict]:
+    """获取引用在源文档中的上下文。
+
+    Args:
+        quote: 引用内容
+        source_content: 源文档内容
+        window_size: 上下文窗口大小（字符数）
+
+    Returns:
+        {
+            "before": str,      # 引用前的文本
+            "after": str,       # 引用后的文本
+            "position": int,    # 引用在文档中的位置
+            "heading": str      # 所属标题（如果有）
+        }
+        如果找不到引用则返回 None
+    """
+    normalized_quote = normalize_text(quote)
+    normalized_source = normalize_text(source_content)
+
+    # 查找引用位置
+    pos = normalized_source.find(normalized_quote)
+    if pos == -1:
+        return None
+
+    # 提取上下文
+    before_start = max(0, pos - window_size)
+    after_end = min(len(normalized_source), pos + len(normalized_quote) + window_size)
+
+    before = normalized_source[before_start:pos]
+    after = normalized_source[pos + len(normalized_quote):after_end]
+
+    # 尝试提取所属标题（在原始文档中查找）
+    heading = ""
+    lines_before_pos = source_content[:pos].split('\n')
+    for line in reversed(lines_before_pos):
+        if line.strip().startswith('#'):
+            heading = line.strip()
+            break
+
+    return {
+        "before": before.strip(),
+        "after": after.strip(),
+        "position": pos,
+        "heading": heading
+    }
+
+
+def quote_matches_source(quote: str, source_path: str) -> Tuple[bool, Optional[Dict]]:
     """检查引用内容是否在源文档中存在。
 
     使用模糊匹配，允许空白字符差异。
+    增强版：返回更多匹配信息，包括上下文。
+
+    Returns:
+        (是否匹配, 上下文信息字典)
+        上下文信息包含: before, after, position, heading
     """
     source_content = load_source_content(source_path)
     if not source_content:
-        return False
+        return False, None
 
     # 规范化后比较
     normalized_quote = normalize_text(quote)
@@ -308,19 +361,101 @@ def quote_matches_source(quote: str, source_path: str) -> bool:
 
     # 直接包含检查
     if normalized_quote in normalized_source:
-        return True
+        context = get_quote_context(quote, source_content)
+        return True, context
 
     # 对于较短的引用，尝试更宽松的匹配
-    if len(normalized_quote) < 50:
+    quote_len = len(normalized_quote)
+    if quote_len < 50:
         # 分词后检查关键词
         quote_words = set(normalized_quote.split())
         if len(quote_words) >= 3:
-            # 至少 80% 的词在源文档中
-            matches = sum(1 for w in quote_words if w in normalized_source)
-            if matches / len(quote_words) >= 0.8:
-                return True
+            # 动态阈值：越短的引用要求越高
+            if quote_len < 20:
+                threshold = 0.95
+            elif quote_len < 50:
+                threshold = 0.85
+            else:
+                threshold = 0.8
 
-    return False
+            # 至少达到阈值的词在源文档中
+            matches = sum(1 for w in quote_words if w in normalized_source)
+            if matches / len(quote_words) >= threshold:
+                # 关键词匹配成功，但没有精确位置信息
+                return True, None
+
+    return False, None
+
+
+def evaluate_quote_relevance(quote: str, question_query: str) -> float:
+    """评估引用与问题的相关性。
+
+    Args:
+        quote: 引用内容
+        question_query: 问题文本
+
+    Returns:
+        0.0-1.0 的相关性分数
+    """
+    if not question_query.strip():
+        return 1.0  # 如果没有问题文本，默认相关
+
+    # 规范化
+    normalized_quote = normalize_text(quote)
+    normalized_query = normalize_text(question_query)
+
+    # 对于中文文本，使用字符级别的 n-gram 匹配（bigram）
+    def extract_ngrams(text: str, n: int = 2) -> set:
+        """提取 n-gram。"""
+        if len(text) < n:
+            return {text}
+        return {text[i:i+n] for i in range(len(text) - n + 1)}
+
+    # 提取关键词（英文按空格分词，中文使用 bigram）
+    stop_words = {'的', '了', '在', '是', '我', '有', '和', '就', '不', '人', '都', '一', '一个', '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有', '看', '好', '自己', '这', 'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'should', 'could', 'may', 'might', 'must', 'can'}
+
+    # 先尝试空格分词（适用于英文或分词后的中文）
+    quote_tokens = normalized_quote.split()
+    query_tokens = normalized_query.split()
+
+    # 如果分词结果太少（说明是中文未分词），使用 n-gram
+    if len(query_tokens) <= 2:
+        quote_ngrams = extract_ngrams(normalized_quote, n=2)
+        query_ngrams = extract_ngrams(normalized_query, n=2)
+
+        # 去除停用词
+        quote_ngrams = {ng for ng in quote_ngrams if not any(sw in ng for sw in stop_words)}
+        query_ngrams = {ng for ng in query_ngrams if not any(sw in ng for sw in stop_words)}
+
+        if not query_ngrams:
+            return 1.0
+
+        # 计算交集
+        common_ngrams = quote_ngrams & query_ngrams
+        relevance = len(common_ngrams) / len(query_ngrams)
+
+        # 也考虑引用中包含的 n-gram 比例（给予较小权重）
+        if len(quote_ngrams) > 0:
+            quote_coverage = len(common_ngrams) / len(quote_ngrams)
+            relevance = 0.7 * relevance + 0.3 * quote_coverage
+    else:
+        # 英文模式：按词匹配
+        quote_words = set(w for w in quote_tokens if w not in stop_words and len(w) > 1)
+        query_words = set(w for w in query_tokens if w not in stop_words and len(w) > 1)
+
+        if not query_words:
+            return 1.0
+
+        # 计算交集
+        common_words = quote_words & query_words
+        relevance = len(common_words) / len(query_words)
+
+        # 也考虑引用中包含的关键词比例（给予较小权重）
+        if len(quote_words) > 0:
+            quote_coverage = len(common_words) / len(quote_words)
+            relevance = 0.7 * relevance + 0.3 * quote_coverage
+
+    return min(1.0, relevance)
 
 
 def extract_source_claims(answer: str) -> List[Dict[str, str]]:
@@ -1334,7 +1469,10 @@ def evaluate_content_score(
 def evaluate_citation_score(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
     """计算引用得分。
 
-    新增：验证引用内容是否来自正确的源文档。
+    增强版：
+    1. 验证引用内容是否来自正确的源文档
+    2. 检查引用上下文是否合理
+    3. 评估引用与问题的相关性
 
     Returns:
         {
@@ -1342,7 +1480,9 @@ def evaluate_citation_score(question: Dict[str, Any], answer: str) -> Dict[str, 
             "has_quote": bool,
             "has_source": bool,
             "quote_validity_score": float (0~1),
-            "valid_quotes": List[str],
+            "context_match_score": float (0~1),
+            "relevance_score": float (0~1),
+            "valid_quotes": List[Dict],  # 包含上下文信息
             "invalid_quotes": List[str],
             "details": str
         }
@@ -1358,6 +1498,8 @@ def evaluate_citation_score(question: Dict[str, Any], answer: str) -> Dict[str, 
             "has_quote": False,
             "has_source": False,
             "quote_validity_score": 1.0,
+            "context_match_score": 1.0,
+            "relevance_score": 1.0,
             "valid_quotes": [],
             "invalid_quotes": [],
             "details": "不要求引用"
@@ -1375,41 +1517,90 @@ def evaluate_citation_score(question: Dict[str, Any], answer: str) -> Dict[str, 
             has_source = True
             break
 
-    # 新增：验证引用内容是否来自源文档
+    # 增强版：验证引用内容、上下文和相关性
     valid_quotes = []
     invalid_quotes = []
     quote_validity_score = 1.0
+    context_match_score = 1.0
+    relevance_score = 1.0
 
     if quotes and sources:
+        total_context_score = 0.0
+        total_relevance_score = 0.0
+        valid_quote_count = 0
+
+        question_text = question.get("query", "")
+
         for quote in quotes:
             is_valid = False
+            best_context = None
+
+            # 检查引用是否在任何源文档中
+            # 遍历所有来源，优先选择具有上下文的精确匹配结果
             for source in sources:
-                if quote_matches_source(quote, source):
+                matches, context = quote_matches_source(quote, source)
+                if matches:
                     is_valid = True
-                    break
+                    if context:
+                        # 找到精确匹配（有上下文），立即使用
+                        best_context = context
+                        break
+                    # 关键词匹配，继续查找是否有更好的精确匹配
+
             if is_valid:
-                valid_quotes.append(quote)
+                # 计算引用与问题的相关性
+                relevance = evaluate_quote_relevance(quote, question_text)
+                total_relevance_score += relevance
+
+                # 如果有上下文信息，说明是精确匹配
+                if best_context:
+                    total_context_score += 1.0
+                    valid_quotes.append({
+                        "quote": quote,
+                        "context": best_context,
+                        "relevance": relevance
+                    })
+                else:
+                    # 关键词匹配，没有精确位置
+                    total_context_score += 0.7  # 部分分
+                    valid_quotes.append({
+                        "quote": quote,
+                        "context": None,
+                        "relevance": relevance
+                    })
+
+                valid_quote_count += 1
             else:
                 invalid_quotes.append(quote)
 
-        # 有效引用率
-        quote_validity_score = len(valid_quotes) / len(quotes) if quotes else 1.0
+        # 计算各项得分
+        total_quotes = len(quotes)
+        quote_validity_score = valid_quote_count / total_quotes if total_quotes > 0 else 1.0
 
-    # 计算得分
+        if valid_quote_count > 0:
+            context_match_score = total_context_score / valid_quote_count
+            relevance_score = total_relevance_score / valid_quote_count
+        else:
+            context_match_score = 0.0
+            relevance_score = 0.0
+
+    # 计算综合得分
     score = 0.0
     if require_quote and require_source:
         base_score = 0.0
         if has_quote:
-            base_score += 0.4
+            base_score += 0.3  # 降低存在性权重
         if has_source:
-            base_score += 0.3
-        # 引用有效性占 0.3
-        base_score += quote_validity_score * 0.3
+            base_score += 0.2  # 降低来源标注权重
+        # 引用有效性、上下文匹配、相关性各占一部分
+        base_score += quote_validity_score * 0.25
+        base_score += context_match_score * 0.15
+        base_score += relevance_score * 0.10
         score = base_score
     elif require_quote:
         if has_quote:
-            # 引用存在性 70%，有效性 30%
-            score = 0.7 + quote_validity_score * 0.3
+            # 引用存在性 40%，有效性 30%，上下文 20%，相关性 10%
+            score = 0.4 + quote_validity_score * 0.3 + context_match_score * 0.2 + relevance_score * 0.1
         else:
             score = 0.0
     elif require_source:
@@ -1420,9 +1611,11 @@ def evaluate_citation_score(question: Dict[str, Any], answer: str) -> Dict[str, 
         "has_quote": has_quote,
         "has_source": has_source,
         "quote_validity_score": quote_validity_score,
+        "context_match_score": context_match_score,
+        "relevance_score": relevance_score,
         "valid_quotes": valid_quotes,
         "invalid_quotes": invalid_quotes,
-        "details": f"quote: {has_quote}, source: {has_source}, validity: {quote_validity_score:.2f}"
+        "details": f"quote: {has_quote}, source: {has_source}, validity: {quote_validity_score:.2f}, context: {context_match_score:.2f}, relevance: {relevance_score:.2f}"
     }
 
 

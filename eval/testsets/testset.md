@@ -4,17 +4,17 @@
 
 | 指标 | 数值 |
 |------|------|
-| 总题目数 | 67 |
+| 总题目数 | 89 |
 
 ## 类别分布
 
 | 类别 | 数量 | 说明 |
 |------|------|------|
-| understanding | 24 | 理解类：单文档内容理解 |
-| reasoning | 19 | 推理类：跨文档比较、归纳总结 |
-| negative | 10 | 负例类：应回答"不知道"的问题 |
+| understanding | 38 | 理解类：单文档内容理解 |
+| reasoning | 23 | 推理类：跨文档比较、归纳总结 |
+| negative | 9 | 负例类：应回答"不知道"的问题 |
 | statistics | 9 | 统计类：数值计算、数据分析 |
-| skill | 3 | 技能类：需要使用特定技能工具 |
+| skill | 8 | 技能类：需要使用特定技能工具 |
 | web_search | 2 | 联网类：需要联网搜索的问题 |
 
 ## 改进特性
@@ -444,12 +444,13 @@
 - **难度**: medium
 - **设计理由**: 腐烂橘子题解用原地修改，没有 visited_set 变量
 
-### Q55_neg_nonexistent_complexity
+### Q55_factorial_complexity
 
-- **问题**: 滑动谜题笔记中提到的 O(n!) 复杂度是针对什么情况的？
-- **类别**: negative
+- **问题**: 笔记中哪些题目涉及 O(n!) 复杂度？
+- **类别**: understanding
 - **难度**: medium
-- **设计理由**: 滑动谜题笔记只提到 6!=720，没有 O(n!) 的讨论
+- **期望来源**: leetcode_submissions.md, DFS&回溯算法.md
+- **备注**: 笔记中优美的排列、N皇后等题目涉及 O(n!) 复杂度
 
 ### Q56_neg_nonexistent_section
 
@@ -551,3 +552,180 @@
 - **类别**: reasoning
 - **难度**: hard
 - **期望来源**: BFS练习题 II.md, 力扣迷宫最近出口题解.md
+
+---
+
+## 新增 Understanding 题目 (Q68-Q80)
+
+覆盖之前引用不足的文档，提升测试集覆盖度。
+
+### Q68_max_level_sum
+
+- **问题**: 力扣1161「BFS求二叉树最大层和」的解题思路是什么？
+- **类别**: understanding
+- **难度**: medium
+- **期望来源**: BFS求二叉树最大层和.md
+
+### Q69_zigzag_path_formula
+
+- **问题**: 二叉树Z字形寻路中如何计算对称位置的节点标号？
+- **类别**: understanding
+- **难度**: hard
+- **期望来源**: 二叉树Z字形寻路题讲解.md
+
+### Q70_jump_game_iii_graph
+
+- **问题**: 跳跃游戏III如何建模成图问题？
+- **类别**: understanding
+- **难度**: medium
+- **期望来源**: 跳跃游戏III题解.md
+
+### Q71_tree_to_graph_parent
+
+- **问题**: 二叉树距离为K的节点问题中，如何记录父节点信息？
+- **类别**: understanding
+- **难度**: medium
+- **期望来源**: 二叉树距离为K节点解析.md
+
+### Q72_gene_mutation_graph
+
+- **问题**: 最小基因变化问题为什么适合用BFS解决？
+- **类别**: understanding
+- **难度**: medium
+- **期望来源**: 最小基因变化题解.md
+
+### Q73_odd_even_tree_validation
+
+- **问题**: 奇偶树问题如何用BFS验证各层的奇偶性和单调性？
+- **类别**: understanding
+- **难度**: medium
+- **期望来源**: 力扣奇偶树题目讲解.md
+
+### Q74_division_graph_weight
+
+- **问题**: 除法求值问题中，图的边权如何设置？
+- **类别**: understanding
+- **难度**: hard
+- **期望来源**: 力扣除法求值题讲解.md
+
+### Q75_complete_tree_inserter_queue
+
+- **问题**: 完全二叉树插入器如何维护候选父节点队列？
+- **类别**: understanding
+- **难度**: hard
+- **期望来源**: 完全二叉树插入器题解.md
+
+### Q76_complete_tree_check_null
+
+- **问题**: 检验完全二叉树时，为什么遇到空节点后不能再有非空节点？
+- **类别**: understanding
+- **难度**: medium
+- **期望来源**: 力扣完全二叉树检验讲解.md
+
+### Q77_zigzag_level_direction
+
+- **问题**: 二叉树锯齿形层序遍历如何控制每层的输出方向？
+- **类别**: understanding
+- **难度**: easy
+- **期望来源**: 二叉树锯齿形层序遍历解析.md
+
+### Q78_binary_matrix_8_directions
+
+- **问题**: 二进制矩阵最短路径为什么可以走8个方向？
+- **类别**: understanding
+- **难度**: easy
+- **期望来源**: 二进制矩阵最短路径题讲解.md
+
+### Q79_backtrack_decision_tree
+
+- **问题**: 回溯算法的决策树模型是什么意思？
+- **类别**: understanding
+- **难度**: medium
+- **期望来源**: 回溯算法理解与子集问题本质.md
+
+### Q80_constant_space_dummy_node
+
+- **问题**: 常数空间连接二叉树下一层指针中，虚拟头节点的作用是什么？
+- **类别**: understanding
+- **难度**: medium
+- **期望来源**: 常数空间连接二叉树下一层指针.md
+
+---
+
+## 新增 Skill 题目 (Q81-Q85)
+
+将 skill 题目从 3 道增加到 8 道，提升统计意义。
+
+### Q81_skill_lang_distribution
+
+- **问题**: 统计我的LeetCode提交记录中使用的编程语言分布
+- **类别**: skill
+- **难度**: medium
+- **期望来源**: leetcode_submissions.md
+- **期望工具**: run_code_interpreter
+
+### Q82_skill_runtime_error_problems
+
+- **问题**: 找出所有出现过Runtime Error的题目名称
+- **类别**: skill
+- **难度**: hard
+- **期望来源**: leetcode_submissions.md
+- **期望工具**: run_code_interpreter
+
+### Q83_skill_most_submitted
+
+- **问题**: 找出我提交次数最多的前5道题目
+- **类别**: skill
+- **难度**: medium
+- **期望来源**: leetcode_submissions.md
+- **期望工具**: run_code_interpreter
+
+### Q84_skill_first_try_pass
+
+- **问题**: 统计有多少道题目是一次通过的（只提交一次且Accepted）
+- **类别**: skill
+- **难度**: hard
+- **期望来源**: leetcode_submissions.md
+- **期望工具**: run_code_interpreter
+
+### Q85_skill_weekend_submissions
+
+- **问题**: 统计周末（周六周日）和工作日的提交次数对比
+- **类别**: skill
+- **难度**: hard
+- **期望来源**: leetcode_submissions.md
+- **期望工具**: run_code_interpreter
+
+---
+
+## 新增跨文档推理题目 (Q86-Q89)
+
+真正需要多文档综合才能回答的推理题。
+
+### Q86_cross_tree_traversal_methods
+
+- **问题**: 比较层序遍历(BFS)和递归遍历(DFS)在处理二叉树问题时的差异，各自适合什么场景？请从多篇笔记中举例说明
+- **类别**: reasoning
+- **难度**: hard
+- **期望来源**: BFS练习题 II.md, 递归遍历.md, DFS&回溯算法.md, 二叉树锯齿形层序遍历解析.md
+
+### Q87_cross_graph_modeling_patterns
+
+- **问题**: 从笔记中归纳将非图问题建模成图的常见模式，包括：什么是节点？什么是边？请举至少3个不同的例子
+- **类别**: reasoning
+- **难度**: hard
+- **期望来源**: 力扣除法求值题讲解.md, 最小基因变化题解.md, 跳跃游戏III题解.md, 二叉树距离为K节点解析.md
+
+### Q88_cross_complete_tree_properties
+
+- **问题**: 完全二叉树有哪些特殊性质？这些性质在哪些题目中被利用？请对比完全二叉树检验和完全二叉树插入器的解法
+- **类别**: reasoning
+- **难度**: hard
+- **期望来源**: 力扣完全二叉树检验讲解.md, 完全二叉树插入器题解.md, 二叉树 Perfect Complete Full 区别.md
+
+### Q89_cross_bfs_state_representation
+
+- **问题**: BFS中状态表示有哪些不同形式？分别适用于什么类型的问题？请从滑动谜题、最小基因变化、二进制矩阵最短路径等题目中总结
+- **类别**: reasoning
+- **难度**: hard
+- **期望来源**: 滑动谜题BFS解题思路.md, 最小基因变化题解.md, 二进制矩阵最短路径题讲解.md
