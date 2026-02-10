@@ -543,6 +543,27 @@ QUERY_REWRITE_PROMPT = """将以下搜索查询改写为多个变体，用于提
 4. 每个变体应简洁聚焦，不超过 10 个词
 5. 返回 JSON 数组，包含原 query 和 3-5 个变体
 
+注意：
+- 对于归纳/总结类查询（如"有哪些形式""归纳模式"），变体应该是具体的实例名称/场景，而非抽象概念的同义替换
+- 对于对比类查询（如"A 和 B 的联系"），变体应该拆分成各个子主题的独立查询
+- 对于简单事实类查询，变体应该是同义词扩展
+
+示例 1（归纳类）：
+查询: "BFS中状态表示有哪些不同形式？从滑动谜题、最小基因变化等题目中总结"
+返回: ["BFS中状态表示有哪些不同形式？从滑动谜题、最小基因变化等题目中总结", "BFS 状态表示形式", "滑动谜题 BFS 解题", "最小基因变化 BFS", "二进制矩阵最短路径 BFS"]
+
+示例 2（对比类）：
+查询: "动态规划和BFS有什么联系？"
+返回: ["动态规划和BFS有什么联系？", "动态规划 BFS 联系", "动态规划 状态转移", "BFS 最短路径", "DP 和 BFS 结合的题目"]
+
+示例 3（归纳类）：
+查询: "从笔记中归纳将非图问题建模成图的常见模式"
+返回: ["从笔记中归纳将非图问题建模成图的常见模式", "非图问题 建模成图", "基因变化 图建模 BFS", "除法求值 图", "跳跃游戏 图模型"]
+
+示例 4（简单事实类）：
+查询: "二叉树的中序遍历怎么写"
+返回: ["二叉树的中序遍历怎么写", "二叉树中序遍历", "inorder traversal", "中序遍历 递归 迭代"]
+
 查询: {query}
 
 返回格式: ["原query", "变体1", "变体2", ...]"""
@@ -585,21 +606,117 @@ def rewrite_query(query: str) -> List[str]:
         return [query]
 
 
-def query_my_notes(query: str, top_k: int = 8) -> dict[str, Any]:
+def _detect_query_top_k(query: str) -> int:
+    """根据查询特征动态检测 top_k 值。
+
+    Args:
+        query: 用户查询字符串
+
+    Returns:
+        推荐的 top_k 值（10/12/14/16）
+    """
+    query_lower = query.lower()
+
+    # 归纳类关键词
+    summary_keywords = [
+        "所有", "全部", "哪些", "有哪些", "归纳", "总结", "汇总", "整理", "列举", "枚举"
+    ]
+    # 对比类关键词
+    comparison_keywords = [
+        "对比", "比较", "区别", "差异", "联系", "关系", "共同", "相似", "不同"
+    ]
+    # 连接词
+    connectors = ["和", "与", "或", "、"]
+
+    has_summary = any(keyword in query_lower for keyword in summary_keywords)
+    has_comparison = any(keyword in query_lower for keyword in comparison_keywords)
+    has_connector = any(connector in query for connector in connectors)
+
+    # 归纳类 + 连接词 → top_k=16
+    if has_summary and has_connector:
+        return 16
+    # 归纳类 → top_k=14
+    if has_summary:
+        return 14
+    # 对比类或含连接词 → top_k=12
+    if has_comparison or has_connector:
+        return 12
+    # 其他 → top_k=10（默认值从 8 提升到 10）
+    return 10
+
+
+def _adjust_scores_for_diversity(
+    results: List[tuple[float, int]],
+    metadata: List[dict[str, Any]],
+    decay_factor: float = 0.7,
+    new_file_bonus: float = 1.2,
+) -> List[tuple[float, int]]:
+    """对候选集应用文件级多样性分数调整。
+
+    Args:
+        results: (score, idx) 元组列表，score 越小越好（L2 距离）
+        metadata: 索引元数据列表
+        decay_factor: 同文件后续 chunk 的衰减系数，默认 0.7
+        new_file_bonus: 新文件首个 chunk 的加成系数，默认 1.2
+
+    Returns:
+        调整后的 (adjusted_score, idx) 列表，按 adjusted_score 升序排序
+    """
+    file_occurrence_count: Dict[str, int] = {}
+    adjusted_results: List[tuple[float, int]] = []
+
+    for score, idx in results:
+        record = metadata[idx]
+        source_path = record.get("source_path", "")
+
+        occurrence = file_occurrence_count.get(source_path, 0)
+
+        if occurrence == 0:
+            # 新文件首个 chunk：分数变小（更好）
+            adjusted_score = score / new_file_bonus
+        else:
+            # 同文件后续 chunk：分数变大（更差）
+            adjusted_score = score / (decay_factor ** occurrence)
+
+        file_occurrence_count[source_path] = occurrence + 1
+        adjusted_results.append((adjusted_score, idx))
+
+    # 按调整后的分数升序排序（分数越小越好）
+    adjusted_results.sort(key=lambda x: x[0])
+    return adjusted_results
+
+
+def query_my_notes(query: str, top_k: int | None = None) -> dict[str, Any]:
     if not query:
         raise ValueError("query 不能为空")
+
+    # 动态检测 top_k
+    if top_k is None:
+        top_k = _detect_query_top_k(query)
+        logger.info(
+            "Dynamic top_k detected",
+            extra={"query": query, "detected_top_k": top_k},
+        )
+    else:
+        logger.info(
+            "Using explicit top_k",
+            extra={"query": query, "explicit_top_k": top_k},
+        )
 
     index = load_index()
     metadata = load_metadata()
 
     query_variants = rewrite_query(query)
 
+    # 扩大候选集到 top_k * 3，为多样性调整留出空间
+    candidate_k = min(top_k * 3, index.ntotal)
+
     all_results: List[tuple[float, int]] = []
     seen_chunks: set[tuple[str | None, int | None]] = set()
 
     for variant in query_variants:
         embedding = np.array(build_embedding(variant), dtype="float32").reshape(1, -1)
-        distances, indices = index.search(embedding, min(top_k * 2, index.ntotal))
+        distances, indices = index.search(embedding, candidate_k)
 
         for score, idx in zip(distances[0], indices[0]):
             if idx == -1 or idx >= len(metadata):
@@ -611,20 +728,31 @@ def query_my_notes(query: str, top_k: int = 8) -> dict[str, Any]:
             all_results.append((float(score), int(idx)))
 
     all_results.sort(key=lambda x: x[0])
-    top_results = all_results[:top_k]
+
+    # 应用文件级多样性分数调整
+    adjusted_results = _adjust_scores_for_diversity(all_results, metadata)
+
+    # 取调整后的 top_k 结果
+    top_results = adjusted_results[:top_k]
 
     results: List[dict[str, Any]] = []
+    unique_files: set[str] = set()
+
     for score, idx in top_results:
         record = metadata[idx]
         heading_path = record.get("heading_path", "")
         text = record.get("text", "")
+        source_path = record.get("source_path", "")
+        if source_path:
+            unique_files.add(source_path)
+
         # 将 heading_path 拼接到 text 前面，帮助模型理解内容所属章节
         display_text = f"[{heading_path}]\n{text}" if heading_path else text
 
         results.append(
             {
                 "score": score,
-                "source_path": record.get("source_path"),
+                "source_path": source_path,
                 "chunk_index": record.get("chunk_index"),
                 "heading_path": heading_path,
                 "document_title": record.get("document_title"),
@@ -637,8 +765,10 @@ def query_my_notes(query: str, top_k: int = 8) -> dict[str, Any]:
         "query_my_notes completed",
         extra={
             "query": query,
+            "top_k": top_k,
             "variants_count": len(query_variants),
             "results": len(results),
+            "unique_files": len(unique_files),
         },
     )
 
