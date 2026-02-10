@@ -756,7 +756,26 @@ def semantic_match(
 
 def precompute_embeddings(questions: List[Dict[str, Any]]) -> None:
     """预计算所有评估文本的 embedding 并缓存（批量调用）。"""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     texts = set()
+
+    # 并发预热 rewrite_query 缓存
+    queries_to_rewrite = []
+    for q in questions:
+        query = q.get("query", "")
+        if query and len(query) >= 5 and query not in _rewrite_cache:
+            queries_to_rewrite.append(query)
+
+    if queries_to_rewrite:
+        print(f"  并发生成 {len(queries_to_rewrite)} 个 query 变体...", file=sys.stderr)
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(rewrite_query, q): q for q in queries_to_rewrite}
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except Exception:
+                    pass
 
     for q in questions:
         # 收集 query（用于 recall@k 计算）
