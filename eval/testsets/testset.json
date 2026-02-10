@@ -17,8 +17,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -74,8 +73,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -110,8 +108,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -152,8 +149,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -202,8 +198,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -243,8 +238,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -291,8 +285,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -327,8 +320,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -364,8 +356,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -400,8 +391,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -440,8 +430,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -476,8 +465,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -514,8 +502,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -560,8 +547,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -599,8 +585,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -639,8 +624,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -676,8 +660,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -712,8 +695,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.6,
-        "citation_weight": 0.2
+        "content_weight": 0.6
       },
       "content_rules": {
         "must_have": [
@@ -747,8 +729,7 @@
       "allow_unknown": true,
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.6,
-        "citation_weight": 0.2
+        "content_weight": 0.6
       },
       "content_rules": {
         "must_have": [],
@@ -774,8 +755,7 @@
       "allow_unknown": true,
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.6,
-        "citation_weight": 0.2
+        "content_weight": 0.6
       },
       "content_rules": {
         "must_have": [],
@@ -801,8 +781,7 @@
       "allow_unknown": true,
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.6,
-        "citation_weight": 0.2
+        "content_weight": 0.6
       },
       "content_rules": {
         "must_have": [],
@@ -828,8 +807,7 @@
       "allow_unknown": true,
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.6,
-        "citation_weight": 0.2
+        "content_weight": 0.6
       },
       "content_rules": {
         "must_have": [],
@@ -855,8 +833,7 @@
       "allow_unknown": true,
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.6,
-        "citation_weight": 0.2
+        "content_weight": 0.6
       },
       "content_rules": {
         "must_have": [],
@@ -883,8 +860,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.6,
-        "citation_weight": 0.2
+        "content_weight": 0.6
       },
       "content_rules": {
         "must_have": [
@@ -935,8 +911,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.6,
-        "citation_weight": 0.2
+        "content_weight": 0.6
       },
       "content_rules": {
         "must_have": [
@@ -976,8 +951,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1016,8 +990,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1060,8 +1033,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1100,8 +1072,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1140,8 +1111,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1184,8 +1154,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1222,8 +1191,7 @@
       "expected_sources": [],
       "scoring": {
         "retrieval_weight": 0.1,
-        "content_weight": 0.7,
-        "citation_weight": 0.2
+        "content_weight": 0.7
       },
       "content_rules": {
         "must_have": [
@@ -1257,8 +1225,7 @@
       "expected_sources": [],
       "scoring": {
         "retrieval_weight": 0.1,
-        "content_weight": 0.6,
-        "citation_weight": 0.3
+        "content_weight": 0.6
       },
       "content_rules": {
         "must_have": [
@@ -1285,8 +1252,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.6,
-        "citation_weight": 0.2
+        "content_weight": 0.6
       },
       "content_rules": {
         "must_have": [
@@ -1328,8 +1294,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -1371,7 +1336,6 @@
       "scoring": {
         "retrieval_weight": 0.1,
         "content_weight": 0.6,
-        "citation_weight": 0.2,
         "tool_weight": 0.1
       },
       "content_rules": {
@@ -1412,7 +1376,6 @@
       "scoring": {
         "retrieval_weight": 0.2,
         "content_weight": 0.5,
-        "citation_weight": 0.2,
         "tool_weight": 0.1
       },
       "content_rules": {
@@ -1443,8 +1406,7 @@
       "expected_sources": [],
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.6,
-        "citation_weight": 0.2
+        "content_weight": 0.6
       },
       "content_rules": {
         "must_have": [
@@ -1476,8 +1438,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1513,8 +1474,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -1553,8 +1513,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1589,8 +1548,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1625,8 +1583,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1661,8 +1618,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1705,8 +1661,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1745,8 +1700,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1785,8 +1739,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -1828,8 +1781,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -1874,8 +1826,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -1919,7 +1870,6 @@
       "scoring": {
         "retrieval_weight": 0.2,
         "content_weight": 0.5,
-        "citation_weight": 0.2,
         "tool_weight": 0.1
       },
       "content_rules": {
@@ -1963,8 +1913,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -2014,8 +1963,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -2058,8 +2006,7 @@
       "allow_unknown": true,
       "scoring": {
         "retrieval_weight": 0.25,
-        "content_weight": 0.65,
-        "citation_weight": 0.1
+        "content_weight": 0.65
       },
       "content_rules": {
         "must_have": [],
@@ -2096,8 +2043,7 @@
       "allow_unknown": true,
       "scoring": {
         "retrieval_weight": 0.25,
-        "content_weight": 0.65,
-        "citation_weight": 0.1
+        "content_weight": 0.65
       },
       "content_rules": {
         "must_have": [],
@@ -2134,8 +2080,7 @@
       "allow_unknown": false,
       "scoring": {
         "retrieval_weight": 0.25,
-        "content_weight": 0.65,
-        "citation_weight": 0.1
+        "content_weight": 0.65
       },
       "content_rules": {
         "must_have": [
@@ -2178,8 +2123,7 @@
       "allow_unknown": true,
       "scoring": {
         "retrieval_weight": 0.25,
-        "content_weight": 0.65,
-        "citation_weight": 0.1
+        "content_weight": 0.65
       },
       "content_rules": {
         "must_have": [],
@@ -2212,8 +2156,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.15,
-        "content_weight": 0.75,
-        "citation_weight": 0.1
+        "content_weight": 0.75
       },
       "content_rules": {
         "must_have": [
@@ -2253,8 +2196,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.15,
-        "content_weight": 0.75,
-        "citation_weight": 0.1
+        "content_weight": 0.75
       },
       "content_rules": {
         "must_have": [
@@ -2297,7 +2239,6 @@
       "scoring": {
         "retrieval_weight": 0.15,
         "content_weight": 0.7,
-        "citation_weight": 0.1,
         "tool_weight": 0.05
       },
       "content_rules": {
@@ -2338,8 +2279,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.15,
-        "content_weight": 0.75,
-        "citation_weight": 0.1
+        "content_weight": 0.75
       },
       "content_rules": {
         "must_have": [
@@ -2387,8 +2327,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.7,
-        "citation_weight": 0.1
+        "content_weight": 0.7
       },
       "content_rules": {
         "must_have": [
@@ -2431,8 +2370,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.7,
-        "citation_weight": 0.1
+        "content_weight": 0.7
       },
       "content_rules": {
         "must_have": [
@@ -2469,8 +2407,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.5,
-        "citation_weight": 0.1
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -2519,8 +2456,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.5,
-        "citation_weight": 0.1
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -2560,8 +2496,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.5,
-        "citation_weight": 0.1
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -2602,8 +2537,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.5,
-        "citation_weight": 0.1
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -2644,8 +2578,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.5,
-        "citation_weight": 0.1
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -2689,8 +2622,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -2729,8 +2661,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -2769,8 +2700,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -2809,8 +2739,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -2853,8 +2782,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -2893,8 +2821,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -2933,8 +2860,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -2977,8 +2903,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -3017,8 +2942,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -3057,8 +2981,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -3105,8 +3028,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -3145,8 +3067,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -3185,8 +3106,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.3,
-        "content_weight": 0.5,
-        "citation_weight": 0.2
+        "content_weight": 0.5
       },
       "content_rules": {
         "must_have": [
@@ -3232,8 +3152,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.7,
-        "citation_weight": 0.1
+        "content_weight": 0.7
       },
       "content_rules": {
         "must_have": [
@@ -3276,8 +3195,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.7,
-        "citation_weight": 0.1
+        "content_weight": 0.7
       },
       "content_rules": {
         "must_have": [
@@ -3320,8 +3238,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.7,
-        "citation_weight": 0.1
+        "content_weight": 0.7
       },
       "content_rules": {
         "must_have": [
@@ -3364,8 +3281,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.7,
-        "citation_weight": 0.1
+        "content_weight": 0.7
       },
       "content_rules": {
         "must_have": [
@@ -3412,8 +3328,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.2,
-        "content_weight": 0.7,
-        "citation_weight": 0.1
+        "content_weight": 0.7
       },
       "content_rules": {
         "must_have": [
@@ -3465,8 +3380,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -3525,8 +3439,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -3568,8 +3481,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [
@@ -3615,8 +3527,7 @@
       ],
       "scoring": {
         "retrieval_weight": 0.4,
-        "content_weight": 0.4,
-        "citation_weight": 0.2
+        "content_weight": 0.4
       },
       "content_rules": {
         "must_have": [

@@ -104,6 +104,25 @@ class UnknownDetectionConfig:
 
 
 @dataclass
+class AttributionEvaluationConfig:
+    """归因评估配置"""
+    embedding_threshold: float = 0.70
+    llm_uncertain_range: List[float] = field(default_factory=lambda: [0.50, 0.70])
+    min_claim_length: int = 10
+    meta_statement_patterns: List[str] = field(default_factory=lambda: [
+        r"^笔记.*提到",
+        r"^根据.*文档",
+        r"^来源[：:]",
+        r"^在.*中.*记录"
+    ])
+    knowledge_disclaimer_keywords: List[str] = field(default_factory=lambda: [
+        "模型自身知识",
+        "通用知识补充",
+        "非笔记内容"
+    ])
+
+
+@dataclass
 class SynonymConfig:
     """同义词配置"""
     global_synonyms: Dict[str, List[str]] = field(default_factory=dict)
@@ -127,6 +146,7 @@ class EvalConfig:
     unknown_detection: UnknownDetectionConfig = field(default_factory=UnknownDetectionConfig)
     synonyms: SynonymConfig = field(default_factory=SynonymConfig)
     semantic_categories: SemanticCategoryConfig = field(default_factory=SemanticCategoryConfig)
+    attribution_evaluation: AttributionEvaluationConfig = field(default_factory=AttributionEvaluationConfig)
 
 
 # 全局配置实例
@@ -192,6 +212,22 @@ def _parse_unknown_detection_config(data: Dict[str, Any]) -> UnknownDetectionCon
         config.exclusion_patterns = data["exclusion_patterns"]
     if "lazy_rejection_penalty" in data:
         config.lazy_rejection_penalty = data["lazy_rejection_penalty"]
+    return config
+
+
+def _parse_attribution_evaluation_config(data: Dict[str, Any]) -> AttributionEvaluationConfig:
+    """解析归因评估配置"""
+    config = AttributionEvaluationConfig()
+    if "embedding_threshold" in data:
+        config.embedding_threshold = data["embedding_threshold"]
+    if "llm_uncertain_range" in data:
+        config.llm_uncertain_range = data["llm_uncertain_range"]
+    if "min_claim_length" in data:
+        config.min_claim_length = data["min_claim_length"]
+    if "meta_statement_patterns" in data:
+        config.meta_statement_patterns = data["meta_statement_patterns"]
+    if "knowledge_disclaimer_keywords" in data:
+        config.knowledge_disclaimer_keywords = data["knowledge_disclaimer_keywords"]
     return config
 
 
@@ -261,6 +297,8 @@ def load_eval_config(config_path: Optional[Path] = None) -> EvalConfig:
         config.synonyms = _parse_synonym_config(data["synonyms"])
     if "semantic_categories" in data:
         config.semantic_categories = _parse_semantic_category_config(data["semantic_categories"])
+    if "attribution_evaluation" in data:
+        config.attribution_evaluation = _parse_attribution_evaluation_config(data["attribution_evaluation"])
 
     # 始终更新全局缓存，确保 get_config() 返回正确的配置
     _config = config

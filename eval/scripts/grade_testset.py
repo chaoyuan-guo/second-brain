@@ -1609,8 +1609,8 @@ def evaluate_content_score(
     }
 
 
-def evaluate_citation_score(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
-    """计算引用得分。
+def _legacy_evaluate_citation_score(question: Dict[str, Any], answer: str) -> Dict[str, Any]:
+    """计算引用得分（旧版本，保留作为降级备份）。
 
     增强版：
     1. 验证引用内容是否来自正确的源文档
@@ -1759,6 +1759,518 @@ def evaluate_citation_score(question: Dict[str, Any], answer: str) -> Dict[str, 
         "valid_quotes": valid_quotes,
         "invalid_quotes": invalid_quotes,
         "details": f"quote: {has_quote}, source: {has_source}, validity: {quote_validity_score:.2f}, context: {context_match_score:.2f}, relevance: {relevance_score:.2f}"
+    }
+
+
+def get_attribution_mode(question: Dict[str, Any]) -> str:
+    """推断归因评估模式。
+
+    Args:
+        question: 题目配置
+
+    Returns:
+        "disabled" | "standard" | "strict"
+    """
+    citation_rules = question.get("citation_rules", {})
+
+    # 优先使用新字段
+    if "attribution_mode" in citation_rules:
+        return citation_rules["attribution_mode"]
+
+    # 向后兼容：从 require_quote/require_source 推断
+    require_quote = citation_rules.get("require_quote", False)
+    require_source = citation_rules.get("require_source", False)
+
+    if not require_quote and not require_source:
+        return "disabled"
+    elif require_quote and require_source:
+        return "strict"
+    else:
+        return "standard"
+
+
+def extract_read_files_from_events(tool_events: Optional[List[Dict[str, Any]]]) -> List[str]:
+    """从 tool_events 中提取已读取的文件路径。
+
+    Args:
+        tool_events: 工具调用事件列表
+
+    Returns:
+        已读取的文件路径列表（已归一化）
+    """
+    if not tool_events:
+        return []
+
+    read_files = []
+    for event in tool_events:
+        if event.get("tool_name") != "read_note_file":
+            continue
+        if event.get("stage") != "end":
+            continue
+        args = event.get("arguments") or {}
+        if not isinstance(args, dict):
+            continue
+        file_path = args.get("file_path") or args.get("path") or ""
+        if file_path:
+            read_files.append(normalize_source_path(str(file_path)))
+
+    return read_files
+
+
+def compute_workflow_compliance(
+    question: Dict[str, Any],
+    tool_events: Optional[List[Dict[str, Any]]]
+) -> Dict[str, Any]:
+    """计算工作流合规得分。
+
+    检查是否遵循 检索→阅读→回答 的标准流程。
+
+    权重分配：
+    - 是否调用 query_my_notes: 0.25
+    - 是否调用 read_note_file: 0.50
+    - 是否读取 expected_sources: 0.25
+
+    Args:
+        question: 题目配置
+        tool_events: 工具调用事件列表
+
+    Returns:
+        {
+            "score": float (0~1),
+            "has_query": bool,
+            "has_read": bool,
+            "expected_sources_coverage": float (0~1),
+            "details": str
+        }
+    """
+    if not tool_events:
+        return {
+            "score": 0.0,
+            "has_query": False,
+            "has_read": False,
+            "expected_sources_coverage": 0.0,
+            "details": "无工具调用事件"
+        }
+
+    # 检查是否调用了 query_my_notes
+    has_query = any(
+        event.get("tool_name") == "query_my_notes" and event.get("stage") == "end"
+        for event in tool_events
+    )
+
+    # 检查是否调用了 read_note_file
+    read_files = extract_read_files_from_events(tool_events)
+    has_read = len(read_files) > 0
+
+    # 计算 expected_sources 覆盖率
+    expected_sources = [
+        normalize_source_path(s)
+        for s in (question.get("expected_sources") or question.get("sources") or [])
+    ]
+
+    expected_sources_coverage = 0.0
+    if expected_sources:
+        read_files_set = set(read_files)
+        hits = sum(1 for s in expected_sources if s in read_files_set)
+        expected_sources_coverage = hits / len(expected_sources)
+    else:
+        # 没有 expected_sources，只要读了文件就给满分
+        expected_sources_coverage = 1.0 if has_read else 0.0
+
+    # 计算得分
+    score = 0.0
+    if has_query:
+        score += 0.25
+    if has_read:
+        score += 0.50
+    score += expected_sources_coverage * 0.25
+
+    return {
+        "score": score,
+        "has_query": has_query,
+        "has_read": has_read,
+        "expected_sources_coverage": expected_sources_coverage,
+        "details": f"query={has_query}, read={has_read}, coverage={expected_sources_coverage:.2f}"
+    }
+
+
+def extract_key_claims(answer: str, min_length: int = 10) -> List[str]:
+    """从回答中提取关键陈述。
+
+    过滤掉：
+    - 元信息句（"笔记中提到..."）
+    - 问句
+    - 过短的句子
+    - 代码块
+
+    Args:
+        answer: 回答文本
+        min_length: 最小陈述长度
+
+    Returns:
+        关键陈述列表
+    """
+    config = get_config()
+    meta_patterns = config.attribution_evaluation.meta_statement_patterns
+
+    # 移除代码块
+    answer_no_code = re.sub(r'```[\s\S]*?```', '', answer)
+    answer_no_code = re.sub(r'`[^`]+`', '', answer_no_code)
+
+    # 分句
+    sentences = re.split(r'[。.!！\n]', answer_no_code)
+
+    claims = []
+    for sent in sentences:
+        sent = sent.strip()
+
+        # 过滤过短
+        if len(sent) < min_length:
+            continue
+
+        # 过滤问句
+        if sent.endswith('?') or sent.endswith('？'):
+            continue
+
+        # 过滤元信息句
+        is_meta = False
+        for pattern in meta_patterns:
+            if re.match(pattern, sent):
+                is_meta = True
+                break
+        if is_meta:
+            continue
+
+        claims.append(sent)
+
+    return claims
+
+
+def check_claim_attribution_with_llm(claims: List[str], document_content: str) -> List[bool]:
+    """使用 LLM 判断陈述是否有文档支撑。
+
+    批量处理多个陈述。
+
+    Args:
+        claims: 陈述列表
+        document_content: 文档内容
+
+    Returns:
+        布尔列表，表示每个陈述是否有支撑
+    """
+    if not claims:
+        return []
+
+    try:
+        client = _get_openai_client()
+        model = os.getenv("SUPER_MIND_CHAT_MODEL", DEFAULT_CHAT_MODEL)
+
+        # 构建 prompt
+        claims_text = "\n".join(f"{i+1}. {claim}" for i, claim in enumerate(claims))
+        prompt = f"""以下是一些陈述和一段文档内容。请判断每个陈述是否有文档内容支撑。
+
+陈述列表：
+{claims_text}
+
+文档内容：
+{document_content[:2000]}
+
+请对每个陈述回答 yes 或 no，用逗号分隔。例如：yes,no,yes,no
+
+只回答 yes/no 序列，不要其他内容。"""
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            max_completion_tokens=100,
+        )
+
+        content = (response.choices[0].message.content or "").strip().lower()
+
+        # 解析回答
+        results = []
+        parts = content.split(',')
+        for i, claim in enumerate(claims):
+            if i < len(parts):
+                answer = parts[i].strip()
+                results.append(answer == "yes" or answer == "true")
+            else:
+                # 如果 LLM 没有返回足够的答案，默认为 False
+                results.append(False)
+
+        return results
+
+    except Exception as e:
+        # LLM 调用失败，默认全部为 False
+        print(f"⚠ LLM 归因判断失败: {e}", file=sys.stderr)
+        return [False] * len(claims)
+
+
+def compute_content_attribution(
+    answer: str,
+    tool_events: Optional[List[Dict[str, Any]]]
+) -> Dict[str, Any]:
+    """计算内容归因得分。
+
+    使用两阶段匹配（Embedding 粗筛 + LLM 精判）验证回答中的关键陈述
+    是否有已读文档支撑。
+
+    Args:
+        answer: 回答文本
+        tool_events: 工具调用事件列表
+
+    Returns:
+        {
+            "score": float (0~1),
+            "total_claims": int,
+            "attributed_claims": int,
+            "unattributed_claims": List[str],
+            "details": str
+        }
+    """
+    config = get_config()
+    embedding_threshold = config.attribution_evaluation.embedding_threshold
+    llm_uncertain_range = config.attribution_evaluation.llm_uncertain_range
+    min_claim_length = config.attribution_evaluation.min_claim_length
+
+    # 提取关键陈述
+    claims = extract_key_claims(answer, min_claim_length)
+
+    if not claims:
+        # 没有提取到关键陈述，可能是回答太短或全是代码
+        return {
+            "score": 1.0,
+            "total_claims": 0,
+            "attributed_claims": 0,
+            "unattributed_claims": [],
+            "details": "无关键陈述"
+        }
+
+    # 加载已读文档内容
+    read_files = extract_read_files_from_events(tool_events)
+    if not read_files:
+        # 没有读取任何文档，无法归因
+        return {
+            "score": 0.0,
+            "total_claims": len(claims),
+            "attributed_claims": 0,
+            "unattributed_claims": claims,
+            "details": "未读取任何文档"
+        }
+
+    # 合并所有已读文档内容
+    all_docs_content = []
+    for file_path in read_files:
+        content = load_source_content(file_path)
+        if content:
+            all_docs_content.append(content)
+
+    combined_docs = "\n\n".join(all_docs_content)
+
+    if not combined_docs:
+        return {
+            "score": 0.0,
+            "total_claims": len(claims),
+            "attributed_claims": 0,
+            "unattributed_claims": claims,
+            "details": "文档内容为空"
+        }
+
+    # 两阶段匹配
+    attributed_count = 0
+    uncertain_claims = []
+    unattributed_claims = []
+
+    for claim in claims:
+        # 阶段 1：Embedding 粗筛
+        similarity = compute_semantic_similarity(claim, combined_docs)
+
+        if similarity >= embedding_threshold:
+            # 高相似度，直接判定为有支撑
+            attributed_count += 1
+        elif similarity >= llm_uncertain_range[0] and similarity <= llm_uncertain_range[1]:
+            # 不确定区间，留给 LLM 精判
+            uncertain_claims.append(claim)
+        else:
+            # 低相似度，判定为无支撑
+            unattributed_claims.append(claim)
+
+    # 阶段 2：LLM 精判不确定的陈述
+    if uncertain_claims:
+        llm_results = check_claim_attribution_with_llm(uncertain_claims, combined_docs)
+        for claim, has_support in zip(uncertain_claims, llm_results):
+            if has_support:
+                attributed_count += 1
+            else:
+                unattributed_claims.append(claim)
+
+    # 计算得分
+    score = attributed_count / len(claims) if claims else 1.0
+
+    return {
+        "score": score,
+        "total_claims": len(claims),
+        "attributed_claims": attributed_count,
+        "unattributed_claims": unattributed_claims,
+        "details": f"attributed={attributed_count}/{len(claims)}"
+    }
+
+
+def compute_fidelity_score(
+    answer: str,
+    tool_events: Optional[List[Dict[str, Any]]],
+    expected_sources: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    """计算忠实度得分。
+
+    检查三个层面：
+    1. 伪造来源检测：声称引用了某文件，但未实际读取
+    2. 知识边界标注：是否明确区分笔记内容和模型知识
+    3. 未读文件直接回答：没有读文件但给出详细回答
+
+    Args:
+        answer: 回答文本
+        tool_events: 工具调用事件列表
+        expected_sources: 期望的源文档列表
+
+    Returns:
+        {
+            "score": float (0~1),
+            "has_fake_source": bool,
+            "has_knowledge_disclaimer": bool,
+            "answered_without_reading": bool,
+            "details": str
+        }
+    """
+    config = get_config()
+    disclaimer_keywords = config.attribution_evaluation.knowledge_disclaimer_keywords
+
+    # 检查是否读取了文件
+    read_files = extract_read_files_from_events(tool_events)
+    has_read = len(read_files) > 0
+
+    # 1. 伪造来源检测
+    has_fake_source = False
+    if expected_sources:
+        read_files_set = set(read_files)
+        for source in expected_sources:
+            normalized_source = normalize_source_path(source)
+            basename = Path(source).stem.lower()
+
+            # 如果答案中提到了这个文件名，但没有实际读取
+            if basename in answer.lower() and normalized_source not in read_files_set:
+                has_fake_source = True
+                break
+
+    if has_fake_source:
+        # 伪造来源，直接 0 分
+        return {
+            "score": 0.0,
+            "has_fake_source": True,
+            "has_knowledge_disclaimer": False,
+            "answered_without_reading": False,
+            "details": "检测到伪造来源"
+        }
+
+    # 2. 知识边界标注
+    has_knowledge_disclaimer = any(
+        keyword in answer
+        for keyword in disclaimer_keywords
+    )
+
+    # 3. 未读文件直接回答
+    answered_without_reading = False
+    if not has_read and len(answer.strip()) > 50:
+        # 没有读文件但给出了详细回答（超过 50 字符）
+        answered_without_reading = True
+
+    # 计算得分
+    if has_knowledge_disclaimer:
+        score = 1.0
+    elif answered_without_reading:
+        score = 0.3
+    else:
+        score = 1.0
+
+    return {
+        "score": score,
+        "has_fake_source": has_fake_source,
+        "has_knowledge_disclaimer": has_knowledge_disclaimer,
+        "answered_without_reading": answered_without_reading,
+        "details": f"fake={has_fake_source}, disclaimer={has_knowledge_disclaimer}, no_read={answered_without_reading}"
+    }
+
+
+def evaluate_attribution_score(
+    question: Dict[str, Any],
+    answer: str,
+    tool_events: Optional[List[Dict[str, Any]]]
+) -> Dict[str, Any]:
+    """评估归因可靠性得分（新版引用评估）。
+
+    根据 attribution_mode 分发评估逻辑：
+    - disabled: 不要求归因，直接满分
+    - standard: 标准模式，评估三个维度
+    - strict: 严格模式，更高要求
+
+    三个维度：
+    - workflow (0.35): 工作流合规性
+    - attribution (0.50): 内容归因
+    - fidelity (0.15): 忠实度
+
+    Args:
+        question: 题目配置
+        answer: 回答文本
+        tool_events: 工具调用事件列表
+
+    Returns:
+        {
+            "score": float (0~1),
+            "workflow": Dict,
+            "attribution": Dict,
+            "fidelity": Dict,
+            "details": str
+        }
+    """
+    attribution_mode = get_attribution_mode(question)
+
+    # disabled 模式：直接满分
+    if attribution_mode == "disabled":
+        return {
+            "score": 1.0,
+            "workflow": {"score": 1.0},
+            "attribution": {"score": 1.0},
+            "fidelity": {"score": 1.0},
+            "details": "归因评估已禁用"
+        }
+
+    # 计算三个维度
+    workflow_result = compute_workflow_compliance(question, tool_events)
+    attribution_result = compute_content_attribution(answer, tool_events)
+    fidelity_result = compute_fidelity_score(
+        answer,
+        tool_events,
+        question.get("expected_sources") or question.get("sources")
+    )
+
+    # 加权计算总分
+    workflow_weight = 0.35
+    attribution_weight = 0.50
+    fidelity_weight = 0.15
+
+    score = (
+        workflow_result["score"] * workflow_weight +
+        attribution_result["score"] * attribution_weight +
+        fidelity_result["score"] * fidelity_weight
+    )
+
+    return {
+        "score": score,
+        "workflow": workflow_result,
+        "attribution": attribution_result,
+        "fidelity": fidelity_result,
+        "details": f"workflow={workflow_result['score']:.2f}, attribution={attribution_result['score']:.2f}, fidelity={fidelity_result['score']:.2f}"
     }
 
 
@@ -1923,7 +2435,7 @@ def evaluate_question(
 
     # 计算各维度得分
     content_result = evaluate_content_score(question, answer, tool_events)
-    citation_result = evaluate_citation_score(question, answer)
+    citation_result = evaluate_attribution_score(question, answer, tool_events)
     actual_retrieval_score = compute_actual_retrieval_score(question, tool_events)
 
     # 计算检索指标（precision/recall/f1）

@@ -12,7 +12,7 @@ from eval.scripts.grade_testset import (
     get_quote_context,
     quote_matches_source,
     evaluate_quote_relevance,
-    evaluate_citation_score,
+    _legacy_evaluate_citation_score as evaluate_citation_score,
 )
 
 

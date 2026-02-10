@@ -4,36 +4,36 @@
 
   "scoring": {
     "default_weights": {
-      "retrieval_weight": 0.35,
-      "content_weight": 0.55,
-      "citation_weight": 0.10,
+      "retrieval_weight": 0.25,
+      "content_weight": 0.45,
+      "citation_weight": 0.30,
       "tool_weight": 0.0
     },
     "category_weights": {
       "understanding": {
-        "retrieval_weight": 0.30,
-        "content_weight": 0.60,
-        "citation_weight": 0.10
+        "retrieval_weight": 0.25,
+        "content_weight": 0.45,
+        "citation_weight": 0.30
       },
       "reasoning": {
-        "retrieval_weight": 0.40,
-        "content_weight": 0.50,
-        "citation_weight": 0.10
+        "retrieval_weight": 0.25,
+        "content_weight": 0.45,
+        "citation_weight": 0.30
       },
       "statistics": {
         "retrieval_weight": 0.15,
-        "content_weight": 0.75,
-        "citation_weight": 0.10
+        "content_weight": 0.55,
+        "citation_weight": 0.30
       },
       "negative": {
-        "retrieval_weight": 0.25,
-        "content_weight": 0.65,
-        "citation_weight": 0.10
+        "retrieval_weight": 0.20,
+        "content_weight": 0.50,
+        "citation_weight": 0.30
       },
       "skill": {
         "retrieval_weight": 0.20,
-        "content_weight": 0.70,
-        "citation_weight": 0.10
+        "content_weight": 0.50,
+        "citation_weight": 0.30
       },
       "web_search": {
         "retrieval_weight": 0.1,
@@ -120,5 +120,13 @@
       "不限于笔记"
     ],
     "lazy_rejection_penalty": 0.5
+  },
+
+  "attribution_evaluation": {
+    "embedding_threshold": 0.70,
+    "llm_uncertain_range": [0.50, 0.70],
+    "min_claim_length": 10,
+    "meta_statement_patterns": ["^笔记.*提到", "^根据.*文档", "^来源[：:]", "^在.*中.*记录"],
+    "knowledge_disclaimer_keywords": ["模型自身知识", "通用知识补充", "非笔记内容"]
   }
 }

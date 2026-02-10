@@ -12,7 +12,12 @@ from eval.scripts.grade_testset import (
     get_quote_context,
     quote_matches_source,
     evaluate_quote_relevance,
-    evaluate_citation_score,
+    _legacy_evaluate_citation_score,
+    evaluate_attribution_score,
+    get_attribution_mode,
+    compute_workflow_compliance,
+    compute_fidelity_score,
+    extract_key_claims,
 )
 
 
@@ -67,7 +72,7 @@ def test_evaluate_quote_relevance():
 
 
 def test_evaluate_citation_score_structure():
-    """测试引用评估返回结构。"""
+    """测试旧版引用评估返回结构。"""
     question = {
         "query": "测试问题",
         "citation_rules": {
@@ -78,7 +83,7 @@ def test_evaluate_citation_score_structure():
     }
     answer = '这是答案，"引用内容"，来源: test_source.md'
 
-    result = evaluate_citation_score(question, answer)
+    result = _legacy_evaluate_citation_score(question, answer)
 
     # 检查返回结构
     assert "score" in result, "应该包含 score"
@@ -111,7 +116,7 @@ def test_no_citation_requirement():
     }
     answer = "这是答案"
 
-    result = evaluate_citation_score(question, answer)
+    result = _legacy_evaluate_citation_score(question, answer)
 
     assert result["score"] == 1.0, "不要求引用应该得满分"
     assert result["context_match_score"] == 1.0, "context_match_score 应该是 1.0"
@@ -159,7 +164,7 @@ def test_multi_source_prefers_exact_match():
     answer = '"这是一个测试引用"'
 
     with patch('eval.scripts.grade_testset.quote_matches_source', side_effect=mock_quote_matches_source):
-        result = evaluate_citation_score(question, answer)
+        result = _legacy_evaluate_citation_score(question, answer)
 
     # 验证：应该遍历了两个来源（因为第一个没有上下文）
     assert call_count[0] == 2, f"应该检查两个来源，实际检查了 {call_count[0]} 个"
@@ -176,6 +181,141 @@ def test_multi_source_prefers_exact_match():
     print("✓ test_multi_source_prefers_exact_match 通过")
 
 
+def test_get_attribution_mode():
+    """测试归因模式推断。"""
+    # disabled: 不要求引用
+    q1 = {"citation_rules": {}}
+    assert get_attribution_mode(q1) == "disabled"
+
+    q2 = {"citation_rules": {"require_quote": False, "require_source": False}}
+    assert get_attribution_mode(q2) == "disabled"
+
+    # strict: 同时要求引用和来源
+    q3 = {"citation_rules": {"require_quote": True, "require_source": True}}
+    assert get_attribution_mode(q3) == "strict"
+
+    # standard: 只要求部分
+    q4 = {"citation_rules": {"require_quote": True, "require_source": False}}
+    assert get_attribution_mode(q4) == "standard"
+
+    # 新字段优先
+    q5 = {"citation_rules": {"attribution_mode": "strict", "require_quote": False}}
+    assert get_attribution_mode(q5) == "strict"
+
+    print("✓ test_get_attribution_mode 通过")
+
+
+def test_evaluate_attribution_disabled():
+    """测试 disabled 模式下归因评估得满分。"""
+    question = {
+        "query": "测试问题",
+        "citation_rules": {},
+        "expected_sources": []
+    }
+    result = evaluate_attribution_score(question, "任何回答", None)
+
+    assert result["score"] == 1.0, "disabled 模式应该得满分"
+    assert "归因评估已禁用" in result["details"]
+
+    print("✓ test_evaluate_attribution_disabled 通过")
+
+
+def test_evaluate_attribution_structure():
+    """测试归因评估返回结构。"""
+    question = {
+        "query": "测试问题",
+        "citation_rules": {"require_quote": True, "require_source": True},
+        "expected_sources": ["test_source.md"]
+    }
+    tool_events = [
+        {
+            "tool_name": "query_my_notes",
+            "stage": "end",
+            "arguments": {"query": "测试"}
+        },
+        {
+            "tool_name": "read_note_file",
+            "stage": "end",
+            "arguments": {"file_path": "test_source.md"}
+        }
+    ]
+    result = evaluate_attribution_score(question, "测试回答", tool_events)
+
+    assert "score" in result, "应该包含 score"
+    assert "workflow" in result, "应该包含 workflow"
+    assert "attribution" in result, "应该包含 attribution"
+    assert "fidelity" in result, "应该包含 fidelity"
+    assert "details" in result, "应该包含 details"
+
+    print("✓ test_evaluate_attribution_structure 通过")
+
+
+def test_workflow_compliance_no_events():
+    """测试无工具调用时的工作流合规性。"""
+    question = {"expected_sources": ["test.md"]}
+    result = compute_workflow_compliance(question, None)
+    assert result["score"] == 0.0, "无工具调用应该得 0 分"
+
+    print("✓ test_workflow_compliance_no_events 通过")
+
+
+def test_workflow_compliance_full():
+    """测试完整工作流的合规性。"""
+    question = {"expected_sources": ["test.md"]}
+    tool_events = [
+        {"tool_name": "query_my_notes", "stage": "end", "arguments": {"query": "test"}},
+        {"tool_name": "read_note_file", "stage": "end", "arguments": {"file_path": "test.md"}},
+    ]
+    result = compute_workflow_compliance(question, tool_events)
+    assert result["score"] == 1.0, f"完整工作流应该得满分，实际: {result['score']}"
+    assert result["has_query"] is True
+    assert result["has_read"] is True
+    assert result["expected_sources_coverage"] == 1.0
+
+    print("✓ test_workflow_compliance_full 通过")
+
+
+def test_fidelity_answered_without_reading():
+    """测试未读文件直接回答的忠实度检测。"""
+    result = compute_fidelity_score(
+        "这是一个很长的详细回答，包含了很多内容，但没有读取任何文档。动态规划是一种通过把原问题分解为相对简单的子问题的方式求解复杂问题的方法。",
+        [],  # 空工具事件
+        ["test.md"]
+    )
+    assert result["answered_without_reading"] is True
+    assert result["score"] == 0.3, f"未读文件直接回答应该得 0.3 分，实际: {result['score']}"
+
+    print("✓ test_fidelity_answered_without_reading 通过")
+
+
+def test_extract_key_claims():
+    """测试关键陈述提取。"""
+    answer = """根据文档记录，动态规划的时间复杂度为 O(n^2)。
+
+空间复杂度是 O(n)。这道题使用了贪心算法来解决。
+
+```python
+def solve(n):
+    return n * 2
+```
+
+短句。
+
+笔记中提到了这个方法。
+
+这是什么意思？"""
+
+    claims = extract_key_claims(answer, min_length=10)
+
+    # 应该过滤掉：代码块、过短句、元信息句、问句
+    assert len(claims) > 0, "应该提取到关键陈述"
+    assert all(len(c) >= 10 for c in claims), "所有陈述应该 >= 10 字符"
+    assert all("```" not in c for c in claims), "不应该包含代码块"
+    assert not any("什么意思" in c for c in claims), "不应该包含问句"
+
+    print("✓ test_extract_key_claims 通过")
+
+
 if __name__ == "__main__":
     print("运行引用评估增强功能测试...")
     print()
@@ -187,6 +327,15 @@ if __name__ == "__main__":
         test_evaluate_citation_score_structure()
         test_no_citation_requirement()
         test_multi_source_prefers_exact_match()
+
+        # 新增归因评估测试
+        test_get_attribution_mode()
+        test_evaluate_attribution_disabled()
+        test_evaluate_attribution_structure()
+        test_workflow_compliance_no_events()
+        test_workflow_compliance_full()
+        test_fidelity_answered_without_reading()
+        test_extract_key_claims()
 
         print()
         print("=" * 50)
