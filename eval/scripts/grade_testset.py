@@ -2077,19 +2077,46 @@ def compute_content_attribution(
             "details": "文档内容为空"
         }
 
+    # 将文档按标题/段落分块，避免整篇文档 embedding 被稀释
+    doc_chunks = re.split(r'\n#{1,3} ', combined_docs)
+    doc_chunks = [ch.strip() for ch in doc_chunks if len(ch.strip()) > 30]
+    if not doc_chunks:
+        doc_chunks = [combined_docs]
+
+    # 批量预计算所有 claims 和 chunks 的 embedding，避免逐对 API 调用
+    import numpy as np  # type: ignore
+    all_texts = claims + doc_chunks
+    embed_batch(all_texts)  # 一次性批量计算并缓存
+
+    # 构建 embedding 矩阵，用矩阵运算计算相似度
+    claim_embs = np.array([get_cached_embedding(c) for c in claims], dtype="float32")
+    chunk_embs = np.array([get_cached_embedding(ch) for ch in doc_chunks], dtype="float32")
+
+    # 归一化
+    claim_norms = np.linalg.norm(claim_embs, axis=1, keepdims=True)
+    chunk_norms = np.linalg.norm(chunk_embs, axis=1, keepdims=True)
+    claim_norms = np.where(claim_norms == 0, 1, claim_norms)
+    chunk_norms = np.where(chunk_norms == 0, 1, chunk_norms)
+    claim_embs_normed = claim_embs / claim_norms
+    chunk_embs_normed = chunk_embs / chunk_norms
+
+    # 余弦相似度矩阵: [n_claims, n_chunks]
+    sim_matrix = claim_embs_normed @ chunk_embs_normed.T
+    # 每个 claim 取最高相似度
+    max_similarities = sim_matrix.max(axis=1)
+
     # 两阶段匹配
     attributed_count = 0
     uncertain_claims = []
     unattributed_claims = []
 
-    for claim in claims:
-        # 阶段 1：Embedding 粗筛
-        similarity = compute_semantic_similarity(claim, combined_docs)
+    for i, claim in enumerate(claims):
+        max_sim = float(max_similarities[i])
 
-        if similarity >= embedding_threshold:
+        if max_sim >= embedding_threshold:
             # 高相似度，直接判定为有支撑
             attributed_count += 1
-        elif similarity >= llm_uncertain_range[0] and similarity <= llm_uncertain_range[1]:
+        elif max_sim >= llm_uncertain_range[0] and max_sim <= llm_uncertain_range[1]:
             # 不确定区间，留给 LLM 精判
             uncertain_claims.append(claim)
         else:
@@ -2623,10 +2650,14 @@ def main() -> None:
                 file=sys.stderr,
             )
 
-    # 预计算所有评估文本的 embedding（用于语义匹配）
-    print("预计算 embedding 缓存...")
+    # 只对有答案的题目预计算 embedding（避免对无答案题目做无用的 rewrite_query LLM 调用）
+    answer_ids = set(answers.keys()) if isinstance(answers, dict) else set()
+    questions_with_answers = [
+        q for q in questions if q.get("id") in answer_ids
+    ] if answer_ids else questions
+    print(f"预计算 embedding 缓存（{len(questions_with_answers)}/{len(questions)} 题有答案）...")
     try:
-        precompute_embeddings(questions)
+        precompute_embeddings(questions_with_answers)
         print(f"✓ 已缓存 {len(_embedding_cache)} 个 embedding")
     except Exception as exc:
         print(f"⚠ embedding 预计算失败: {exc}，将在评分时按需计算")
@@ -2652,13 +2683,15 @@ def main() -> None:
                 continue
         if k_values:
             try:
+                # 只对有答案的题目计算 recall@k（避免无用的 rewrite_query LLM 调用）
+                recall_questions = questions_with_answers if questions_with_answers else questions
                 # 单路召回（baseline）
                 if use_chunk_level:
-                    baseline_recall_summary, baseline_recall_results = compute_chunk_recall_at_k(questions, k_values)
+                    baseline_recall_summary, baseline_recall_results = compute_chunk_recall_at_k(recall_questions, k_values)
                 else:
-                    baseline_recall_summary, baseline_recall_results = compute_recall_at_k(questions, k_values)
+                    baseline_recall_summary, baseline_recall_results = compute_recall_at_k(recall_questions, k_values)
                 # 多路召回（主指标）
-                recall_summary, recall_results = compute_multipath_recall_at_k(questions, k_values)
+                recall_summary, recall_results = compute_multipath_recall_at_k(recall_questions, k_values)
                 # 用多路召回的结果构建评分 recall_map
                 for r in recall_results:
                     qid = r.get("id")
@@ -2672,10 +2705,12 @@ def main() -> None:
     passed = 0
     total_score_sum = 0.0
 
-    print(f"\n评估 {len(questions)} 道题目...")
+    # 只评估有答案的题目，跳过无答案题目避免无用计算
+    questions_to_eval = [q for q in questions if q["id"] in answer_ids] if answer_ids else questions
+    print(f"\n评估 {len(questions_to_eval)} 道题目（共 {len(questions)} 题）...")
     print("-" * 80)
 
-    for i, q in enumerate(questions, 1):
+    for i, q in enumerate(questions_to_eval, 1):
         qid = q["id"]
         category = q.get("category", "unknown")
         answer = answers.get(qid, "")
@@ -2705,7 +2740,7 @@ def main() -> None:
         content_details = eval_result["details"].get("content", {})
         details_str = content_details.get("details", "")
 
-        print(f"[{i:02d}/{len(questions)}] {status} {qid}")
+        print(f"[{i:02d}/{len(questions_to_eval)}] {status} {qid}")
         actual_display = (
             f"{actual_retrieval_score:.2f}"
             if isinstance(actual_retrieval_score, (int, float))
@@ -2734,7 +2769,7 @@ def main() -> None:
 
     # 统计各类别
     category_stats = {}
-    for q, result in zip(questions, results):
+    for q, result in zip(questions_to_eval, results):
         cat = q.get("category", "unknown")
         if cat not in category_stats:
             category_stats[cat] = {"total": 0, "passed": 0, "score_sum": 0.0}
@@ -2748,7 +2783,7 @@ def main() -> None:
         stats["avg_score"] = stats["score_sum"] / stats["total"] if stats["total"] > 0 else 0.0
 
     # 计算检索指标汇总
-    retrieval_analysis = compute_retrieval_analysis(results, questions)
+    retrieval_analysis = compute_retrieval_analysis(results, questions_to_eval)
 
     # 构建报告
     avg_score = total_score_sum / len(results) if results else 0.0
