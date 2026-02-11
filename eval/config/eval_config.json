@@ -126,7 +126,9 @@
     "embedding_threshold": 0.70,
     "llm_uncertain_range": [0.50, 0.70],
     "min_claim_length": 10,
-    "meta_statement_patterns": ["^笔记.*提到", "^根据.*文档", "^来源[：:]", "^在.*中.*记录"],
-    "knowledge_disclaimer_keywords": ["模型自身知识", "通用知识补充", "非笔记内容"]
+    "meta_statement_patterns": ["^笔记.*提到", "^根据.*文档", "^根据.*记录", "^来源[：:]", "^在.*中.*记录"],
+    "knowledge_disclaimer_keywords": ["模型自身知识", "通用知识补充", "非笔记内容"],
+    "source_reference_patterns": ["来源[：:]", "data/notes/", "（来源", "\\(来源", "出自[：:]", "参考[：:]"],
+    "connector_patterns": ["^也就是说", "^换句话说", "^总结来[看说]", "^综上", "^简[单而]言之", "^总的来说", "^即[，,：:]"]
   }
 }

@@ -1960,6 +1960,37 @@ def extract_key_claims(answer: str, min_length: int = 10) -> List[str]:
         if is_meta:
             continue
 
+        # 过滤来源标注句
+        source_patterns = [
+            r'来源[：:]',
+            r'data/notes/',
+            r'（来源',
+            r'\(来源',
+            r'出自[：:]',
+            r'参考[：:]',
+        ]
+        is_source_ref = any(re.search(p, sent) for p in source_patterns)
+        if is_source_ref:
+            continue
+
+        # 过滤连接词/总结句
+        connector_patterns = [
+            r'^也就是说',
+            r'^换句话说',
+            r'^总结来[看说]',
+            r'^综上',
+            r'^简[单而]言之',
+            r'^总的来说',
+            r'^即[，,：:]',
+        ]
+        is_connector = any(re.match(p, sent) for p in connector_patterns)
+        if is_connector:
+            continue
+
+        # 过滤表格行
+        if '|' in sent and sent.count('|') >= 2:
+            continue
+
         claims.append(sent)
 
     return claims
@@ -2196,18 +2227,30 @@ def compute_fidelity_score(
     read_files = extract_read_files_from_events(tool_events)
     has_read = len(read_files) > 0
 
-    # 1. 伪造来源检测
+    # 1. 伪造来源检测 — 从回答中提取实际标注的来源文件
     has_fake_source = False
-    if expected_sources:
-        read_files_set = set(read_files)
-        for source in expected_sources:
-            normalized_source = normalize_source_path(source)
-            basename = Path(source).stem.lower()
+    if has_read:
+        cited_files = set()
 
-            # 如果答案中提到了这个文件名，但没有实际读取
-            if basename in answer.lower() and normalized_source not in read_files_set:
-                has_fake_source = True
-                break
+        # 匹配回答中引用的 .md 文件
+        md_pattern = r'(?:data/notes/my_markdowns/)?([^\s,，、;；()（）\[\]:：]+\.md)'
+        for match in re.finditer(md_pattern, answer):
+            cited_files.add(match.group(1).lower())
+
+        if cited_files:
+            # 将 read_files 也归一化为文件名
+            read_basenames = set()
+            for rf in read_files:
+                read_basenames.add(Path(rf).name.lower())
+                read_basenames.add(Path(rf).stem.lower())
+
+            # 检查引用的文件是否被实际读取
+            for cited in cited_files:
+                cited_stem = Path(cited).stem.lower()
+                cited_name = Path(cited).name.lower()
+                if cited_name not in read_basenames and cited_stem not in read_basenames:
+                    has_fake_source = True
+                    break
 
     if has_fake_source:
         # 伪造来源，直接 0 分
