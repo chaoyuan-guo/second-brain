@@ -380,22 +380,38 @@ def main() -> None:
         print(f"\n开始评分...")
         report_path = Path(args.report)
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_cmd = [
-            "python",
-            "eval/scripts/grade_testset.py",
-            "--answers",
-            str(out_path),
-            "--output",
-            str(report_path),
-            "--tool-traces",
-            str(tool_traces_path),
-        ]
-        if args.strict_sources:
-            report_cmd.append("--require-sources")
-        if args.recall_k:
-            report_cmd += ["--recall-k", args.recall_k]
-        if args.testset:
-            report_cmd += ["--testset", args.testset]
+
+        # 读取 testset 判断评分方式
+        testset_data = json.loads(Path(args.testset).read_text(encoding="utf-8"))
+        eval_method = testset_data.get("meta", {}).get("eval_method", "rule_based")
+
+        if eval_method == "llm_judge":
+            report_cmd = [
+                "python",
+                "eval/scripts/grade_by_llm.py",
+                "--testset", args.testset,
+                "--answers", str(out_path),
+                "--tool-traces", str(tool_traces_path),
+                "--output", str(report_path),
+            ]
+        else:
+            report_cmd = [
+                "python",
+                "eval/scripts/grade_testset.py",
+                "--answers",
+                str(out_path),
+                "--output",
+                str(report_path),
+                "--tool-traces",
+                str(tool_traces_path),
+            ]
+            if args.strict_sources:
+                report_cmd.append("--require-sources")
+            if args.recall_k:
+                report_cmd += ["--recall-k", args.recall_k]
+            if args.testset:
+                report_cmd += ["--testset", args.testset]
+
         # 设置 PYTHONPATH 确保模块可以正确导入
         env = os.environ.copy()
         project_root = str(Path(__file__).resolve().parents[2])
