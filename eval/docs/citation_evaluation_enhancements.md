@@ -144,7 +144,7 @@ python -u eval/scripts/run_eval_stream.py \
   --base-url http://127.0.0.1:9000 \
   --strict-sources \
   --recall-k 5 \
-  --concurrency 5 \
+  --concurrency 10 \
   --report eval/reports/report.json
 ```
 

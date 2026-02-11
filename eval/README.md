@@ -92,7 +92,7 @@ python eval/scripts/run_eval_stream.py \
   --report eval/reports/report.json \
   --strict-sources \
   --recall-k 1,3,5,10 \
-  --concurrency 5
+  --concurrency 10
 ```
 
 ### 仅评分已有答案
