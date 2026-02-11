@@ -23,18 +23,18 @@
         "must_have": [
           {
             "text": "2^",
-            "weight": 0.2,
+            "weight": 0.4,
             "note": "匹配 2^h、2^(h+1) 等幂次表达"
           }
         ],
         "should_have": [
           {
             "text": "公式",
-            "weight": 0.1
+            "weight": 0.05
           },
           {
             "text": "节点",
-            "weight": 0.1
+            "weight": 0.05
           }
         ],
         "evidence": [
@@ -91,7 +91,8 @@
             "text": "把入口当成了出口",
             "weight": 0.5
           }
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": true,
@@ -118,13 +119,13 @@
           },
           {
             "text": "f(n-1)",
-            "weight": 0.2
+            "weight": 0.3
           }
         ],
         "should_have": [
           {
             "text": "递推",
-            "weight": 0.1
+            "weight": 0.05
           }
         ],
         "evidence": [
@@ -155,13 +156,13 @@
         "must_have": [
           {
             "text": "连通分量",
-            "weight": 0.4
+            "weight": 0.5
           }
         ],
         "should_have": [
           {
             "text": "唯一",
-            "weight": 0.1
+            "weight": 0.05
           }
         ],
         "evidence": [
@@ -204,24 +205,32 @@
         "must_have": [
           {
             "text": "==",
-            "weight": 0.3
+            "weight": 0.2
+          },
+          {
+            "text": "赋值",
+            "weight": 0.3,
+            "synonyms": [
+              "=",
+              "应该用 =",
+              "不是赋值",
+              "赋值写成了比较"
+            ]
           }
         ],
         "evidence": [
           {
             "text": "比较运算",
-            "weight": 0.7,
+            "weight": 0.5,
             "synonyms": [
               "比较",
               "相等判断",
-              "赋值写成了比较",
               "用了 == 而不是 =",
-              "== 而不是 =",
-              "应该用 =",
-              "不是赋值"
+              "== 而不是 ="
             ]
           }
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": true,
@@ -244,23 +253,23 @@
         "must_have": [
           {
             "text": "//",
-            "weight": 0.2,
+            "weight": 0.3,
             "note": "整除运算符"
           },
           {
             "text": "%",
-            "weight": 0.2,
+            "weight": 0.3,
             "note": "取模运算符"
           }
         ],
         "should_have": [
           {
             "text": "行",
-            "weight": 0.1
+            "weight": 0.05
           },
           {
             "text": "列",
-            "weight": 0.1
+            "weight": 0.05
           }
         ],
         "evidence": [
@@ -290,18 +299,30 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "状态",
-            "weight": 0.4
+            "text": "子问题",
+            "weight": 0.5,
+            "synonyms": [
+              "最优子结构",
+              "重叠子问题"
+            ]
           },
           {
-            "text": "转移",
-            "weight": 0.3
+            "text": "递推",
+            "weight": 0.5,
+            "synonyms": [
+              "状态转移方程",
+              "转移方程"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "子问题",
-            "weight": 0.1
+            "text": "状态",
+            "weight": 0.05
+          },
+          {
+            "text": "转移",
+            "weight": 0.05
           }
         ]
       },
@@ -338,7 +359,8 @@
             "text": "做选择、递归、撤销选择",
             "weight": 0.4
           }
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": false,
@@ -362,17 +384,25 @@
         "must_have": [
           {
             "text": "反转",
-            "weight": 0.4
+            "weight": 0.5
+          },
+          {
+            "text": "层序遍历",
+            "weight": 0.5,
+            "synonyms": [
+              "BFS",
+              "逐层"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "方向",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "奇数",
-            "weight": 0.2
+            "weight": 0.05
           }
         ]
       },
@@ -396,22 +426,40 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "Perfect",
-            "weight": 0.15
+            "text": "所有层都满",
+            "weight": 0.35,
+            "synonyms": [
+              "每层都满",
+              "所有层完全填满",
+              "所有叶子在同一层"
+            ]
           },
           {
-            "text": "Complete",
-            "weight": 0.15
-          },
-          {
-            "text": "Full",
-            "weight": 0.15
+            "text": "最后一层",
+            "weight": 0.35,
+            "synonyms": [
+              "最底层"
+            ]
           }
         ],
         "evidence": [
           {
             "text": "Perfect 所有层都满",
             "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "Perfect",
+            "weight": 0.05
+          },
+          {
+            "text": "Complete",
+            "weight": 0.05
+          },
+          {
+            "text": "Full",
+            "weight": 0.05
           }
         ]
       },
@@ -436,19 +484,25 @@
         "must_have": [
           {
             "text": "DFS",
-            "weight": 0.3
-          }
-        ],
-        "should_have": [
+            "weight": 0.33
+          },
           {
             "text": "visited",
-            "weight": 0.2
+            "weight": 0.33,
+            "synonyms": [
+              "访问过",
+              "已访问"
+            ]
           },
           {
             "text": "遍历",
-            "weight": 0.2
+            "weight": 0.34,
+            "synonyms": [
+              "搜索"
+            ]
           }
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": false,
@@ -471,11 +525,11 @@
         "must_have": [
           {
             "text": "负数",
-            "weight": 0.3
+            "weight": 0.25
           },
           {
             "text": "最小",
-            "weight": 0.2
+            "weight": 0.25
           }
         ],
         "evidence": [
@@ -483,7 +537,8 @@
             "text": "负数乘以最小值可能变成最大值",
             "weight": 0.5
           }
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": true,
@@ -507,26 +562,35 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "BFS",
-            "weight": 0.15
+            "text": "O(w)",
+            "weight": 0.5,
+            "synonyms": [
+              "O(W)",
+              "宽度"
+            ]
           },
           {
-            "text": "DFS",
-            "weight": 0.15
-          },
-          {
-            "text": "空间",
-            "weight": 0.2
+            "text": "O(h)",
+            "weight": 0.5,
+            "synonyms": [
+              "O(H)",
+              "高度",
+              "深度"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "O(w)",
-            "weight": 0.15
+            "text": "BFS",
+            "weight": 0.05
           },
           {
-            "text": "O(h)",
-            "weight": 0.15
+            "text": "DFS",
+            "weight": 0.05
+          },
+          {
+            "text": "空间",
+            "weight": 0.05
           }
         ]
       },
@@ -553,17 +617,22 @@
         "must_have": [
           {
             "text": "恶意软件",
-            "weight": 0.3
-          },
-          {
-            "text": "连通",
-            "weight": 0.3
+            "weight": 1.0,
+            "synonyms": [
+              "malware",
+              "感染",
+              "恶意软件传播"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "钥匙",
-            "weight": 0.2
+            "weight": 0.05
+          },
+          {
+            "text": "连通",
+            "weight": 0.05
           }
         ]
       },
@@ -590,22 +659,29 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "状态",
-            "weight": 0.3
+            "text": "爬楼梯",
+            "weight": 0.5,
+            "synonyms": [
+              "climb stairs"
+            ]
           },
           {
-            "text": "f(",
-            "weight": 0.2
+            "text": "乘积",
+            "weight": 0.5,
+            "synonyms": [
+              "最大乘积",
+              "max product"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "爬楼梯",
-            "weight": 0.15
+            "text": "状态",
+            "weight": 0.05
           },
           {
-            "text": "乘积",
-            "weight": 0.15
+            "text": "f(",
+            "weight": 0.05
           }
         ]
       },
@@ -629,18 +705,32 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "多源",
-            "weight": 0.3
-          },
-          {
-            "text": "BFS",
-            "weight": 0.2
+            "text": "同时入队",
+            "weight": 0.7,
+            "synonyms": [
+              "同时加入",
+              "一起入队",
+              "初始队列",
+              "多个起点",
+              "所有源点",
+              "初始化多个"
+            ]
           }
         ],
         "evidence": [
           {
             "text": "腐烂的橘子",
             "weight": 0.3
+          }
+        ],
+        "should_have": [
+          {
+            "text": "多源",
+            "weight": 0.05
+          },
+          {
+            "text": "BFS",
+            "weight": 0.05
           }
         ]
       },
@@ -666,11 +756,11 @@
         "must_have": [
           {
             "text": "len(queue)",
-            "weight": 0.4
+            "weight": 0.3
           },
           {
             "text": "层",
-            "weight": 0.2
+            "weight": 0.3
           }
         ],
         "evidence": [
@@ -678,7 +768,8 @@
             "text": "level_size = len(queue)",
             "weight": 0.4
           }
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": true,
@@ -700,18 +791,26 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "二分",
-            "weight": 0.3
+            "text": "矩阵",
+            "weight": 0.5,
+            "synonyms": [
+              "二维",
+              "matrix"
+            ]
+          },
+          {
+            "text": "mid",
+            "weight": 0.5,
+            "synonyms": [
+              "中间",
+              "中点"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "矩阵",
-            "weight": 0.2
-          },
-          {
-            "text": "mid",
-            "weight": 0.2
+            "text": "二分",
+            "weight": 0.05
           }
         ]
       },
@@ -739,7 +838,8 @@
           "未提及",
           "未找到",
           "无法确定"
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": false,
@@ -765,7 +865,8 @@
           "未提及",
           "未找到",
           "无法确定"
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": false,
@@ -791,7 +892,8 @@
           "未提及",
           "未找到",
           "无法确定"
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": false,
@@ -817,7 +919,8 @@
           "未提及",
           "未找到",
           "无法确定"
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": false,
@@ -843,7 +946,8 @@
           "未提及",
           "未找到",
           "无法确定"
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": false,
@@ -865,18 +969,22 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "Accepted",
-            "weight": 0.2
-          },
-          {
-            "text": "Wrong Answer",
-            "weight": 0.2
+            "text": "次",
+            "weight": 0.5,
+            "synonyms": [
+              "次数",
+              "条"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "次",
-            "weight": 0.1
+            "text": "Accepted",
+            "weight": 0.05
+          },
+          {
+            "text": "Wrong Answer",
+            "weight": 0.05
           }
         ],
         "numeric_validations": [
@@ -916,14 +1024,18 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "题目",
-            "weight": 0.2
+            "text": "道",
+            "weight": 0.5,
+            "synonyms": [
+              "个",
+              "题"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "道",
-            "weight": 0.1
+            "text": "题目",
+            "weight": 0.05
           }
         ],
         "numeric_validations": [
@@ -956,22 +1068,26 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "最短",
-            "weight": 0.3
-          },
-          {
             "text": "720",
-            "weight": 0.4
+            "weight": 1.0,
+            "synonyms": [
+              "6!",
+              "6的阶乘"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "6!",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "无权图",
-            "weight": 0.1
+            "weight": 0.05
+          },
+          {
+            "text": "最短",
+            "weight": 0.05
           }
         ]
       },
@@ -995,26 +1111,39 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "直径",
-            "weight": 0.4
+            "text": "叶子",
+            "weight": 0.5,
+            "synonyms": [
+              "叶节点",
+              "度为1"
+            ]
           },
           {
-            "text": "中点",
-            "weight": 0.3
+            "text": "剥离",
+            "weight": 0.5,
+            "synonyms": [
+              "逐层删除",
+              "逐层去掉",
+              "拓扑"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "奇数",
-            "weight": 0.1
+            "weight": 0.05
           },
           {
             "text": "偶数",
-            "weight": 0.1
+            "weight": 0.05
           },
           {
             "text": "相邻",
-            "weight": 0.1
+            "weight": 0.05
+          },
+          {
+            "text": "直径",
+            "weight": 0.05
           }
         ]
       },
@@ -1038,22 +1167,30 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "叶子",
-            "weight": 0.3
+            "text": "度",
+            "weight": 0.5,
+            "synonyms": [
+              "度数",
+              "degree"
+            ]
           },
           {
-            "text": "拓扑",
-            "weight": 0.3
+            "text": "逐层",
+            "weight": 0.5,
+            "synonyms": [
+              "剥洋葱",
+              "一层一层"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "度",
-            "weight": 0.2
+            "text": "叶子",
+            "weight": 0.05
           },
           {
-            "text": "最小高度树",
-            "weight": 0.2
+            "text": "拓扑",
+            "weight": 0.05
           }
         ]
       },
@@ -1077,22 +1214,26 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "步数",
-            "weight": 0.3
-          },
-          {
             "text": "队列",
-            "weight": 0.3
+            "weight": 1.0,
+            "synonyms": [
+              "queue",
+              "deque"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "分层",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "状态",
-            "weight": 0.2
+            "weight": 0.05
+          },
+          {
+            "text": "步数",
+            "weight": 0.05
           }
         ]
       },
@@ -1116,26 +1257,34 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "起点",
-            "weight": 0.2
-          },
-          {
-            "text": "终点",
-            "weight": 0.2
-          },
-          {
             "text": "相遇",
-            "weight": 0.2
+            "weight": 0.5
+          },
+          {
+            "text": "双向",
+            "weight": 0.5,
+            "synonyms": [
+              "两端",
+              "两边"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "指数",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "d/2",
-            "weight": 0.2
+            "weight": 0.05
+          },
+          {
+            "text": "起点",
+            "weight": 0.05
+          },
+          {
+            "text": "终点",
+            "weight": 0.05
           }
         ]
       },
@@ -1160,21 +1309,21 @@
         "must_have": [
           {
             "text": "O(1)",
-            "weight": 0.4
+            "weight": 0.5
           },
           {
             "text": "visited",
-            "weight": 0.3
+            "weight": 0.5
           }
         ],
         "should_have": [
           {
             "text": "哈希",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "查询",
-            "weight": 0.1
+            "weight": 0.05
           }
         ]
       },
@@ -1196,18 +1345,17 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "Python",
-            "weight": 0.3
+            "text": "GIL",
+            "weight": 1.0,
+            "synonyms": [
+              "全局解释器锁"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "GIL",
-            "weight": 0.3
-          },
-          {
-            "text": "JIT",
-            "weight": 0.2
+            "text": "Python",
+            "weight": 0.05
           }
         ]
       },
@@ -1230,11 +1378,25 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "LeetCode",
-            "weight": 0.3
+            "text": "竞赛",
+            "weight": 1.0,
+            "synonyms": [
+              "比赛",
+              "contest",
+              "周赛",
+              "双周赛",
+              "活动",
+              "排名",
+              "选手"
+            ]
           }
         ],
-        "should_have": []
+        "should_have": [
+          {
+            "text": "LeetCode",
+            "weight": 0.05
+          }
+        ]
       },
       "citation_rules": {
         "require_quote": false,
@@ -1258,21 +1420,21 @@
         "must_have": [
           {
             "text": "Easy",
-            "weight": 0.2
+            "weight": 0.33
           },
           {
             "text": "Medium",
-            "weight": 0.2
+            "weight": 0.33
           },
           {
             "text": "Hard",
-            "weight": 0.2
+            "weight": 0.34
           }
         ],
         "should_have": [
           {
             "text": "数量",
-            "weight": 0.2
+            "weight": 0.05
           }
         ]
       },
@@ -1299,22 +1461,25 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "O(",
-            "weight": 0.3
+            "text": "720",
+            "weight": 0.5,
+            "synonyms": [
+              "6!",
+              "排列"
+            ]
+          },
+          {
+            "text": "10000",
+            "weight": 0.5,
+            "synonyms": [
+              "10^4"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "720",
-            "weight": 0.2
-          },
-          {
-            "text": "10000",
-            "weight": 0.2
-          },
-          {
-            "text": "状态",
-            "weight": 0.1
+            "text": "O(",
+            "weight": 0.05
           }
         ]
       },
@@ -1341,18 +1506,25 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "字",
-            "weight": 0.4
+            "text": "总",
+            "weight": 0.5,
+            "synonyms": [
+              "总计",
+              "总共"
+            ]
+          },
+          {
+            "text": "平均",
+            "weight": 0.5,
+            "synonyms": [
+              "均"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "总",
-            "weight": 0.2
-          },
-          {
-            "text": "平均",
-            "weight": 0.2
+            "text": "字",
+            "weight": 0.05
           }
         ]
       },
@@ -1381,14 +1553,18 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "月",
-            "weight": 0.4
+            "text": "提交",
+            "weight": 1.0,
+            "synonyms": [
+              "提交次数",
+              "提交量"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "提交",
-            "weight": 0.3
+            "text": "月",
+            "weight": 0.05
           }
         ]
       },
@@ -1411,16 +1587,25 @@
       "content_rules": {
         "must_have": [
           {
+            "text": "红黑树",
+            "weight": 0.5,
+            "synonyms": [
+              "red-black tree"
+            ]
+          },
+          {
             "text": "没有",
-            "weight": 0.5
+            "weight": 0.5,
+            "synonyms": [
+              "未找到",
+              "不包含",
+              "未提及",
+              "没有相关",
+              "没有涉及"
+            ]
           }
         ],
-        "should_have": [
-          {
-            "text": "红黑树",
-            "weight": 0.3
-          }
-        ]
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": false,
@@ -1444,17 +1629,22 @@
         "must_have": [
           {
             "text": "BFS",
-            "weight": 0.4
+            "weight": 1.0,
+            "synonyms": [
+              "广度优先",
+              "广度优先搜索",
+              "宽度优先"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "最短",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "8个方向",
-            "weight": 0.2
+            "weight": 0.05
           }
         ]
       },
@@ -1480,21 +1670,26 @@
         "must_have": [
           {
             "text": "BFS",
-            "weight": 0.3
-          },
-          {
-            "text": "状态",
-            "weight": 0.3
+            "weight": 1.0,
+            "synonyms": [
+              "广度优先",
+              "广度优先搜索",
+              "宽度优先"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "最短",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "变化",
-            "weight": 0.2
+            "weight": 0.05
+          },
+          {
+            "text": "状态",
+            "weight": 0.05
           }
         ]
       },
@@ -1519,17 +1714,22 @@
         "must_have": [
           {
             "text": "可达",
-            "weight": 0.4
+            "weight": 1.0,
+            "synonyms": [
+              "到达",
+              "能到",
+              "reachable"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "跳跃",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "0",
-            "weight": 0.2
+            "weight": 0.05
           }
         ]
       },
@@ -1554,17 +1754,22 @@
         "must_have": [
           {
             "text": "父节点",
-            "weight": 0.4
+            "weight": 1.0,
+            "synonyms": [
+              "parent",
+              "父亲节点",
+              "父指针"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "BFS",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "邻接",
-            "weight": 0.2
+            "weight": 0.05
           }
         ]
       },
@@ -1589,17 +1794,21 @@
         "must_have": [
           {
             "text": "队列",
-            "weight": 0.4
+            "weight": 1.0,
+            "synonyms": [
+              "queue",
+              "deque"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "层序",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "完全二叉树",
-            "weight": 0.2
+            "weight": 0.05
           }
         ]
       },
@@ -1623,26 +1832,32 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "奇",
-            "weight": 0.2
+            "text": "递增",
+            "weight": 0.5,
+            "synonyms": [
+              "严格递增"
+            ]
           },
           {
-            "text": "偶",
-            "weight": 0.2
-          },
-          {
-            "text": "层",
-            "weight": 0.2
+            "text": "递减",
+            "weight": 0.5,
+            "synonyms": [
+              "严格递减"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "递增",
-            "weight": 0.2
+            "text": "奇",
+            "weight": 0.05
           },
           {
-            "text": "递减",
-            "weight": 0.2
+            "text": "偶",
+            "weight": 0.05
+          },
+          {
+            "text": "层",
+            "weight": 0.05
           }
         ]
       },
@@ -1666,22 +1881,37 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "图",
-            "weight": 0.3
+            "text": "除法",
+            "weight": 0.5,
+            "synonyms": [
+              "a/b"
+            ]
           },
           {
-            "text": "权",
-            "weight": 0.3
+            "text": "路径",
+            "weight": 0.5,
+            "synonyms": [
+              "路径乘积",
+              "边权乘积"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "除",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "BFS",
-            "weight": 0.2
+            "weight": 0.05
+          },
+          {
+            "text": "图",
+            "weight": 0.05
+          },
+          {
+            "text": "权",
+            "weight": 0.05
           }
         ]
       },
@@ -1706,21 +1936,26 @@
         "must_have": [
           {
             "text": "层序遍历",
-            "weight": 0.3
-          },
-          {
-            "text": "空",
-            "weight": 0.3
+            "weight": 1.0,
+            "synonyms": [
+              "BFS",
+              "逐层遍历",
+              "按层遍历"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "BFS",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "None",
-            "weight": 0.2
+            "weight": 0.05
+          },
+          {
+            "text": "空",
+            "weight": 0.05
           }
         ]
       },
@@ -1745,21 +1980,21 @@
         "must_have": [
           {
             "text": "O(1)",
-            "weight": 0.3
+            "weight": 0.5
           },
           {
             "text": "next",
-            "weight": 0.3
+            "weight": 0.5
           }
         ],
         "should_have": [
           {
             "text": "虚拟",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "dummy",
-            "weight": 0.2
+            "weight": 0.05
           }
         ]
       },
@@ -1787,26 +2022,25 @@
         "must_have": [
           {
             "text": "720",
-            "weight": 0.3,
+            "weight": 0.5,
             "note": "滑动谜题的状态空间 6!"
           },
           {
-            "text": "状态",
-            "weight": 0.2
+            "text": "滑动谜题",
+            "weight": 0.5,
+            "synonyms": [
+              "sliding puzzle"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "滑动谜题",
-            "weight": 0.2
-          },
-          {
-            "text": "6!",
-            "weight": 0.2
-          },
-          {
             "text": "10000",
-            "weight": 0.1
+            "weight": 0.05
+          },
+          {
+            "text": "状态",
+            "weight": 0.05
           }
         ]
       },
@@ -1831,22 +2065,31 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "腐烂",
-            "weight": 0.3
+            "text": "同时入队",
+            "weight": 0.5,
+            "synonyms": [
+              "同时加入",
+              "一起入队",
+              "初始队列"
+            ]
           },
           {
-            "text": "多源",
-            "weight": 0.3
+            "text": "起点",
+            "weight": 0.5,
+            "synonyms": [
+              "源点",
+              "起始"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "同时",
-            "weight": 0.2
+            "text": "腐烂",
+            "weight": 0.05
           },
           {
-            "text": "起点",
-            "weight": 0.2
+            "text": "多源",
+            "weight": 0.05
           }
         ]
       },
@@ -1875,22 +2118,29 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "月",
-            "weight": 0.3
+            "text": "%",
+            "weight": 0.5,
+            "synonyms": [
+              "百分比",
+              "百分"
+            ]
           },
           {
-            "text": "通过率",
-            "weight": 0.3
+            "text": "提交",
+            "weight": 0.5,
+            "synonyms": [
+              "提交次数"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "%",
-            "weight": 0.2
+            "text": "月",
+            "weight": 0.05
           },
           {
-            "text": "提交",
-            "weight": 0.2
+            "text": "通过率",
+            "weight": 0.05
           }
         ]
       },
@@ -1918,30 +2168,37 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "BFS",
-            "weight": 0.2
+            "text": "遍历",
+            "weight": 0.5,
+            "synonyms": [
+              "搜索"
+            ]
           },
           {
-            "text": "DFS",
-            "weight": 0.2
-          },
-          {
-            "text": "最短",
-            "weight": 0.2
+            "text": "场景",
+            "weight": 0.5,
+            "synonyms": [
+              "应用",
+              "适用"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "遍历",
-            "weight": 0.15
-          },
-          {
             "text": "回溯",
-            "weight": 0.15
+            "weight": 0.05
           },
           {
-            "text": "场景",
-            "weight": 0.1
+            "text": "BFS",
+            "weight": 0.05
+          },
+          {
+            "text": "DFS",
+            "weight": 0.05
+          },
+          {
+            "text": "最短",
+            "weight": 0.05
           }
         ]
       },
@@ -1968,26 +2225,28 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "状态",
-            "weight": 0.3
+            "text": "图",
+            "weight": 0.5,
+            "synonyms": [
+              "图论"
+            ]
           },
           {
-            "text": "转移",
-            "weight": 0.2
+            "text": "路径",
+            "weight": 0.5,
+            "synonyms": [
+              "最短路径"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "图",
-            "weight": 0.2
+            "text": "状态",
+            "weight": 0.05
           },
           {
-            "text": "最短",
-            "weight": 0.15
-          },
-          {
-            "text": "路径",
-            "weight": 0.15
+            "text": "转移",
+            "weight": 0.05
           }
         ]
       },
@@ -2026,7 +2285,8 @@
           "步骤是",
           "方法是",
           "```"
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": false,
@@ -2060,7 +2320,8 @@
           "visited_set 用于",
           "visited_set 是",
           "visited_set 的作用"
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": false,
@@ -2106,7 +2367,8 @@
               "beautiful arrangement"
             ]
           }
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": false,
@@ -2138,7 +2400,8 @@
           "性能优化章节",
           "优化章节讲述",
           "在性能优化部分"
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": false,
@@ -2161,22 +2424,26 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "标签",
-            "weight": 0.3
-          }
-        ],
-        "should_have": [
-          {
             "text": "动态规划",
-            "weight": 0.3,
+            "weight": 0.5,
             "synonyms": [
               "DP",
-              "dynamic programming"
+              "dp"
             ]
           },
           {
             "text": "最多",
-            "weight": 0.2
+            "weight": 0.5,
+            "synonyms": [
+              "最常见",
+              "出现次数最多"
+            ]
+          }
+        ],
+        "should_have": [
+          {
+            "text": "标签",
+            "weight": 0.05
           }
         ]
       },
@@ -2202,7 +2469,7 @@
         "must_have": [
           {
             "text": "Runtime Error",
-            "weight": 0.3,
+            "weight": 0.5,
             "synonyms": [
               "运行时错误",
               "RE"
@@ -2217,7 +2484,8 @@
             "weight": 0.5,
             "note": "动态验证：从预计算统计中获取期望值"
           }
-        ]
+        ],
+        "should_have": []
       },
       "citation_rules": {
         "require_quote": false,
@@ -2244,22 +2512,26 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "%",
-            "weight": 0.3
-          },
-          {
-            "text": "通过率",
-            "weight": 0.3,
+            "text": "Accepted",
+            "weight": 1.0,
             "synonyms": [
-              "AC率",
-              "成功率"
+              "AC",
+              "通过"
             ]
           }
         ],
         "should_have": [
           {
-            "text": "Accepted",
-            "weight": 0.2
+            "text": "%",
+            "weight": 0.05
+          },
+          {
+            "text": "通过率",
+            "weight": 0.05,
+            "synonyms": [
+              "AC率",
+              "成功率"
+            ]
           }
         ]
       },
@@ -2285,7 +2557,7 @@
         "must_have": [
           {
             "text": "2025",
-            "weight": 0.4,
+            "weight": 1.0,
             "synonyms": [
               "2026"
             ]
@@ -2294,7 +2566,7 @@
         "should_have": [
           {
             "text": "至",
-            "weight": 0.2,
+            "weight": 0.05,
             "synonyms": [
               "到",
               "~",
@@ -2303,7 +2575,7 @@
           },
           {
             "text": "月",
-            "weight": 0.2
+            "weight": 0.05
           }
         ]
       },
@@ -2332,22 +2604,30 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "Wrong Answer",
-            "weight": 0.3,
+            "text": "次",
+            "weight": 0.5,
             "synonyms": [
-              "WA",
-              "错误答案"
+              "次数",
+              "条"
+            ]
+          },
+          {
+            "text": "题目",
+            "weight": 0.5,
+            "synonyms": [
+              "题",
+              "problem"
             ]
           }
         ],
         "should_have": [
           {
-            "text": "次",
-            "weight": 0.2
-          },
-          {
-            "text": "题目",
-            "weight": 0.2
+            "text": "Wrong Answer",
+            "weight": 0.05,
+            "synonyms": [
+              "WA",
+              "错误答案"
+            ]
           }
         ]
       },
@@ -2375,18 +2655,22 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "平均",
-            "weight": 0.3
-          },
-          {
-            "text": "次",
-            "weight": 0.3
+            "text": "天",
+            "weight": 1.0,
+            "synonyms": [
+              "每天",
+              "日"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "天",
-            "weight": 0.2
+            "text": "平均",
+            "weight": 0.05
+          },
+          {
+            "text": "次",
+            "weight": 0.05
           }
         ]
       },
@@ -2413,29 +2697,29 @@
         "must_have": [
           {
             "text": "visited",
-            "weight": 0.3,
+            "weight": 1.0,
             "synonyms": [
               "访问标记",
               "已访问"
-            ]
-          },
-          {
-            "text": "队列",
-            "weight": 0.3,
-            "synonyms": [
-              "queue",
-              "deque"
             ]
           }
         ],
         "should_have": [
           {
             "text": "多源",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "双向",
-            "weight": 0.2
+            "weight": 0.05
+          },
+          {
+            "text": "队列",
+            "weight": 0.05,
+            "synonyms": [
+              "queue",
+              "deque"
+            ]
           }
         ]
       },
@@ -2461,22 +2745,25 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "状态",
-            "weight": 0.4
+            "text": "转移",
+            "weight": 0.5,
+            "synonyms": [
+              "状态转移"
+            ]
+          },
+          {
+            "text": "搜索",
+            "weight": 0.5,
+            "synonyms": [
+              "搜索空间",
+              "遍历"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "转移",
-            "weight": 0.2
-          },
-          {
-            "text": "搜索",
-            "weight": 0.2
-          },
-          {
-            "text": "图",
-            "weight": 0.2
+            "text": "状态",
+            "weight": 0.05
           }
         ]
       },
@@ -2501,22 +2788,29 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "图",
-            "weight": 0.3
+            "text": "节点",
+            "weight": 0.5,
+            "synonyms": [
+              "顶点"
+            ]
           },
           {
-            "text": "状态",
-            "weight": 0.3
+            "text": "边",
+            "weight": 0.5,
+            "synonyms": [
+              "连接",
+              "关系"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "节点",
-            "weight": 0.2
+            "text": "图",
+            "weight": 0.05
           },
           {
-            "text": "边",
-            "weight": 0.2
+            "text": "状态",
+            "weight": 0.05
           }
         ]
       },
@@ -2542,22 +2836,34 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "递归",
-            "weight": 0.3
+            "text": "栈",
+            "weight": 0.5,
+            "synonyms": [
+              "stack",
+              "调用栈"
+            ]
           },
           {
-            "text": "迭代",
-            "weight": 0.3,
+            "text": "两种",
+            "weight": 0.5,
             "synonyms": [
-              "循环",
-              "非递归"
+              "两种方式",
+              "两种实现"
             ]
           }
         ],
         "should_have": [
           {
-            "text": "两种",
-            "weight": 0.2
+            "text": "递归",
+            "weight": 0.05
+          },
+          {
+            "text": "迭代",
+            "weight": 0.05,
+            "synonyms": [
+              "循环",
+              "非递归"
+            ]
           }
         ]
       },
@@ -2583,26 +2889,29 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "bug",
-            "weight": 0.3,
+            "text": "边界",
+            "weight": 0.5,
             "synonyms": [
-              "错误",
-              "问题"
+              "边界条件",
+              "boundary"
+            ]
+          },
+          {
+            "text": "初始化",
+            "weight": 0.5,
+            "synonyms": [
+              "初始值"
             ]
           }
         ],
         "should_have": [
           {
-            "text": "边界",
-            "weight": 0.2
-          },
-          {
-            "text": "初始化",
-            "weight": 0.2
-          },
-          {
-            "text": "条件",
-            "weight": 0.2
+            "text": "bug",
+            "weight": 0.05,
+            "synonyms": [
+              "错误",
+              "问题"
+            ]
           }
         ]
       },
@@ -2628,21 +2937,25 @@
         "must_have": [
           {
             "text": "层序遍历",
-            "weight": 0.3
+            "weight": 0.5
           },
           {
-            "text": "最大",
-            "weight": 0.3
+            "text": "求和",
+            "weight": 0.5,
+            "synonyms": [
+              "累加",
+              "和"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "BFS",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
-            "text": "求和",
-            "weight": 0.2
+            "text": "最大",
+            "weight": 0.05
           }
         ]
       },
@@ -2666,22 +2979,26 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "对称",
-            "weight": 0.3
+            "text": "2^",
+            "weight": 0.5
           },
           {
-            "text": "2^",
-            "weight": 0.3
+            "text": "标号",
+            "weight": 0.5,
+            "synonyms": [
+              "节点编号",
+              "编号"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "公式",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
-            "text": "标号",
-            "weight": 0.2
+            "text": "对称",
+            "weight": 0.05
           }
         ]
       },
@@ -2705,22 +3022,34 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "图",
-            "weight": 0.4
+            "text": "可达",
+            "weight": 0.5,
+            "synonyms": [
+              "到达",
+              "能到"
+            ]
           },
           {
-            "text": "索引",
-            "weight": 0.3
+            "text": "跳跃",
+            "weight": 0.5,
+            "synonyms": [
+              "跳",
+              "arr[i]"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "节点",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
-            "text": "可达",
-            "weight": 0.1
+            "text": "图",
+            "weight": 0.05
+          },
+          {
+            "text": "索引",
+            "weight": 0.05
           }
         ]
       },
@@ -2744,26 +3073,38 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "父节点",
-            "weight": 0.4
+            "text": "邻接",
+            "weight": 0.5,
+            "synonyms": [
+              "邻接表",
+              "无向图"
+            ]
           },
           {
-            "text": "字典",
-            "weight": 0.3,
+            "text": "DFS",
+            "weight": 0.5,
             "synonyms": [
-              "dict",
-              "哈希表"
+              "深度优先",
+              "遍历"
             ]
           }
         ],
         "should_have": [
           {
-            "text": "DFS",
-            "weight": 0.2
+            "text": "遍历",
+            "weight": 0.05
           },
           {
-            "text": "遍历",
-            "weight": 0.1
+            "text": "父节点",
+            "weight": 0.05
+          },
+          {
+            "text": "字典",
+            "weight": 0.05,
+            "synonyms": [
+              "dict",
+              "哈希表"
+            ]
           }
         ]
       },
@@ -2787,22 +3128,30 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "最短",
-            "weight": 0.4
+            "text": "无权图",
+            "weight": 0.5
           },
           {
-            "text": "无权图",
-            "weight": 0.3
+            "text": "基因",
+            "weight": 0.5,
+            "synonyms": [
+              "基因序列",
+              "gene"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "BFS",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "变化",
-            "weight": 0.1
+            "weight": 0.05
+          },
+          {
+            "text": "最短",
+            "weight": 0.05
           }
         ]
       },
@@ -2826,22 +3175,28 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "层",
-            "weight": 0.3
+            "text": "递增",
+            "weight": 0.5,
+            "synonyms": [
+              "严格递增"
+            ]
           },
           {
-            "text": "奇偶",
-            "weight": 0.3
+            "text": "递减",
+            "weight": 0.5,
+            "synonyms": [
+              "严格递减"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "递增",
-            "weight": 0.2
+            "text": "层",
+            "weight": 0.05
           },
           {
-            "text": "递减",
-            "weight": 0.2
+            "text": "奇偶",
+            "weight": 0.05
           }
         ]
       },
@@ -2865,26 +3220,34 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "边权",
-            "weight": 0.4
+            "text": "倒数",
+            "weight": 0.5,
+            "synonyms": [
+              "1/x",
+              "反向"
+            ]
           },
           {
-            "text": "除法",
-            "weight": 0.3,
+            "text": "乘积",
+            "weight": 0.5,
             "synonyms": [
-              "商",
-              "比值"
+              "路径乘积",
+              "累乘"
             ]
           }
         ],
         "should_have": [
           {
-            "text": "倒数",
-            "weight": 0.2
+            "text": "边权",
+            "weight": 0.05
           },
           {
-            "text": "乘积",
-            "weight": 0.1
+            "text": "除法",
+            "weight": 0.05,
+            "synonyms": [
+              "商",
+              "比值"
+            ]
           }
         ]
       },
@@ -2908,22 +3271,30 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "队列",
-            "weight": 0.4
+            "text": "候选",
+            "weight": 0.5,
+            "synonyms": [
+              "候选节点",
+              "未满"
+            ]
           },
           {
-            "text": "父节点",
-            "weight": 0.3
+            "text": "层序",
+            "weight": 0.5,
+            "synonyms": [
+              "层序遍历",
+              "BFS"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "候选",
-            "weight": 0.2
+            "text": "队列",
+            "weight": 0.05
           },
           {
-            "text": "完全二叉树",
-            "weight": 0.1
+            "text": "父节点",
+            "weight": 0.05
           }
         ]
       },
@@ -2947,22 +3318,30 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "空",
-            "weight": 0.4
+            "text": "层序",
+            "weight": 0.5,
+            "synonyms": [
+              "层序遍历",
+              "BFS"
+            ]
           },
           {
-            "text": "完全二叉树",
-            "weight": 0.3
+            "text": "标志",
+            "weight": 0.5,
+            "synonyms": [
+              "flag",
+              "遇到空节点"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "层序",
-            "weight": 0.2
+            "text": "空",
+            "weight": 0.05
           },
           {
-            "text": "标志",
-            "weight": 0.1
+            "text": "完全二叉树",
+            "weight": 0.05
           }
         ]
       },
@@ -2986,30 +3365,34 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "方向",
-            "weight": 0.4
+            "text": "交替",
+            "weight": 0.5,
+            "synonyms": [
+              "左右交替",
+              "奇偶"
+            ]
           },
           {
-            "text": "反转",
-            "weight": 0.3,
+            "text": "布尔",
+            "weight": 0.5,
             "synonyms": [
-              "reverse",
-              "翻转"
+              "flag",
+              "标志位"
             ]
           }
         ],
         "should_have": [
           {
-            "text": "布尔",
-            "weight": 0.2,
-            "synonyms": [
-              "bool",
-              "标志"
-            ]
+            "text": "方向",
+            "weight": 0.05
           },
           {
-            "text": "交替",
-            "weight": 0.1
+            "text": "反转",
+            "weight": 0.05,
+            "synonyms": [
+              "reverse",
+              "翻转"
+            ]
           }
         ]
       },
@@ -3033,22 +3416,30 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "8",
-            "weight": 0.4
+            "text": "对角线",
+            "weight": 0.5,
+            "synonyms": [
+              "斜向",
+              "斜"
+            ]
           },
           {
-            "text": "方向",
-            "weight": 0.3
+            "text": "最短路径",
+            "weight": 0.5,
+            "synonyms": [
+              "最短",
+              "shortest path"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "对角线",
-            "weight": 0.2
+            "text": "8",
+            "weight": 0.05
           },
           {
-            "text": "斜",
-            "weight": 0.1
+            "text": "方向",
+            "weight": 0.05
           }
         ]
       },
@@ -3072,22 +3463,29 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "决策树",
-            "weight": 0.4
+            "text": "回溯",
+            "weight": 0.5,
+            "synonyms": [
+              "backtrack"
+            ]
           },
           {
-            "text": "选择",
-            "weight": 0.3
+            "text": "撤销",
+            "weight": 0.5,
+            "synonyms": [
+              "undo",
+              "撤回"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "回溯",
-            "weight": 0.2
+            "text": "决策树",
+            "weight": 0.05
           },
           {
-            "text": "撤销",
-            "weight": 0.1
+            "text": "选择",
+            "weight": 0.05
           }
         ]
       },
@@ -3111,8 +3509,26 @@
       "content_rules": {
         "must_have": [
           {
+            "text": "头节点",
+            "weight": 0.5,
+            "synonyms": [
+              "dummy",
+              "哨兵"
+            ]
+          },
+          {
+            "text": "链表",
+            "weight": 0.5,
+            "synonyms": [
+              "next指针",
+              "链式"
+            ]
+          }
+        ],
+        "should_have": [
+          {
             "text": "虚拟",
-            "weight": 0.4,
+            "weight": 0.05,
             "synonyms": [
               "dummy",
               "哑节点"
@@ -3120,17 +3536,7 @@
           },
           {
             "text": "下一层",
-            "weight": 0.3
-          }
-        ],
-        "should_have": [
-          {
-            "text": "头节点",
-            "weight": 0.2
-          },
-          {
-            "text": "链表",
-            "weight": 0.1
+            "weight": 0.05
           }
         ]
       },
@@ -3158,21 +3564,25 @@
         "must_have": [
           {
             "text": "python",
-            "weight": 0.4
-          },
-          {
-            "text": "语言",
-            "weight": 0.3
+            "weight": 1.0,
+            "synonyms": [
+              "Python",
+              "py"
+            ]
           }
         ],
         "should_have": [
           {
             "text": "次",
-            "weight": 0.2
+            "weight": 0.05
           },
           {
             "text": "提交",
-            "weight": 0.1
+            "weight": 0.05
+          },
+          {
+            "text": "语言",
+            "weight": 0.05
           }
         ]
       },
@@ -3200,8 +3610,17 @@
       "content_rules": {
         "must_have": [
           {
+            "text": "palindrome",
+            "weight": 1.0,
+            "synonyms": [
+              "回文"
+            ]
+          }
+        ],
+        "should_have": [
+          {
             "text": "Runtime Error",
-            "weight": 0.4,
+            "weight": 0.05,
             "synonyms": [
               "运行时错误",
               "RE"
@@ -3209,13 +3628,7 @@
           },
           {
             "text": "题目",
-            "weight": 0.3
-          }
-        ],
-        "should_have": [
-          {
-            "text": "palindrom",
-            "weight": 0.2
+            "weight": 0.05
           }
         ]
       },
@@ -3243,22 +3656,29 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "提交",
-            "weight": 0.4
+            "text": "最多",
+            "weight": 0.5,
+            "synonyms": [
+              "最频繁"
+            ]
           },
           {
-            "text": "次",
-            "weight": 0.3
+            "text": "题目",
+            "weight": 0.5,
+            "synonyms": [
+              "题",
+              "problem"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "最多",
-            "weight": 0.2
+            "text": "提交",
+            "weight": 0.05
           },
           {
-            "text": "题目",
-            "weight": 0.1
+            "text": "次",
+            "weight": 0.05
           }
         ]
       },
@@ -3286,26 +3706,26 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "一次",
-            "weight": 0.4
-          },
-          {
-            "text": "通过",
-            "weight": 0.3,
+            "text": "道",
+            "weight": 1.0,
             "synonyms": [
-              "Accepted",
-              "AC"
+              "个",
+              "题"
             ]
           }
         ],
         "should_have": [
           {
-            "text": "道",
-            "weight": 0.2
+            "text": "一次",
+            "weight": 0.05
           },
           {
-            "text": "题",
-            "weight": 0.1
+            "text": "通过",
+            "weight": 0.05,
+            "synonyms": [
+              "Accepted",
+              "AC"
+            ]
           }
         ]
       },
@@ -3333,8 +3753,25 @@
       "content_rules": {
         "must_have": [
           {
+            "text": "次",
+            "weight": 0.5,
+            "synonyms": [
+              "次数"
+            ]
+          },
+          {
+            "text": "对比",
+            "weight": 0.5,
+            "synonyms": [
+              "比较",
+              "差异"
+            ]
+          }
+        ],
+        "should_have": [
+          {
             "text": "周末",
-            "weight": 0.3,
+            "weight": 0.05,
             "synonyms": [
               "周六",
               "周日",
@@ -3344,20 +3781,10 @@
           },
           {
             "text": "工作日",
-            "weight": 0.3,
+            "weight": 0.05,
             "synonyms": [
               "weekday"
             ]
-          }
-        ],
-        "should_have": [
-          {
-            "text": "次",
-            "weight": 0.2
-          },
-          {
-            "text": "对比",
-            "weight": 0.2
           }
         ]
       },
@@ -3385,8 +3812,40 @@
       "content_rules": {
         "must_have": [
           {
+            "text": "BFS",
+            "weight": 0.33,
+            "synonyms": [
+              "广度优先"
+            ]
+          },
+          {
+            "text": "DFS",
+            "weight": 0.33,
+            "synonyms": [
+              "深度优先"
+            ]
+          },
+          {
+            "text": "适用",
+            "weight": 0.34,
+            "synonyms": [
+              "应用",
+              "使用场景"
+            ]
+          }
+        ],
+        "should_have": [
+          {
+            "text": "最短",
+            "weight": 0.05
+          },
+          {
+            "text": "路径",
+            "weight": 0.05
+          },
+          {
             "text": "层序",
-            "weight": 0.2,
+            "weight": 0.05,
             "synonyms": [
               "BFS",
               "广度优先"
@@ -3394,29 +3853,11 @@
           },
           {
             "text": "递归",
-            "weight": 0.2,
+            "weight": 0.05,
             "synonyms": [
               "DFS",
               "深度优先"
             ]
-          },
-          {
-            "text": "场景",
-            "weight": 0.2,
-            "synonyms": [
-              "适合",
-              "应用"
-            ]
-          }
-        ],
-        "should_have": [
-          {
-            "text": "最短",
-            "weight": 0.2
-          },
-          {
-            "text": "路径",
-            "weight": 0.2
           }
         ]
       },
@@ -3444,22 +3885,30 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "节点",
-            "weight": 0.3
+            "text": "建模",
+            "weight": 0.5,
+            "synonyms": [
+              "抽象",
+              "转化"
+            ]
           },
           {
-            "text": "边",
-            "weight": 0.3
+            "text": "邻接",
+            "weight": 0.5,
+            "synonyms": [
+              "邻接表",
+              "邻接矩阵"
+            ]
           }
         ],
         "should_have": [
           {
-            "text": "建模",
-            "weight": 0.2
+            "text": "节点",
+            "weight": 0.05
           },
           {
-            "text": "图",
-            "weight": 0.2
+            "text": "边",
+            "weight": 0.05
           }
         ]
       },
@@ -3486,26 +3935,34 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "完全二叉树",
-            "weight": 0.3
+            "text": "层序",
+            "weight": 0.5,
+            "synonyms": [
+              "层序遍历",
+              "BFS"
+            ]
           },
           {
-            "text": "性质",
-            "weight": 0.3,
+            "text": "数组",
+            "weight": 0.5,
             "synonyms": [
-              "特点",
-              "特性"
+              "数组表示",
+              "索引"
             ]
           }
         ],
         "should_have": [
           {
-            "text": "层序",
-            "weight": 0.2
+            "text": "完全二叉树",
+            "weight": 0.05
           },
           {
-            "text": "队列",
-            "weight": 0.2
+            "text": "性质",
+            "weight": 0.05,
+            "synonyms": [
+              "特点",
+              "特性"
+            ]
           }
         ]
       },
@@ -3532,26 +3989,33 @@
       "content_rules": {
         "must_have": [
           {
-            "text": "状态",
-            "weight": 0.4
+            "text": "字符串",
+            "weight": 0.5,
+            "synonyms": [
+              "string"
+            ]
           },
           {
-            "text": "表示",
-            "weight": 0.3,
+            "text": "坐标",
+            "weight": 0.5,
             "synonyms": [
-              "表达",
-              "编码"
+              "(x,y)",
+              "位置"
             ]
           }
         ],
         "should_have": [
           {
-            "text": "字符串",
-            "weight": 0.2
+            "text": "状态",
+            "weight": 0.05
           },
           {
-            "text": "坐标",
-            "weight": 0.1
+            "text": "表示",
+            "weight": 0.05,
+            "synonyms": [
+              "表达",
+              "编码"
+            ]
           }
         ]
       },

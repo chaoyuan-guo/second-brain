@@ -537,6 +537,9 @@ def verify_negative_answer(
                     "matched_must_have": [],
                     "matched_should_have": [],
                     "matched_evidence": [],
+                    "matched_must_not_have": [],
+                    "semantic_matches": [],
+                    "numeric_validations": [],
                     "is_unknown_answer": False,
                     "details": f"声称的来源不存在: {source}"
                 }
@@ -1462,6 +1465,9 @@ def evaluate_content_score(
                     "matched_must_have": [],
                     "matched_should_have": [],
                     "matched_evidence": [],
+                    "matched_must_not_have": [],
+                    "semantic_matches": [],
+                    "numeric_validations": [],
                     "is_unknown_answer": True,
                     "behavior": "correct_rejection",
                     "attempted_retrieval": True,
@@ -1478,6 +1484,9 @@ def evaluate_content_score(
                     "matched_must_have": [],
                     "matched_should_have": [],
                     "matched_evidence": [],
+                    "matched_must_not_have": [],
+                    "semantic_matches": [],
+                    "numeric_validations": [],
                     "is_unknown_answer": True,
                     "behavior": "lazy_rejection",
                     "attempted_retrieval": False,
@@ -1494,6 +1503,9 @@ def evaluate_content_score(
                     "matched_must_have": [],
                     "matched_should_have": [],
                     "matched_evidence": [],
+                    "matched_must_not_have": [],
+                    "semantic_matches": [],
+                    "numeric_validations": [],
                     "is_unknown_answer": True,
                     "behavior": "soft_unknown",
                     "attempted_retrieval": attempted_retrieval,
@@ -1504,6 +1516,9 @@ def evaluate_content_score(
                 "matched_must_have": [],
                 "matched_should_have": [],
                 "matched_evidence": [],
+                "matched_must_not_have": [],
+                "semantic_matches": [],
+                "numeric_validations": [],
                 "is_unknown_answer": False,
                 "behavior": "hallucination",
                 "attempted_retrieval": attempted_retrieval,
@@ -1600,12 +1615,38 @@ def evaluate_content_score(
     numeric_score = numeric_result["score"]
     numeric_total_weight = sum(v.get("weight", 0.3) for v in numeric_validations)
 
+    # 计算 must_not_have 惩罚
+    must_not_have = content_rules.get("must_not_have", [])
+    matched_must_not = []
+    penalty_weight = 0.0
+
+    for item in must_not_have:
+        if isinstance(item, dict):
+            text = item.get("text", "")
+            penalty = item.get("penalty", 0.2)
+            item_synonyms = item.get("synonyms", [])
+        else:
+            text = str(item)
+            penalty = 0.2
+            item_synonyms = []
+
+        if text:
+            is_match, matched_term = contains_normalized(answer, text, item_synonyms)
+            if is_match:
+                penalty_weight += penalty
+                matched_must_not.append({"text": text, "matched_term": matched_term, "penalty": penalty})
+
     # 综合计算得分
     all_weights = total_weight + evidence_total + numeric_total_weight
     if all_weights > 0:
+        if abs(all_weights - 1.0) > 0.02:
+            print(f"WARNING: 题目 {question.get('id', 'unknown')} 的 content_rules 权重未归一化: {all_weights:.4f}")
         base_score = (earned_weight + evidence_weight + numeric_score * numeric_total_weight) / all_weights
     else:
         base_score = 1.0 if not must_have and not evidence and not numeric_validations else 0.0
+
+    # 扣除 must_not_have 惩罚
+    base_score = max(0.0, base_score - penalty_weight)
 
     # 加上 should_have 加分，但不超过 1.0
     final_score = min(1.0, base_score + bonus_weight)
@@ -1613,6 +1654,8 @@ def evaluate_content_score(
     details_parts = [f"must_have: {len(matched_must)}/{len(must_have)}", f"evidence: {len(matched_ev)}/{len(evidence)}"]
     if numeric_validations:
         details_parts.append(numeric_result["details"])
+    if must_not_have:
+        details_parts.append(f"must_not_have: {len(matched_must_not)}/{len(must_not_have)}")
     if semantic_matches:
         details_parts.append(f"semantic: {len(semantic_matches)}")
 
@@ -1621,6 +1664,7 @@ def evaluate_content_score(
         "matched_must_have": matched_must,
         "matched_should_have": matched_should,
         "matched_evidence": matched_ev,
+        "matched_must_not_have": matched_must_not,
         "semantic_matches": semantic_matches,
         "numeric_validations": numeric_result.get("matched_values", []),
         "is_unknown_answer": False,
