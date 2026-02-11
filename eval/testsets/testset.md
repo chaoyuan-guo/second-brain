@@ -17,32 +17,6 @@
 | skill | 8 | 技能类：需要使用特定技能工具 |
 | web_search | 2 | 联网类：需要联网搜索的问题 |
 
-## 改进特性
-
-### 同义词/正则匹配
-- 支持全局同义词（如"动态规划" ↔ "DP"/"dynamic programming"）
-- 支持题目级同义词配置
-- 支持正则表达式匹配
-
-### 精确 Negative 题目
-- Q53-Q56：问的是"笔记中明确不存在的内容"
-- 设计原则：引用具体笔记上下文，但问不存在的细节
-
-### 动态验证
-- Statistics 题目支持 `$stats.xxx` 动态值引用
-- 通过 `precompute_stats.py` 预计算统计数据
-
-### 检索指标
-- 记录实际检索结果
-- 计算 precision/recall/f1 指标
-- 生成检索分析报告
-
-### 权重调整
-- citation 权重从 0.2 降至 0.1（加分项）
-- 各类别权重更加合理
-
----
-
 ## 完整题目列表
 
 ### Q01_perfect_tree_node_count
@@ -428,7 +402,7 @@
 
 ---
 
-## 新增精确 Negative 题目 (Q53-Q56)
+## Q53-Q56
 
 ### Q53_neg_nonexistent_problem_number
 
@@ -461,7 +435,7 @@
 
 ---
 
-## 新增 Statistics 题目 (Q57-Q60)
+## Q57-Q60
 
 ### Q57_stat_most_common_tag
 
@@ -496,7 +470,7 @@
 
 ---
 
-## 新增 Skill 题目 (Q61-Q62)
+## Q61-Q62
 
 ### Q61_skill_wrong_answer_analysis
 
@@ -516,7 +490,7 @@
 
 ---
 
-## 新增 Reasoning 跨文档题目 (Q63-Q67)
+## Q63-Q67
 
 ### Q63_reason_bfs_common_patterns
 
@@ -555,9 +529,7 @@
 
 ---
 
-## 新增 Understanding 题目 (Q68-Q80)
-
-覆盖之前引用不足的文档，提升测试集覆盖度。
+## Q68-Q80
 
 ### Q68_max_level_sum
 
@@ -652,9 +624,7 @@
 
 ---
 
-## 新增 Skill 题目 (Q81-Q85)
-
-将 skill 题目从 3 道增加到 8 道，提升统计意义。
+## Q81-Q85
 
 ### Q81_skill_lang_distribution
 
@@ -698,9 +668,7 @@
 
 ---
 
-## 新增跨文档推理题目 (Q86-Q89)
-
-真正需要多文档综合才能回答的推理题。
+## Q86-Q89
 
 ### Q86_cross_tree_traversal_methods
 
