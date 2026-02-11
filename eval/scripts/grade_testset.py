@@ -2257,13 +2257,20 @@ def evaluate_attribution_score(
 
     根据 attribution_mode 分发评估逻辑：
     - disabled: 不要求归因，直接满分
-    - standard: 标准模式，评估三个维度
-    - strict: 严格模式，更高要求
+    - standard/strict: 先执行 gate check，通过后评估两个维度
 
-    三个维度：
-    - workflow (0.35): 工作流合规性
-    - attribution (0.50): 内容归因
-    - fidelity (0.15): 忠实度
+    评估流程：
+    1. Gate Check: 必须有文件读取（has_read=True），否则直接 0 分
+       豁免条件：
+       - attribution_mode == "disabled"
+       - 短答案 (len(answer.strip()) <= 50)
+       - allow_unknown=True 且回答判定为"不知道"
+
+    2. 两个维度（gate check 通过后）：
+       - attribution (0.85): 内容归因
+       - fidelity (0.15): 忠实度
+
+    workflow 维度仍然计算但不参与打分（用于报告和调试）。
 
     Args:
         question: 题目配置
@@ -2276,6 +2283,7 @@ def evaluate_attribution_score(
             "workflow": Dict,
             "attribution": Dict,
             "fidelity": Dict,
+            "gate_check": Dict,
             "details": str
         }
     """
@@ -2288,6 +2296,7 @@ def evaluate_attribution_score(
             "workflow": {"score": 1.0},
             "attribution": {"score": 1.0},
             "fidelity": {"score": 1.0},
+            "gate_check": {"passed": True, "reason": "", "exempt": True},
             "details": "归因评估已禁用"
         }
 
@@ -2300,13 +2309,36 @@ def evaluate_attribution_score(
         question.get("expected_sources") or question.get("sources")
     )
 
-    # 加权计算总分
-    workflow_weight = 0.35
-    attribution_weight = 0.50
+    # === Gate Check ===
+    # 豁免条件：短答案或 allow_unknown 的"不知道"回答
+    answer_stripped = answer.strip() if answer else ""
+    is_short_answer = len(answer_stripped) <= 50
+    is_unknown_answer = question.get("allow_unknown", False) and is_unknown(answer)
+    gate_exempt = is_short_answer or is_unknown_answer
+
+    gate_passed = True
+    gate_reason = ""
+
+    if not gate_exempt and not workflow_result.get("has_read", False):
+        # 回答非空但未读取文件 → gate check 失败
+        gate_passed = False
+        gate_reason = "回答非空但未读取任何笔记文件"
+
+    if not gate_passed:
+        return {
+            "score": 0.0,
+            "workflow": workflow_result,
+            "attribution": attribution_result,
+            "fidelity": fidelity_result,
+            "gate_check": {"passed": False, "reason": gate_reason, "exempt": False},
+            "details": f"gate_check=FAIL({gate_reason}), workflow={workflow_result['score']:.2f}, attribution={attribution_result['score']:.2f}, fidelity={fidelity_result['score']:.2f}"
+        }
+
+    # Gate check 通过，新权重：attribution 85%, fidelity 15%
+    attribution_weight = 0.85
     fidelity_weight = 0.15
 
     score = (
-        workflow_result["score"] * workflow_weight +
         attribution_result["score"] * attribution_weight +
         fidelity_result["score"] * fidelity_weight
     )
@@ -2316,7 +2348,8 @@ def evaluate_attribution_score(
         "workflow": workflow_result,
         "attribution": attribution_result,
         "fidelity": fidelity_result,
-        "details": f"workflow={workflow_result['score']:.2f}, attribution={attribution_result['score']:.2f}, fidelity={fidelity_result['score']:.2f}"
+        "gate_check": {"passed": True, "reason": "", "exempt": gate_exempt},
+        "details": f"gate_check={'EXEMPT' if gate_exempt else 'PASS'}, attribution={attribution_result['score']:.2f}, fidelity={fidelity_result['score']:.2f}"
     }
 
 
