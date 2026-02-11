@@ -782,7 +782,7 @@ def query_my_notes(query: str, top_k: int | None = None) -> dict[str, Any]:
     return {
         "query": query,
         "results": results,
-        "hint": "以上是检索到的摘要片段。如需获取完整内容，请使用 read_note_file 工具读取对应的源文件。",
+        "hint": "以上是检索到的摘要片段，仅供定位相关文件，不应作为详细引用的依据。若回答需要引用具体内容（代码、公式、详细步骤等），请使用 read_note_file 读取完整原文。若仅需判断某主题是否存在于笔记中，可直接使用摘要中的 source_path 和 heading_path。",
     }
 
 

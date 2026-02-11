@@ -1261,6 +1261,8 @@ async def run_chat_conversation(
     code_interpreter_used = False
     agentic_hint_inserted = False
     used_sources: List[str] = []
+    read_files: List[str] = []
+    traceability_hint_inserted = False
     eval_context = eval_context or {}
     strict_eval = bool(eval_context.get("strict"))
     question_id = str(eval_context.get("question_id") or "")
@@ -1351,6 +1353,31 @@ async def run_chat_conversation(
         ]
 
     for turn in range(MAX_TOOL_TURNS + 1):
+        # === 溯源提醒注入 ===
+        if read_files and not traceability_hint_inserted:
+            unique_read_files = sorted(set(read_files))
+            file_list = "\n".join(f"- {f}" for f in unique_read_files)
+            traceability_hint = (
+                f"请基于以下已读取的笔记文件生成回答：\n"
+                f"{file_list}\n\n"
+                f"溯源要求：\n"
+                f"- 回答中的每个事实性陈述都应可溯源到上述文件\n"
+                f"- 引用内容应直接来自 read_note_file 返回的原文\n"
+                f"- 每处引用标注来源文件路径\n"
+                f"- 如果上述文件不足以完整回答，请明确说明\"笔记中没有更多相关内容\""
+            )
+            messages.append({"role": "system", "content": traceability_hint})
+            traceability_hint_inserted = True
+            logger.info(
+                "Traceability hint injected",
+                extra={
+                    "trace_id": trace_id,
+                    "read_files": unique_read_files,
+                    "turn": turn + 1,
+                },
+            )
+        # === 注入结束 ===
+
         assistant_message = await _maybe_await(
             _request_completion(
                 messages,
@@ -1763,6 +1790,7 @@ async def run_chat_conversation(
                 source_file = result.get("source_file") if isinstance(result, dict) else None
                 if isinstance(source_file, str) and source_file:
                     used_sources.append(_normalize_source_path(source_file))
+                    read_files.append(_normalize_source_path(source_file))
                 if event_callback:
                     try:
                         stage = "end" if not _is_tool_error_output(tool_output) else "error"
