@@ -92,28 +92,23 @@ pytest tests/test_chat_stream_events.py::test_stream_events_basic -v
 ### 评估
 
 ```bash
-# 针对测试集运行评估（需要后端运行中，日志实时输出到终端和文件）
+# 针对测试集运行评估（需要后端运行中，LLM-as-Judge 评分）
 python -u eval/scripts/run_eval_stream.py \
-  --testset eval/testsets/testset.json \
   --base-url http://127.0.0.1:9000 \
-  --strict-sources \
-  --recall-k 5 \
-  --concurrency 10 \
-  --report eval/reports/report.json \
-  2>&1 | tee eval/reports/eval.log
+  --concurrency 5 \
+  --report eval/reports/report_v2.json \
+  2>&1 | tee eval/reports/eval_v2.log
 
 # 只运行指定题目（按 ID 前缀匹配，逗号分隔）
 python -u eval/scripts/run_eval_stream.py \
-  --question-ids Q14,Q17,Q52 \
+  --question-ids Q01,Q14 \
   --base-url http://127.0.0.1:9000 \
-  --strict-sources --recall-k 5 \
-  --report eval/reports/report.json
+  --report eval/reports/report_v2.json
 
-# 评分答案
-python eval/scripts/grade_testset.py \
-  --testset eval/testsets/testset.json \
+# 仅评分已有答案
+python eval/scripts/grade_by_llm.py \
   --answers eval/reports/answers.json \
-  --output eval/reports/report.json
+  --output eval/reports/report_v2.json
 ```
 
 ### Docker
