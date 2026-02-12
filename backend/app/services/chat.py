@@ -647,8 +647,10 @@ READ_NOTE_FILE_TOOL_SCHEMA = {
     "function": {
         "name": "read_note_file",
         "description": (
-            "读取 data/notes/my_markdowns 下的本地笔记，可用 offset/limit 分块；"
-            "需按顺序循环读取直到 done=true 并拼接完整内容；返回 source_file 以便溯源。"
+            "读取 data/notes/my_markdowns 下的本地笔记，可用 offset/limit 分块。"
+            "返回值包含 total_chars（文件总字符数）和 done（是否读完）。"
+            "当 done=false 时表示还有未读内容，必须用 next_offset 继续读取直到 done=true，"
+            "否则可能遗漏关键信息导致分析不完整。返回 source_file 以便溯源。"
         ),
         "parameters": {
             "type": "object",
