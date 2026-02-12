@@ -22,8 +22,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-DEFAULT_API_BASE_URL = "https://space.ai-builders.com/backend/v1"
-DEFAULT_CHAT_MODEL = "gpt-5"
+DEFAULT_API_BASE_URL = "https://td06.openai.azure.com/openai/v1"
+DEFAULT_CHAT_MODEL = "gpt-52"
 PASS_THRESHOLD = 0.6
 DIMENSIONS = ["personalization", "precision", "honesty", "traceability"]
 
@@ -239,15 +239,15 @@ class LLMJudge:
                 "openai package is required: pip install openai"
             ) from exc
 
-        api_key = os.getenv("SUPER_MIND_API_KEY") or os.getenv("AI_BUILDER_TOKEN")
+        api_key = os.getenv("SUPER_MIND_API_KEY") or os.getenv("AI_BUILDER_TOKEN") or os.getenv("azure_api_key")
         if not api_key:
             raise RuntimeError(
-                "Missing API key: set SUPER_MIND_API_KEY or AI_BUILDER_TOKEN"
+                "Missing API key: set SUPER_MIND_API_KEY, AI_BUILDER_TOKEN, or azure_api_key"
             )
-        base_url = os.getenv("SUPER_MIND_API_BASE_URL", DEFAULT_API_BASE_URL)
+        base_url = os.getenv("SUPER_MIND_API_BASE_URL") or os.getenv("azure_base_url") or DEFAULT_API_BASE_URL
 
         self._client = OpenAI(api_key=api_key, base_url=base_url)
-        self._model = model or os.getenv("SUPER_MIND_CHAT_MODEL", DEFAULT_CHAT_MODEL)
+        self._model = model or os.getenv("azure_use_model") or os.getenv("SUPER_MIND_CHAT_MODEL", DEFAULT_CHAT_MODEL)
         self._concurrency = concurrency
 
     def _call_llm(self, system: str, user: str) -> str:

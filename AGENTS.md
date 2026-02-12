@@ -27,7 +27,7 @@
 - 前端建议在 `frontend/src/__tests__/` 下采用 React Testing Library；新增 `npm run test`（映射至 `next test` 或 `vitest run`）后，命名遵循 `<Component>.test.tsx`，同时通过 `npm run lint`（Next 自带）保证 JSX/TS 规范。 Snapshot tests should be paired with meaningful interaction assertions.
 
 ## Evaluation Guidelines
-- 评估采用 LLM-as-Judge 方法，围绕个性化命中、精准简洁、诚实性、可追溯性四个维度评分：`python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000 --concurrency 10 --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。
+- 评估采用 LLM-as-Judge 方法，使用 Azure 端点的 `gpt-52` 模型，围绕个性化命中、精准简洁、诚实性、可追溯性四个维度评分：`python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000 --concurrency 10 --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。
 
 ## Commit & Pull Request Guidelines
 - 仓库已初始化 Git，请继续遵循 Conventional Commits（如 `feat: add web_search retries`、`fix: guard empty query`）保持可读性；单次提交聚焦单一功能或缺陷修复。 Commits should stay atomic on the `main` branch unless stated otherwise.
@@ -36,6 +36,13 @@
 ## Security & Configuration Tips
 - `.env` 必须提供 `SUPER_MIND_API_KEY` 与可选 `CHAT_ALLOWED_ORIGINS`；不要将密钥写入日志或前端 bundle，可通过 `os.getenv` 访问并在启动时校验。 Keep the `.env` file out of version control.
 - 生产部署需将 `frontend/out` 置于受控 CDN，并以 `uvicorn main:app --proxy-headers --forwarded-allow-ips="*"` 运行后端；任何外部请求都应保持 20s 超时与错误日志，以免工具链卡死。 Rotate API tokens regularly and scrub `backend.log` before sharing.
+
+## 模型端点使用规则
+- **Chat 模型**：系统根据运行环境自动选择端点（通过 `running_in_container()` 判断）：
+  - **本地开发 / 脚本启动**：默认使用 Azure 端点（`azure_base_url`、`azure_api_key`、`azure_api-version`、`azure_use_model`），可通过 `use_azure=False` 覆盖。
+  - **容器服务**：默认使用 ai-builder 端点（`SUPER_MIND_API_BASE_URL`、`SUPER_MIND_CHAT_MODEL`），可通过 `use_azure=True` 覆盖。
+- **Embedding 模型**：所有环境统一使用 ai-builder 端点（https://space.ai-builders.com/backend/v1），通过 `SUPER_MIND_API_KEY` 或 `AI_BUILDER_TOKEN` 认证。
+- **评估评分**（`eval/scripts/grade_by_llm.py`）：默认使用 Azure 端点的 `gpt-52` 模型进行 LLM-as-Judge 评分，可通过 `azure_base_url`、`azure_api_key`、`azure_use_model` 环境变量覆盖。
 
 ## 协作与设计原则
 - 讨论技术实现方案时，请优先从更通用、可复用、泛化能力更强的角度思考与给出建议。

@@ -220,12 +220,20 @@ def load_settings() -> Settings:
     else:
         mcp_endpoint = mcp_endpoint_env or DEFAULT_MCP_ENDPOINT
 
+    # 根据环境决定是否使用 Azure：本地开发默认使用 Azure，容器环境默认使用 ai-builder
+    use_azure_env = os.getenv("use_azure")
+    if use_azure_env is not None:
+        use_azure_chat = is_truthy(use_azure_env)
+    else:
+        # 本地开发环境默认使用 Azure，容器环境默认不使用
+        use_azure_chat = not running_in_container()
+
     return Settings(
         api_key=api_key,
         api_base_url=os.getenv("SUPER_MIND_API_BASE_URL", DEFAULT_API_BASE_URL),
         chat_model_name=os.getenv("SUPER_MIND_CHAT_MODEL", DEFAULT_MODEL_NAME),
         azure_chat_model_name=os.getenv("azure_use_model"),
-        use_azure_chat=is_truthy(os.getenv("use_azure")),
+        use_azure_chat=use_azure_chat,
         azure_base_url=os.getenv("azure_base_url"),
         azure_api_key=os.getenv("azure_api_key"),
         azure_api_version=azure_api_version,

@@ -134,12 +134,37 @@ curl "http://127.0.0.1:18000/hello?input=test"
 ## 环境变量
 
 必需：
-- `SUPER_MIND_API_KEY` 或 `AI_BUILDER_TOKEN` - LLM 后端的 API 密钥
+- `SUPER_MIND_API_KEY` 或 `AI_BUILDER_TOKEN` - LLM 后端的 API 密钥（用于 embedding 模型）
 
 可选：
 - `CHAT_ALLOWED_ORIGINS` - CORS 来源（默认：localhost:9080）
 - `MCP_SSE_ENDPOINT` - MCP 解释器端点（默认：http://127.0.0.1:9070/sse/）
 - `MCP_INTERPRETER_BACKEND` - 强制使用 `embedded` 或 `mcp` 解释器模式
+
+### Chat 模型端点配置
+
+系统根据运行环境自动选择 chat 模型端点：
+
+**本地开发环境**（默认使用 Azure）：
+- 需要配置以下 Azure 相关环境变量：
+  - `azure_base_url` - Azure OpenAI 端点（例如：https://td06.openai.azure.com/openai/v1）
+  - `azure_api_key` - Azure API 密钥
+  - `azure_api-version` - Azure API 版本（例如：2025-04-01-preview）
+  - `azure_use_model` - Azure 部署的模型名（例如：gpt-52）
+- 如需强制使用 ai-builder 端点，设置 `use_azure=False`
+
+**容器服务环境**（默认使用 ai-builder）：
+- 使用 `SUPER_MIND_API_BASE_URL`（默认：https://space.ai-builders.com/backend/v1）
+- 使用 `SUPER_MIND_CHAT_MODEL`（默认：gpt-5）
+- 如需强制使用 Azure 端点，设置 `use_azure=True` 并配置相应的 Azure 环境变量
+
+**Embedding 模型**：
+- 所有环境下都使用 ai-builder 端点（https://space.ai-builders.com/backend/v1）
+- 通过 `SUPER_MIND_API_KEY` 或 `AI_BUILDER_TOKEN` 认证
+
+**评估脚本**（eval/scripts/grade_by_llm.py）：
+- 默认使用 Azure 端点的 gpt-52 模型进行 LLM-as-Judge 评分
+- 可通过环境变量覆盖：`azure_base_url`、`azure_api_key`、`azure_use_model`
 
 ## 编码规范
 
