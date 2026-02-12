@@ -1,7 +1,7 @@
 {
   "meta": {
-    "name": "personalization_eval_v2",
-    "version": "2.0",
+    "name": "personalization_eval",
+    "version": "1.0",
     "description": "基于用户个性化学习痕迹的评估集",
     "eval_method": "llm_judge"
   },

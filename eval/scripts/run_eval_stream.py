@@ -3,8 +3,8 @@
 
 Usage:
   python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000
-  python eval/scripts/run_eval_stream.py --testset eval/testsets/testset_v2.json --out eval/reports/answers.json
-  python eval/scripts/run_eval_stream.py --report eval/reports/report_v2.json
+  python eval/scripts/run_eval_stream.py --testset eval/testsets/testset.json --out eval/reports/answers.json
+  python eval/scripts/run_eval_stream.py --report eval/reports/report.json
   python eval/scripts/run_eval_stream.py --question-ids Q01,Q14
 """
 
@@ -250,7 +250,7 @@ def run_eval(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run streaming eval against chat API")
-    parser.add_argument("--testset", default="eval/testsets/testset_v2.json")
+    parser.add_argument("--testset", default="eval/testsets/testset.json")
     parser.add_argument("--base-url", default="http://127.0.0.1:9000")
     parser.add_argument("--endpoint", default="/chat/stream")
     parser.add_argument("--mode", choices=["stream", "chat"], default="stream")

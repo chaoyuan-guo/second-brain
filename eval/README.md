@@ -42,9 +42,9 @@
 # 运行评估
 python -u eval/scripts/run_eval_stream.py \
   --base-url http://127.0.0.1:9000 \
-  --concurrency 5 \
-  --report eval/reports/report_v2.json \
-  2>&1 | tee eval/reports/eval_v2.log
+  --concurrency 10 \
+  --report eval/reports/report.json \
+  2>&1 | tee eval/reports/eval.log
 ```
 
 ### 只运行指定题目
@@ -53,7 +53,7 @@ python -u eval/scripts/run_eval_stream.py \
 python -u eval/scripts/run_eval_stream.py \
   --question-ids Q01,Q14 \
   --base-url http://127.0.0.1:9000 \
-  --report eval/reports/report_v2.json
+  --report eval/reports/report.json
 ```
 
 ### 仅评分已有答案
@@ -61,7 +61,7 @@ python -u eval/scripts/run_eval_stream.py \
 ```bash
 python eval/scripts/grade_by_llm.py \
   --answers eval/reports/answers.json \
-  --output eval/reports/report_v2.json
+  --output eval/reports/report.json
 ```
 
 ### 指定评分模型
@@ -70,7 +70,7 @@ python eval/scripts/grade_by_llm.py \
 python eval/scripts/grade_by_llm.py \
   --answers eval/reports/answers.json \
   --tool-traces eval/reports/answers_tool_traces.json \
-  --output eval/reports/report_v2.json \
+  --output eval/reports/report.json \
   --model gpt-5
 ```
 
@@ -79,10 +79,10 @@ python eval/scripts/grade_by_llm.py \
 ```json
 {
   "meta": {
-    "testset_name": "personalization_eval_v2",
+    "testset_name": "personalization_eval",
     "scoring_mode": "llm_judge",
     "model": "gpt-5",
-    "version": "2.0"
+    "version": "1.0"
   },
   "summary": {
     "total": 18,
@@ -119,7 +119,8 @@ python eval/scripts/grade_by_llm.py \
 
 | 文件 | 说明 |
 |------|------|
-| `eval/testsets/testset_v2.json` | 评估集（18 道题，4 个维度） |
+| `eval/testsets/testset.json` | 评估集（18 道题，4 个维度） |
+| `eval/testsets/testset.md` | 评估集可读文档 |
 | `eval/scripts/grade_by_llm.py` | LLM-as-Judge 评分脚本 |
 | `eval/scripts/run_eval_stream.py` | 评估运行脚本（生成答案 + 调用评分） |
 | `eval/README.md` | 本文档 |

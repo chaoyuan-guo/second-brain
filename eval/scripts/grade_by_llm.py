@@ -9,7 +9,7 @@ Uses an LLM to evaluate answers across four dimensions:
 
 Usage:
   python eval/scripts/grade_by_llm.py --answers answers.json --output report.json
-  python eval/scripts/grade_by_llm.py --testset eval/testsets/testset_v2.json --answers answers.json --output report.json
+  python eval/scripts/grade_by_llm.py --testset eval/testsets/testset.json --answers answers.json --output report.json
 """
 
 from __future__ import annotations
@@ -224,7 +224,7 @@ class LLMJudge:
     def __init__(
         self,
         model: Optional[str] = None,
-        concurrency: int = 5,
+        concurrency: int = 10,
     ):
         try:
             from dotenv import load_dotenv
@@ -455,7 +455,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--testset",
-        default="eval/testsets/testset_v2.json",
+        default="eval/testsets/testset.json",
         help="Path to testset JSON",
     )
     parser.add_argument(
@@ -479,7 +479,7 @@ def main() -> None:
     parser.add_argument(
         "--concurrency",
         type=int,
-        default=5,
+        default=10,
         help="Number of concurrent grading calls",
     )
     args = parser.parse_args()
