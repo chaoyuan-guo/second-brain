@@ -182,7 +182,11 @@ def check_retrieval_correctness(
 
     # Extract retrieved sources from tool_traces
     retrieved: List[str] = []
-    events = tool_trace.get("events", [])
+    # tool_trace can be a list of events directly, or a dict with "events" key
+    if isinstance(tool_trace, list):
+        events = tool_trace
+    else:
+        events = tool_trace.get("events", [])
     for event in events:
         if event.get("tool_name") == "query_my_notes":
             tool_output = event.get("output", "")
@@ -239,15 +243,26 @@ class LLMJudge:
                 "openai package is required: pip install openai"
             ) from exc
 
-        api_key = os.getenv("SUPER_MIND_API_KEY") or os.getenv("AI_BUILDER_TOKEN") or os.getenv("azure_api_key")
+        # Respect use_azure flag: when True (or unset in local dev), prefer Azure endpoint
+        use_azure_env = os.getenv("use_azure", "").strip().lower()
+        use_azure = use_azure_env in ("true", "1", "yes")
+
+        if use_azure and os.getenv("azure_api_key") and os.getenv("azure_base_url"):
+            api_key = os.getenv("azure_api_key")
+            base_url = os.getenv("azure_base_url")
+            default_model = os.getenv("azure_use_model") or DEFAULT_CHAT_MODEL
+        else:
+            api_key = os.getenv("SUPER_MIND_API_KEY") or os.getenv("AI_BUILDER_TOKEN") or os.getenv("azure_api_key")
+            base_url = os.getenv("SUPER_MIND_API_BASE_URL") or os.getenv("azure_base_url") or DEFAULT_API_BASE_URL
+            default_model = os.getenv("SUPER_MIND_CHAT_MODEL", DEFAULT_CHAT_MODEL)
+
         if not api_key:
             raise RuntimeError(
                 "Missing API key: set SUPER_MIND_API_KEY, AI_BUILDER_TOKEN, or azure_api_key"
             )
-        base_url = os.getenv("SUPER_MIND_API_BASE_URL") or os.getenv("azure_base_url") or DEFAULT_API_BASE_URL
 
         self._client = OpenAI(api_key=api_key, base_url=base_url)
-        self._model = model or os.getenv("azure_use_model") or os.getenv("SUPER_MIND_CHAT_MODEL", DEFAULT_CHAT_MODEL)
+        self._model = model or default_model
         self._concurrency = concurrency
 
     def _call_llm(self, system: str, user: str) -> str:
