@@ -63,8 +63,7 @@ Second Brain 是一个基于本地 Markdown 的智能检索系统。它索引个
 ### 手动启动后端
 
 ```bash
-source .venv/bin/activate
-uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 9000
+./.venv/bin/python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 9000
 ```
 
 ### 前端
@@ -80,33 +79,33 @@ npm run build    # 生产构建输出到 frontend/out/
 
 ```bash
 # 运行所有测试
-pytest -q
+./.venv/bin/python -m pytest -q
 
 # 运行单个测试文件
-pytest tests/test_chat_stream_events.py -v
+./.venv/bin/python -m pytest tests/test_chat_stream_events.py -v
 
 # 运行特定测试
-pytest tests/test_chat_stream_events.py::test_stream_events_basic -v
+./.venv/bin/python -m pytest tests/test_chat_stream_events.py::test_stream_events_basic -v
 ```
 
 ### 评估
 
 ```bash
 # 针对测试集运行评估（需要后端运行中，LLM-as-Judge 评分）
-python -u eval/scripts/run_eval_stream.py \
+./.venv/bin/python -u eval/scripts/run_eval_stream.py \
   --base-url http://127.0.0.1:9000 \
   --concurrency 10 \
   --report eval/reports/report.json \
   2>&1 | tee eval/reports/eval.log
 
 # 只运行指定题目（按 ID 前缀匹配，逗号分隔）
-python -u eval/scripts/run_eval_stream.py \
+./.venv/bin/python -u eval/scripts/run_eval_stream.py \
   --question-ids Q01,Q14 \
   --base-url http://127.0.0.1:9000 \
   --report eval/reports/report.json
 
 # 仅评分已有答案
-python eval/scripts/grade_by_llm.py \
+./.venv/bin/python eval/scripts/grade_by_llm.py \
   --answers eval/reports/answers.json \
   --output eval/reports/report.json
 ```

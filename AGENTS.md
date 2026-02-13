@@ -5,7 +5,7 @@
 - Next.js 前端置于 `frontend/src/app`，静态导出产物写入 `frontend/out`，`start_services.sh` 负责同时拉起 `uvicorn` 与 `npm run dev`，常态开发请从该脚本或分别在两个终端启动服务。 The UI resides under `frontend/src/app`, static export lands in `frontend/out`, and `start_services.sh` orchestrates both uvicorn and npm dev servers.
 
 ## Build, Test, and Development Commands
-- Python 依赖需在虚拟环境中手动安装：`python -m venv .venv && source .venv/bin/activate && pip install fastapi uvicorn httpx beautifulsoup4 python-dotenv openai`，随后使用 `uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 9000` 作为本地后端入口。 Set up a venv, install the listed packages, then run `uvicorn backend.app.main:app` for hot reload.
+- 本仓库 Python 统一使用项目内 `.venv`，不要依赖 conda/system python。初始化：`python -m venv .venv && ./.venv/bin/python -m pip install -r requirements.txt`，随后使用 `./.venv/bin/python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 9000` 作为本地后端入口。 Set up a venv, install requirements, then run `uvicorn backend.app.main:app` for hot reload.
 - 前端工作流：`cd frontend && npm install && npm run dev` 提供本地调试，`npm run build` 生成产物供 `npm run start` 或静态部署使用。Use `start_services.sh` when you need both tiers plus synchronized log files.
 - Docker 镜像构建与容器启动（不读取项目 `.env`、不挂载 `data/runtime`，token 走当前 shell 环境变量）：
   - 构建镜像：`docker build -t second_brain:local .`
@@ -27,7 +27,7 @@
 - 前端建议在 `frontend/src/__tests__/` 下采用 React Testing Library；新增 `npm run test`（映射至 `next test` 或 `vitest run`）后，命名遵循 `<Component>.test.tsx`，同时通过 `npm run lint`（Next 自带）保证 JSX/TS 规范。 Snapshot tests should be paired with meaningful interaction assertions.
 
 ## Evaluation Guidelines
-- 评估采用 LLM-as-Judge 方法，使用 Azure 端点的 `gpt-52` 模型，围绕个性化命中、精准简洁、诚实性、可追溯性四个维度评分：`python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000 --concurrency 10 --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。
+- 评估采用 LLM-as-Judge 方法，使用 Azure 端点的 `gpt-52` 模型，围绕个性化命中、精准简洁、诚实性、可追溯性四个维度评分：`./.venv/bin/python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000 --concurrency 10 --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。
 
 ## Commit & Pull Request Guidelines
 - 仓库已初始化 Git，请继续遵循 Conventional Commits（如 `feat: add web_search retries`、`fix: guard empty query`）保持可读性；单次提交聚焦单一功能或缺陷修复。 Commits should stay atomic on the `main` branch unless stated otherwise.

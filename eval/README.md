@@ -40,7 +40,7 @@
 ./start_services.sh start backend
 
 # 运行评估
-python -u eval/scripts/run_eval_stream.py \
+./.venv/bin/python -u eval/scripts/run_eval_stream.py \
   --base-url http://127.0.0.1:9000 \
   --concurrency 10 \
   --report eval/reports/report.json \
@@ -50,7 +50,7 @@ python -u eval/scripts/run_eval_stream.py \
 ### 只运行指定题目
 
 ```bash
-python -u eval/scripts/run_eval_stream.py \
+./.venv/bin/python -u eval/scripts/run_eval_stream.py \
   --question-ids Q01,Q14 \
   --base-url http://127.0.0.1:9000 \
   --report eval/reports/report.json
@@ -59,7 +59,7 @@ python -u eval/scripts/run_eval_stream.py \
 ### 仅评分已有答案
 
 ```bash
-python eval/scripts/grade_by_llm.py \
+./.venv/bin/python eval/scripts/grade_by_llm.py \
   --answers eval/reports/answers.json \
   --output eval/reports/report.json
 ```
@@ -67,7 +67,7 @@ python eval/scripts/grade_by_llm.py \
 ### 指定评分模型
 
 ```bash
-python eval/scripts/grade_by_llm.py \
+./.venv/bin/python eval/scripts/grade_by_llm.py \
   --answers eval/reports/answers.json \
   --tool-traces eval/reports/answers_tool_traces.json \
   --output eval/reports/report.json \
