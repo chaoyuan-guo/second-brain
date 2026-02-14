@@ -326,7 +326,7 @@ def read_note_file(
         },
     )
 
-    return {
+    result = {
         "source_file": str(resolved),
         "offset": start,
         "limit_chars": limit_value,
@@ -335,6 +335,24 @@ def read_note_file(
         "done": end >= total_chars,
         "content": content,
     }
+
+    if end >= total_chars:
+        result["read_progress"] = {
+            "status": "complete",
+            "message": "已读完整文件",
+        }
+    else:
+        percent = int((end / total_chars) * 100) if total_chars > 0 else 0
+        result["read_progress"] = {
+            "status": "incomplete",
+            "percent": percent,
+            "read_chars": end,
+            "total_chars": total_chars,
+            "next_call": {"path": path, "offset": next_offset},
+            "message": f"仅读取 {percent}%，需继续读取",
+        }
+
+    return result
 
 
 def ensure_mcp_ready() -> None:
@@ -779,10 +797,25 @@ def query_my_notes(query: str, top_k: int | None = None) -> dict[str, Any]:
             "hint": "检索未命中任何笔记。请直接告知用户'笔记中没有这方面的记录'，禁止使用通用知识回答，禁止询问是否需要补充。",
         }
 
+    results_with_hint: List[dict[str, Any]] = []
+    for result in results:
+        result_copy = result.copy()
+        source_lower = result_copy.get("source_path", "").lower()
+        if "submission" in source_lower:
+            result_copy["_hint"] = "submission_record"
+        else:
+            result_copy["_hint"] = "note"
+        results_with_hint.append(result_copy)
+
     return {
         "query": query,
-        "results": results,
-        "hint": "以上是检索到的摘要片段，仅供定位相关文件，不应作为详细引用的依据。若回答需要引用具体内容（代码、公式、详细步骤等），请使用 read_note_file 读取完整原文。若仅需判断某主题是否存在于笔记中，可直接使用摘要中的 source_path 和 heading_path。",
+        "results": results_with_hint,
+        "hint": (
+            "以上是检索到的摘要片段，仅供定位相关文件，不应作为详细引用的依据。"
+            "若回答需要引用具体内容（代码、公式、详细步骤等），请使用 read_note_file 读取完整原文。"
+            "若仅需判断某主题是否存在于笔记中，可直接使用摘要中的 source_path 和 heading_path。"
+            "_hint 字段为辅助提示（非元数据），用于区分笔记和提交记录。"
+        ),
     }
 
 
