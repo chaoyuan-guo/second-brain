@@ -23,6 +23,8 @@ from ..core.config import (
     MAX_TOOL_OUTPUT_CHARS,
     OPENAI_DEFAULT_TIMEOUT_SECONDS,
     OPENAI_STREAM_READ_TIMEOUT_SECONDS,
+    PREFETCH_CANDIDATE_LINES_HEADER,
+    PREFETCH_CONTEXT_HEADER,
     SYSTEM_PROMPT,
     settings,
 )
@@ -256,12 +258,7 @@ async def _prefetch_expected_sources(
     if not snippets:
         return None
 
-    parts = [
-        "以下是与问题直接相关的笔记原文，请仅依据这些内容作答：",
-        "请从下方原文中提取与问题匹配的段落，并用中文或英文双引号标注引用内容（不要用反引号或代码块）。",
-        "无需再次调用工具或改写原文。",
-        "若问题中包含引号内的精确字符串，引用须保留该字符串原样。",
-    ]
+    parts: List[str] = list(PREFETCH_CONTEXT_HEADER)
     phrases = _extract_quoted_phrases(query)
     candidate_lines: List[str] = []
     if phrases:
@@ -277,7 +274,7 @@ async def _prefetch_expected_sources(
             )
 
         candidate_lines = sorted(candidate_lines, key=_line_rank)
-        parts.append("以下为包含问题引号关键词的候选原文行（请优先从中选择，以确保引用包含该关键词）：")
+        parts.append(PREFETCH_CANDIDATE_LINES_HEADER)
         for line in candidate_lines[:12]:
             parts.append(f"- {line}")
     for source, content in snippets:

@@ -54,6 +54,8 @@ def running_in_container() -> bool:
     """检测是否运行在 Docker/Koyeb 容器内。"""
 
     return Path("/.dockerenv").exists()
+
+
 SYSTEM_PROMPT_CORE = """
 你是基于本地笔记库的研究型助手。
 
@@ -73,6 +75,7 @@ SYSTEM_PROMPT_CORE = """
 6. 数据源意识：当检索结果同时包含笔记和提交记录时，根据问题类型选择：
    - 事实类（错误代码、提交统计）→ 优先读取提交记录
    - 理解类（算法原理、模式归纳）→ 优先读取笔记
+7. 低置信度弃权：当 query_my_notes 返回的结果 score（L2 距离）普遍高于 0.8，或有效结果不足 3 条时，在回答开头声明"检索到的相关内容有限，以下回答可能不完整"，并展示最相关结果后说明局限性；禁止将低相关性结果强行拼凑为确定性答案。
 
 ## 重要约束：可准确溯源
 - 回答中的每个事实性陈述都必须可溯源到具体的笔记片段或文件
@@ -89,11 +92,10 @@ SYSTEM_PROMPT_CORE = """
 """.strip()
 
 SYSTEM_PROMPT_TOOLS = """
-## 工具选择
-- 统计/计算/大文件处理 → run_code_interpreter
-- 定位相关笔记 → query_my_notes；获取完整内容 → read_note_file
-- 特定领域（如 LeetCode 统计）→ 先 load_skill 加载技能说明，再按说明执行
-- 实时外部信息 → web_search；需正文 → read_page
+## 工具协作顺序
+- 特定领域任务（如 LeetCode 统计）→ 先 load_skill 加载技能说明，再按说明执行
+- 需要引用全文 → 先 query_my_notes 定位，再 read_note_file 读取完整原文
+- 实时信息摘要后需细节 → 先 web_search，再 read_page 抓取正文
 
 ## 工具调用规范
 - 通常在 7 轮内完成；若需更多轮次，向用户说明进度并确认是否继续
@@ -183,6 +185,20 @@ SYSTEM_PROMPT = f"""
 {SYSTEM_PROMPT_FORMAT}
 """.strip()
 
+# _prefetch_expected_sources 预取注入上下文的固定提示文本。
+# 使用 tuple 保证不可变性；chat.py 中通过 list() 转为可变列表后再 append 动态内容。
+PREFETCH_CONTEXT_HEADER: tuple[str, ...] = (
+    "以下是与问题直接相关的笔记原文，请仅依据这些内容作答：",
+    "请从下方原文中提取与问题匹配的段落，并用中文或英文双引号标注引用内容（不要用反引号或代码块）。",
+    "无需再次调用工具或改写原文。",
+    "若问题中包含引号内的精确字符串，引用须保留该字符串原样。",
+)
+
+# 当问题包含引号关键词时，候选原文行列表的提示前缀。
+PREFETCH_CANDIDATE_LINES_HEADER: str = (
+    "以下为包含问题引号关键词的候选原文行（请优先从中选择，以确保引用包含该关键词）："
+)
+
 MAX_TOOL_TURNS = 7
 CHAT_API_MAX_RETRIES = 3
 CHAT_API_RETRY_BACKOFF_SECONDS = 1.0
@@ -191,6 +207,15 @@ RETRYABLE_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 # 工具输出过大时会显著拖慢甚至阻塞后续的模型调用。
 # 该值用于限制写入到工具 role 消息的内容长度（日志仍会保存完整输出）。
 MAX_TOOL_OUTPUT_CHARS = 80_000
+
+# query_my_notes 多样性分数调整参数（_adjust_scores_for_diversity）。
+# DIVERSITY_DECAY_FACTOR：同文件第 n 个 chunk 的分数被除以该值的 n 次方，
+#   即 adjusted_score = score / decay_factor^n，使分数变大（更差），惩罚重复 chunk。
+#   取值范围 (0, 1)，越小惩罚越重；默认 0.7。
+# DIVERSITY_NEW_FILE_BONUS：新文件首个 chunk 的分数被除以该值，使分数变小（更好），
+#   鼓励结果覆盖更多不同文件。取值 > 1，越大奖励越强；默认 1.2。
+DIVERSITY_DECAY_FACTOR: float = 0.7
+DIVERSITY_NEW_FILE_BONUS: float = 1.2
 
 # OpenAI / Azure OpenAI 请求超时（秒）。
 OPENAI_DEFAULT_TIMEOUT_SECONDS = 120.0
@@ -329,11 +354,15 @@ __all__ = [
     "SYSTEM_PROMPT_TOOLS",
     "SYSTEM_PROMPT_FORMAT",
     "QUERY_REWRITE_PROMPT",
+    "PREFETCH_CONTEXT_HEADER",
+    "PREFETCH_CANDIDATE_LINES_HEADER",
     "MAX_TOOL_TURNS",
     "CHAT_API_MAX_RETRIES",
     "CHAT_API_RETRY_BACKOFF_SECONDS",
     "RETRYABLE_STATUS_CODES",
     "MAX_TOOL_OUTPUT_CHARS",
+    "DIVERSITY_DECAY_FACTOR",
+    "DIVERSITY_NEW_FILE_BONUS",
     "OPENAI_DEFAULT_TIMEOUT_SECONDS",
     "OPENAI_STREAM_READ_TIMEOUT_SECONDS",
     "OPENAI_MAX_RETRIES",

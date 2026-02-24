@@ -24,6 +24,8 @@ from openai import (
 from ..core.config import (
     CHAT_API_MAX_RETRIES,
     CHAT_API_RETRY_BACKOFF_SECONDS,
+    DIVERSITY_DECAY_FACTOR,
+    DIVERSITY_NEW_FILE_BONUS,
     QUERY_REWRITE_PROMPT,
     RETRYABLE_STATUS_CODES,
     is_truthy,
@@ -632,8 +634,8 @@ def _detect_query_top_k(query: str) -> int:
 def _adjust_scores_for_diversity(
     results: List[tuple[float, int]],
     metadata: List[dict[str, Any]],
-    decay_factor: float = 0.7,
-    new_file_bonus: float = 1.2,
+    decay_factor: float = DIVERSITY_DECAY_FACTOR,
+    new_file_bonus: float = DIVERSITY_NEW_FILE_BONUS,
 ) -> List[tuple[float, int]]:
     """对候选集应用文件级多样性分数调整。
 
