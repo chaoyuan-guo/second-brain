@@ -25,7 +25,7 @@ import {
   isStandaloneUrl,
   parseMessageSegments,
 } from './lib/chat-helpers';
-import { getApiBaseUrl, UPLOAD_ENDPOINT, type ChatSession } from './lib/chat-types';
+import { getApiBaseUrl, UPLOAD_ENDPOINT, type ChatSession, type SourceRef } from './lib/chat-types';
 
 const urlRegex = /(https?:\/\/[^\s]+)/gi;
 
@@ -464,6 +464,49 @@ export default function HomePage() {
                               <span>{message.statusText}</span>
                             </div>
                           )}
+                          {message.role === 'assistant' &&
+                            message.sources &&
+                            message.sources.length > 0 &&
+                            !message.isThinking && (
+                              <div className="sources-panel">
+                                <p className="sources-label">来源文件</p>
+                                <ul className="sources-list">
+                                  {(
+                                    message.sourceRefs ??
+                                    message.sources.map((p) => ({ path: p, heading: '' }))
+                                  ).map(({ path, heading }: SourceRef, sourceIndex: number) => {
+                                    const isUrl =
+                                      path.startsWith('http://') ||
+                                      path.startsWith('https://');
+                                    const fileName = isUrl
+                                      ? null
+                                      : path.split('/').pop() ?? path;
+                                    return (
+                                      <li key={`${path}-${sourceIndex}`} className="source-item">
+                                        {isUrl ? (
+                                          <a
+                                            href={path}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="source-link"
+                                          >
+                                            {path}
+                                          </a>
+                                        ) : (
+                                          <>
+                                            <span className="source-filename">{fileName}</span>
+                                            {heading && (
+                                              <span className="source-heading">{heading}</span>
+                                            )}
+                                            <span className="source-path">{path}</span>
+                                          </>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            )}
                           <div className="message-meta">
                             <div className="bubble-actions">
                               <button

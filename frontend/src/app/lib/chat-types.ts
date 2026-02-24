@@ -1,5 +1,10 @@
 export type ChatRole = 'user' | 'assistant';
 
+export interface SourceRef {
+  path: string;
+  heading: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -9,6 +14,8 @@ export interface ChatMessage {
   statusText?: string;
   tool_call_id?: string;
   timestamp?: number;
+  sources?: string[];
+  sourceRefs?: SourceRef[];
 }
 
 export type StreamEvent =
@@ -29,6 +36,14 @@ export type StreamEvent =
       latency_ms?: number;
       message: string;
       error?: string | null;
+      ts?: number;
+    }
+  | {
+      type: 'sources';
+      sources: string[];
+      source_refs?: SourceRef[];
+      expected_sources?: string[];
+      question_id?: string;
       ts?: number;
     }
   | { type: 'done'; ts?: number };

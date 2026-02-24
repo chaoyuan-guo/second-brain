@@ -522,6 +522,17 @@ export function useChatSessions(): UseChatSessionsResult {
             return;
           }
 
+          if (event.type === 'sources') {
+            if (event.sources && event.sources.length > 0) {
+              updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
+                ...prev,
+                sources: event.sources,
+                sourceRefs: event.source_refs,
+              }));
+            }
+            return;
+          }
+
           if (event.type === 'done') {
             return;
           }
@@ -574,6 +585,9 @@ export function useChatSessions(): UseChatSessionsResult {
       upsertSession,
       setSessionPending,
       setInputValue,
+      updateAssistantMessage,
+      refreshSessionTitle,
+      parseNdjsonStream,
     ],
   );
 

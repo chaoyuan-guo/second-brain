@@ -1258,6 +1258,7 @@ async def run_chat_conversation(
     code_interpreter_used = False
     agentic_hint_inserted = False
     used_sources: List[str] = []
+    used_source_refs: List[dict] = []
     read_files: List[str] = []
     traceability_hint_inserted = False
     eval_context = eval_context or {}
@@ -1421,11 +1422,19 @@ async def run_chat_conversation(
                     )
                 if event_callback:
                     try:
+                        seen_ref_keys: set = set()
+                        deduped_refs: List[dict] = []
+                        for ref in used_source_refs:
+                            key = (ref["path"], ref["heading"])
+                            if key not in seen_ref_keys:
+                                seen_ref_keys.add(key)
+                                deduped_refs.append(ref)
                         event_callback(
                             {
                                 "type": "sources",
                                 "question_id": question_id,
                                 "sources": sorted(set(used_sources)),
+                                "source_refs": deduped_refs,
                                 "expected_sources": expected_sources,
                                 "ts": time.time(),
                             }
@@ -1549,7 +1558,10 @@ async def run_chat_conversation(
                     for item in result.get("results") or []:
                         source_path = item.get("source_path")
                         if isinstance(source_path, str) and source_path:
-                            used_sources.append(_normalize_source_path(source_path))
+                            normalized = _normalize_source_path(source_path)
+                            used_sources.append(normalized)
+                            heading = item.get("heading_path") or ""
+                            used_source_refs.append({"path": normalized, "heading": heading})
                 messages.append(
                     {
                         "role": "tool",
@@ -1699,6 +1711,8 @@ async def run_chat_conversation(
                     turn=turn,
                     status=summary_status,
                 )
+                if summary_status == "ok" and isinstance(url, str) and url:
+                    used_sources.append(url)
                 if event_callback:
                     try:
                         stage = "end" if not _is_tool_error_output(tool_output) else "error"
@@ -1786,8 +1800,10 @@ async def run_chat_conversation(
                 )
                 source_file = result.get("source_file") if isinstance(result, dict) else None
                 if isinstance(source_file, str) and source_file:
-                    used_sources.append(_normalize_source_path(source_file))
-                    read_files.append(_normalize_source_path(source_file))
+                    normalized = _normalize_source_path(source_file)
+                    used_sources.append(normalized)
+                    read_files.append(normalized)
+                    used_source_refs.append({"path": normalized, "heading": ""})
                 if event_callback:
                     try:
                         stage = "end" if not _is_tool_error_output(tool_output) else "error"
