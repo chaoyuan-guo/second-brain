@@ -64,3 +64,5 @@ runtime/logs/
 docs/deployment-prompt.md
 
 .codex
+
+eval/reports

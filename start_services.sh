@@ -18,10 +18,17 @@ MCP_LOG="$LOG_DIR/mcp_interpreter.log"
 MCP_PID_FILE="$PROJECT_ROOT/.mcp_interpreter.pid"
 MCP_PORT=9070
 MCP_ENDPOINT="http://127.0.0.1:${MCP_PORT}/sse/"
-MCP_ENV_DIR="$PROJECT_ROOT/.mcp_env"
+# MCP 环境选择：优先使用 .venv（本地开发），回退到 .mcp_env（容器环境）
+if [ -x "$PROJECT_ROOT/.venv/bin/fastmcp" ]; then
+  MCP_ENV_DIR="$PROJECT_ROOT/.venv"
+else
+  MCP_ENV_DIR="$PROJECT_ROOT/.mcp_env"
+fi
 MCP_BIN_DIR="$MCP_ENV_DIR/bin"
 MCP_FASTMCP="$MCP_BIN_DIR/fastmcp"
 MCP_PYTHON="$MCP_BIN_DIR/python"
+# server.py 路径：从选中的 Python 环境动态查找
+MCP_SERVER_PY="$("$MCP_PYTHON" -c "import mcp_python_interpreter, os; print(os.path.join(os.path.dirname(mcp_python_interpreter.__file__), 'server.py'))" 2>/dev/null || true)"
 MCP_WORKDIR="$RUNTIME_DIR/mcp_workspace"
 mkdir -p "$MCP_WORKDIR"
 MCP_SYNC_SOURCE_DIRS=("data/notes/my_markdowns")
@@ -88,7 +95,7 @@ ensure_frontend_requirements() {
 }
 
 ensure_mcp_requirements() {
-  ensure_command "$MCP_FASTMCP" "请先在 .mcp_env 中安装 fastmcp。"
+  ensure_command "$MCP_FASTMCP" "请先在 .venv 或 .mcp_env 中安装 fastmcp 和 mcp-python-interpreter。"
 }
 
 service_label() {
@@ -398,11 +405,15 @@ start_mcp() {
     echo "缺少 fastmcp，可执行文件 $MCP_FASTMCP 不存在" >&2
     exit 1
   fi
+  if [ -z "$MCP_SERVER_PY" ] || [ ! -f "$MCP_SERVER_PY" ]; then
+    echo "缺少 mcp_python_interpreter，无法定位 server.py（MCP_ENV_DIR=$MCP_ENV_DIR）" >&2
+    exit 1
+  fi
 
   stop_service "MCP 解释器" "$MCP_PID_FILE" "$MCP_PORT" "fastmcp run"
   : > "$MCP_LOG"
   sync_mcp_workspace
-  nohup "$MCP_FASTMCP" run -t sse "$MCP_BIN_DIR/../lib/python3.10/site-packages/mcp_python_interpreter/server.py" \
+  nohup "$MCP_FASTMCP" run -t sse "$MCP_SERVER_PY" \
     --host 127.0.0.1 --port "$MCP_PORT" -- --dir "$MCP_WORKDIR" >> "$MCP_LOG" 2>&1 &
   local pid=$!
   echo "$pid" > "$MCP_PID_FILE"
