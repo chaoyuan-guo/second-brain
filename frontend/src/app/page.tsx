@@ -1,6 +1,14 @@
 "use client";
 
-import { ChangeEvent, KeyboardEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ChangeEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 
 import { LinkCard } from './components/LinkCard';
 import {
@@ -25,9 +33,41 @@ import {
   isStandaloneUrl,
   parseMessageSegments,
 } from './lib/chat-helpers';
-import { getApiBaseUrl, UPLOAD_ENDPOINT, type ChatSession, type SourceRef } from './lib/chat-types';
+import {
+  getApiBaseUrl,
+  NOTE_CONTENT_ENDPOINT,
+  UPLOAD_ENDPOINT,
+  type ChatSession,
+} from './lib/chat-types';
 
 const urlRegex = /(https?:\/\/[^\s]+)/gi;
+type NoteContentResponse = {
+  content: string;
+  source_file?: string;
+  done?: boolean;
+  next_offset?: number | null;
+  total_chars?: number;
+  offset?: number;
+  limit_chars?: number;
+};
+
+type PreviewCacheEntry = {
+  content: string;
+  done: boolean;
+  nextOffset: number | null;
+  totalChars: number;
+};
+
+type PreviewState = PreviewCacheEntry & {
+  path: string;
+  title: string;
+};
+
+type SourceGroup = {
+  path: string;
+  fileName: string;
+  headingSet: Set<string>;
+};
 
 const renderTextWithLinks = (text: string): ReactNode[] => {
   const nodes: ReactNode[] = [];
@@ -61,6 +101,19 @@ const renderTextWithLinks = (text: string): ReactNode[] => {
   return nodes.length ? nodes : [text];
 };
 
+const formatSourcePath = (path: string): string => {
+  const normalized = path.replace(/\\/g, '/');
+  const absoluteMarker = '/data/notes/my_markdowns/';
+  const relativeMarker = 'data/notes/my_markdowns/';
+  if (normalized.includes(absoluteMarker)) {
+    return normalized.split(absoluteMarker).pop() ?? path;
+  }
+  if (normalized.startsWith(relativeMarker)) {
+    return normalized.slice(relativeMarker.length);
+  }
+  return path;
+};
+
 export default function HomePage() {
   const {
     sessions,
@@ -87,11 +140,17 @@ export default function HomePage() {
     message: string;
   } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [previewState, setPreviewState] = useState<PreviewState | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const historyEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const copyTimerRef = useRef<number | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const uploadTimerRef = useRef<number | null>(null);
+  const previewCacheRef = useRef<Map<string, PreviewCacheEntry>>(new Map());
+  const previewPathRef = useRef<string | null>(null);
 
   const messages = activeSession?.messages ?? [];
   const hasContent = messages.length > 0;
@@ -136,7 +195,7 @@ export default function HomePage() {
     cancelRename();
   };
 
-  const handleRenameKey = (event: KeyboardEvent<HTMLInputElement>, sessionId: string) => {
+  const handleRenameKey = (event: ReactKeyboardEvent<HTMLInputElement>, sessionId: string) => {
     if (event.key === 'Enter') {
       event.preventDefault();
       commitRename(sessionId);
@@ -177,6 +236,138 @@ export default function HomePage() {
     const timeout = tone === 'error' ? 8000 : 4500;
     uploadTimerRef.current = window.setTimeout(() => setUploadStatus(null), timeout);
   }, []);
+
+  const getPreviewErrorMessage = useCallback((error: unknown) => {
+    if (error instanceof TypeError) {
+      return '网络异常，请检查连接后重试';
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return '读取失败，请稍后重试';
+  }, []);
+
+  const closePreview = useCallback(() => {
+    previewPathRef.current = null;
+    setPreviewState(null);
+    setPreviewError(null);
+    setPreviewLoading(false);
+  }, []);
+
+  const normalizePreviewEntry = useCallback((data: NoteContentResponse): PreviewCacheEntry => {
+    const content = typeof data.content === 'string' ? data.content : '';
+    const totalChars = typeof data.total_chars === 'number' ? data.total_chars : content.length;
+    const nextOffset = typeof data.next_offset === 'number' ? data.next_offset : null;
+    const done = typeof data.done === 'boolean' ? data.done : nextOffset === null;
+    return { content, done, nextOffset, totalChars };
+  }, []);
+
+  const fetchNoteContent = useCallback(async (filePath: string, offset = 0) => {
+    const url = `${getApiBaseUrl()}${NOTE_CONTENT_ENDPOINT}?path=${encodeURIComponent(
+      filePath,
+    )}&offset=${offset}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { detail?: string } | null;
+      const detail = payload?.detail || `读取失败: ${response.status}`;
+      throw new Error(detail);
+    }
+    return (await response.json()) as NoteContentResponse;
+  }, []);
+
+  const handleOpenPreview = useCallback(
+    async (filePath: string, title: string) => {
+      previewPathRef.current = filePath;
+      setPreviewError(null);
+      const cached = previewCacheRef.current.get(filePath);
+      if (cached) {
+        setPreviewState({ path: filePath, title, ...cached });
+        setPreviewLoading(false);
+        return;
+      }
+      setPreviewState({ path: filePath, title, content: '', done: false, nextOffset: null, totalChars: 0 });
+      setPreviewLoading(true);
+      try {
+        const data = await fetchNoteContent(filePath, 0);
+        if (previewPathRef.current !== filePath) {
+          return;
+        }
+        const entry = normalizePreviewEntry(data);
+        setPreviewState({ path: filePath, title, ...entry });
+        previewCacheRef.current.set(filePath, entry);
+      } catch (error) {
+        if (previewPathRef.current === filePath) {
+          setPreviewError(getPreviewErrorMessage(error));
+        }
+      } finally {
+        if (previewPathRef.current === filePath) {
+          setPreviewLoading(false);
+        }
+      }
+    },
+    [fetchNoteContent, normalizePreviewEntry],
+  );
+
+  const handleLoadMorePreview = useCallback(async () => {
+    if (!previewState || previewLoading || previewState.done || previewState.nextOffset === null) {
+      return;
+    }
+    const currentPath = previewState.path;
+    const currentNextOffset = previewState.nextOffset;
+    setPreviewError(null);
+    setPreviewLoading(true);
+    try {
+      const data = await fetchNoteContent(currentPath, currentNextOffset);
+      const entry = normalizePreviewEntry(data);
+      setPreviewState((prev) => {
+        if (!prev || prev.path !== currentPath) {
+          return prev;
+        }
+        const merged: PreviewCacheEntry = {
+          content: `${prev.content}${entry.content}`,
+          done: entry.done,
+          nextOffset: entry.nextOffset,
+          totalChars: entry.totalChars || prev.totalChars,
+        };
+        previewCacheRef.current.set(currentPath, merged);
+        return { ...prev, ...merged };
+      });
+    } catch (error) {
+      if (previewPathRef.current === currentPath) {
+        setPreviewError(getPreviewErrorMessage(error));
+      }
+    } finally {
+      if (previewPathRef.current === currentPath) {
+        setPreviewLoading(false);
+      }
+    }
+  }, [fetchNoteContent, getPreviewErrorMessage, normalizePreviewEntry, previewLoading, previewState]);
+
+  const toggleGroup = useCallback((key: string) => {
+    setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  useEffect(() => {
+    if (!previewState) {
+      return;
+    }
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closePreview();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [closePreview, previewState]);
+
+  useEffect(() => {
+    setExpandedGroups({});
+  }, [activeSessionId]);
 
   const handleUploadClick = () => {
     uploadInputRef.current?.click();
@@ -221,6 +412,7 @@ export default function HomePage() {
           ? `，移除 ${payload.removed_vectors} 条旧向量`
           : '';
       const message = `上传成功：${fileLabel}${chunkLabel}${removedLabel}`;
+      previewCacheRef.current.clear();
       showUploadStatus('success', message);
     } catch (error) {
       const message = error instanceof Error ? error.message : '上传失败，请稍后重试';
@@ -231,8 +423,8 @@ export default function HomePage() {
     }
   };
 
-  const handleInputKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    const isComposing = (event.nativeEvent as KeyboardEvent['nativeEvent'])?.isComposing;
+  const handleInputKey = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    const isComposing = (event.nativeEvent as ReactKeyboardEvent['nativeEvent'])?.isComposing;
     if (event.key === 'Enter' && !event.shiftKey && !isComposing) {
       event.preventDefault();
       event.currentTarget.form?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
@@ -391,6 +583,34 @@ export default function HomePage() {
                       message.timestamp && !Number.isNaN(message.timestamp)
                         ? new Date(message.timestamp).toISOString()
                         : undefined;
+                    const sourceEntries =
+                      message.sourceRefs ?? message.sources?.map((path) => ({ path, heading: '' })) ?? [];
+                    const hasSources = sourceEntries.length > 0;
+                    const groupedSources = new Map<string, SourceGroup>();
+                    const urlSources: string[] = [];
+                    const urlSet = new Set<string>();
+
+                    sourceEntries.forEach(({ path, heading }) => {
+                      if (!path) return;
+                      const isUrl = path.startsWith('http://') || path.startsWith('https://');
+                      if (isUrl) {
+                        if (!urlSet.has(path)) {
+                          urlSources.push(path);
+                          urlSet.add(path);
+                        }
+                        return;
+                      }
+                      const fileName = path.split('/').pop() ?? path;
+                      const existing = groupedSources.get(path);
+                      const group = existing ?? { path, fileName, headingSet: new Set<string>() };
+                      const trimmedHeading = heading?.trim();
+                      if (trimmedHeading) {
+                        group.headingSet.add(trimmedHeading);
+                      }
+                      if (!existing) {
+                        groupedSources.set(path, group);
+                      }
+                    });
 
                     return (
                       <article key={message.id} className={`message-row ${message.role}`}>
@@ -464,49 +684,73 @@ export default function HomePage() {
                               <span>{message.statusText}</span>
                             </div>
                           )}
-                          {message.role === 'assistant' &&
-                            message.sources &&
-                            message.sources.length > 0 &&
-                            !message.isThinking && (
-                              <div className="sources-panel">
-                                <p className="sources-label">来源文件</p>
-                                <ul className="sources-list">
-                                  {(
-                                    message.sourceRefs ??
-                                    message.sources.map((p) => ({ path: p, heading: '' }))
-                                  ).map(({ path, heading }: SourceRef, sourceIndex: number) => {
-                                    const isUrl =
-                                      path.startsWith('http://') ||
-                                      path.startsWith('https://');
-                                    const fileName = isUrl
-                                      ? null
-                                      : path.split('/').pop() ?? path;
-                                    return (
-                                      <li key={`${path}-${sourceIndex}`} className="source-item">
-                                        {isUrl ? (
-                                          <a
-                                            href={path}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="source-link"
+                          {message.role === 'assistant' && hasSources && !message.isThinking && (
+                            <div className="sources-panel">
+                              <p className="sources-label">来源文件</p>
+                              <ul className="sources-list">
+                                {Array.from(groupedSources.values()).map((group) => {
+                                  const headings = Array.from(group.headingSet);
+                                  const groupKey = `${message.id}:${group.path}`;
+                                  const isExpanded = Boolean(expandedGroups[groupKey]);
+                                  const displayPath = formatSourcePath(group.path);
+                                  return (
+                                    <li key={groupKey} className="source-group">
+                                      <div className="source-group-header">
+                                        <div className="source-group-meta">
+                                          <button
+                                            type="button"
+                                            className="source-filename-btn"
+                                            onClick={() => handleOpenPreview(group.path, group.fileName)}
+                                            aria-label={`预览 ${group.fileName}`}
                                           >
-                                            {path}
-                                          </a>
-                                        ) : (
-                                          <>
-                                            <span className="source-filename">{fileName}</span>
-                                            {heading && (
-                                              <span className="source-heading">{heading}</span>
-                                            )}
-                                            <span className="source-path">{path}</span>
-                                          </>
+                                            {group.fileName}
+                                          </button>
+                                          <span className="source-path" title={group.path}>
+                                            {displayPath}
+                                          </span>
+                                        </div>
+                                        {headings.length > 0 && (
+                                          <button
+                                            type="button"
+                                            className="source-expand-btn"
+                                            onClick={() => toggleGroup(groupKey)}
+                                            aria-expanded={isExpanded}
+                                          >
+                                            {isExpanded ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+                                            {headings.length} 个章节
+                                          </button>
                                         )}
-                                      </li>
-                                    );
-                                  })}
-                                </ul>
-                              </div>
-                            )}
+                                      </div>
+                                      {headings.length > 0 && isExpanded && (
+                                        <ul className="source-headings-list">
+                                          {headings.map((heading, headingIndex) => (
+                                            <li
+                                              key={`${groupKey}-heading-${headingIndex}`}
+                                              className="source-heading-item"
+                                            >
+                                              <span className="source-heading">{heading}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </li>
+                                  );
+                                })}
+                                {urlSources.map((path, sourceIndex) => (
+                                  <li key={`${message.id}-url-${sourceIndex}`} className="source-item">
+                                    <a
+                                      href={path}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="source-link"
+                                    >
+                                      {path}
+                                    </a>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                           <div className="message-meta">
                             <div className="bubble-actions">
                               <button
@@ -605,6 +849,67 @@ export default function HomePage() {
           </div>
         </section>
       </div>
+      {previewState && (
+        <div className="preview-overlay" onClick={closePreview} role="presentation">
+          <div
+            className="preview-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`预览 ${previewState.title}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="preview-header">
+              <span className="preview-title">{previewState.title}</span>
+              <button
+                type="button"
+                className="preview-close"
+                onClick={closePreview}
+                aria-label="关闭预览"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            <div className="preview-body">
+              {previewLoading && !previewState.content ? (
+                <div className="preview-loading">
+                  <ThinkingDots />
+                </div>
+              ) : (
+                <>
+                  {previewError && (
+                    <div className="preview-error" role="alert">
+                      {previewError}
+                    </div>
+                  )}
+                  <pre className="preview-content">
+                    {previewState.content ? previewState.content : '（空文件）'}
+                  </pre>
+                  <div className="preview-footer">
+                    <span className="preview-meta">
+                      {previewState.totalChars > 0
+                        ? `已加载 ${Math.min(
+                            previewState.content.length,
+                            previewState.totalChars,
+                          )} / ${previewState.totalChars} 字符`
+                        : '已加载内容'}
+                    </span>
+                    {!previewState.done && (
+                      <button
+                        type="button"
+                        className="preview-load-btn"
+                        onClick={handleLoadMorePreview}
+                        disabled={previewLoading}
+                      >
+                        {previewLoading ? '加载中...' : '加载更多'}
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
