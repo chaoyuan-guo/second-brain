@@ -10,6 +10,9 @@ FRONTEND_LOG="$LOG_DIR/frontend.log"
 BACKEND_PID_FILE="$PROJECT_ROOT/.backend.pid"
 FRONTEND_PID_FILE="$PROJECT_ROOT/.frontend.pid"
 BACKEND_PORT=9000
+BACKEND_VENV="$PROJECT_ROOT/.venv"
+BACKEND_PYTHON="$BACKEND_VENV/bin/python"
+BACKEND_UVICORN="$BACKEND_VENV/bin/uvicorn"
 FRONTEND_PORT=9080
 MCP_LOG="$LOG_DIR/mcp_interpreter.log"
 MCP_PID_FILE="$PROJECT_ROOT/.mcp_interpreter.pid"
@@ -70,7 +73,14 @@ ensure_command() {
 }
 
 ensure_backend_requirements() {
-  ensure_command uvicorn "请先安装 'uvicorn' (pip install uvicorn)。"
+  if [ ! -x "$BACKEND_PYTHON" ]; then
+    echo "缺少后端虚拟环境: $BACKEND_PYTHON 不存在，请先创建 .venv 并安装依赖。" >&2
+    exit 1
+  fi
+  if [ ! -x "$BACKEND_UVICORN" ]; then
+    echo "缺少后端依赖: $BACKEND_UVICORN 不存在，请先在 .venv 中安装 uvicorn。" >&2
+    exit 1
+  fi
 }
 
 ensure_frontend_requirements() {
@@ -116,7 +126,7 @@ verify_target() {
   case "$1" in
     backend)
       verify_service_started \
-        "后端服务" "$BACKEND_PORT" "$BACKEND_LOG" "uvicorn backend.app.main:app --port $BACKEND_PORT"
+        "后端服务" "$BACKEND_PORT" "$BACKEND_LOG" "$BACKEND_PYTHON -m uvicorn backend.app.main:app --port $BACKEND_PORT"
       ;;
     frontend)
       verify_service_started \
@@ -358,13 +368,13 @@ verify_service_started() {
 }
 
 start_backend() {
-  stop_service "后端服务" "$BACKEND_PID_FILE" "$BACKEND_PORT" "uvicorn backend.app.main:app --port $BACKEND_PORT"
+  stop_service "后端服务" "$BACKEND_PID_FILE" "$BACKEND_PORT" "$BACKEND_PYTHON -m uvicorn backend.app.main:app --port $BACKEND_PORT"
   : > "$BACKEND_LOG"
   cd "$PROJECT_ROOT"
   # 使用 embedded 模式运行代码解释器，避免 MCP 依赖问题
   MCP_INTERPRETER_BACKEND="${MCP_INTERPRETER_BACKEND:-embedded}" \
   MCP_SSE_ENDPOINT="${MCP_SSE_ENDPOINT:-$MCP_ENDPOINT}" \
-    nohup uvicorn backend.app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" >> "$BACKEND_LOG" 2>&1 &
+    nohup "$BACKEND_PYTHON" -m uvicorn backend.app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" >> "$BACKEND_LOG" 2>&1 &
   local pid=$!
   echo "$pid" > "$BACKEND_PID_FILE"
   echo "后端服务已启动 (PID $pid) 日志: $BACKEND_LOG"
@@ -410,7 +420,7 @@ start_all() {
 }
 
 stop_backend() {
-  stop_service "后端服务" "$BACKEND_PID_FILE" "$BACKEND_PORT" "uvicorn backend.app.main:app --port $BACKEND_PORT"
+  stop_service "后端服务" "$BACKEND_PID_FILE" "$BACKEND_PORT" "$BACKEND_PYTHON -m uvicorn backend.app.main:app --port $BACKEND_PORT"
 }
 
 stop_frontend() {
@@ -422,7 +432,7 @@ stop_mcp() {
 }
 
 status_backend() {
-  status_service "后端服务" "$BACKEND_PID_FILE" "$BACKEND_PORT" "uvicorn backend.app.main:app --port $BACKEND_PORT"
+  status_service "后端服务" "$BACKEND_PID_FILE" "$BACKEND_PORT" "$BACKEND_PYTHON -m uvicorn backend.app.main:app --port $BACKEND_PORT"
 }
 
 status_frontend() {
