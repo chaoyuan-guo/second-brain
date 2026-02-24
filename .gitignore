@@ -45,6 +45,7 @@ frontend/node_modules/
 frontend/.next/
 frontend/.turbo/
 frontend/.vercel/
+frontend/next-env.d.ts
 
 # Build outputs
 frontend/dist/
