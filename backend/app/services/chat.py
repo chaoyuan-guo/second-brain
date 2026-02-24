@@ -257,10 +257,10 @@ async def _prefetch_expected_sources(
         return None
 
     parts = [
-        "以下是评估模式强制注入的笔记内容，回答必须仅依据这些内容：",
-        "该任务为逐字引用，请直接从下方原文复制并用引号包裹，避免再调用工具或改写。",
-        "逐字引用必须使用中文或英文双引号，不要用反引号或代码块包裹。",
-        "若问题中出现引号内的精确字符串，引用必须包含该字符串原样，且不得用近义改写替代。",
+        "以下是与问题直接相关的笔记原文，请仅依据这些内容作答：",
+        "请从下方原文中提取与问题匹配的段落，并用中文或英文双引号标注引用内容（不要用反引号或代码块）。",
+        "无需再次调用工具或改写原文。",
+        "若问题中包含引号内的精确字符串，引用须保留该字符串原样。",
     ]
     phrases = _extract_quoted_phrases(query)
     candidate_lines: List[str] = []
@@ -277,7 +277,7 @@ async def _prefetch_expected_sources(
             )
 
         candidate_lines = sorted(candidate_lines, key=_line_rank)
-        parts.append("以下为包含问题引号关键词的候选原文行（必须从中选择，确保包含该关键词）：")
+        parts.append("以下为包含问题引号关键词的候选原文行（请优先从中选择，以确保引用包含该关键词）：")
         for line in candidate_lines[:12]:
             parts.append(f"- {line}")
     for source, content in snippets:
@@ -659,10 +659,6 @@ READ_NOTE_FILE_TOOL_SCHEMA = {
                     "type": "string",
                     "description": "data/notes/my_markdowns 下的相对路径或其完整路径。",
                 },
-                "path": {
-                    "type": "string",
-                    "description": "同 file_path，旧参数名（兼容）。",
-                },
                 "offset": {
                     "type": "integer",
                     "minimum": 0,
@@ -732,7 +728,9 @@ MCP_CODE_INTERPRETER_SCHEMA = {
         "name": "run_code_interpreter",
         "description": (
             "在沙盒中运行 Python 代码（仅标准库）。"
-            "笔记文件位于 data/notes/my_markdowns/；输出建议为 JSON 或表格。"
+            "适用场景：统计计算、批量处理、跨文件聚合、需要精确数值的对比/排名。"
+            "笔记文件位于 data/notes/my_markdowns/（使用相对路径）。"
+            "不适用于：简单文本查询、单文件内容读取（请用 read_note_file）。"
         ),
         "parameters": {
             "type": "object",
