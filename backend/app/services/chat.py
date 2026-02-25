@@ -1425,7 +1425,12 @@ async def run_chat_conversation(
                         seen_ref_keys: set = set()
                         deduped_refs: List[dict] = []
                         for ref in used_source_refs:
-                            key = (ref["path"], ref["heading"])
+                            key = (
+                                ref.get("path"),
+                                ref.get("heading"),
+                                ref.get("char_offset"),
+                                ref.get("snippet"),
+                            )
                             if key not in seen_ref_keys:
                                 seen_ref_keys.add(key)
                                 deduped_refs.append(ref)
@@ -1561,7 +1566,22 @@ async def run_chat_conversation(
                             normalized = _normalize_source_path(source_path)
                             used_sources.append(normalized)
                             heading = item.get("heading_path") or ""
-                            used_source_refs.append({"path": normalized, "heading": heading})
+                            raw_text = item.get("text") or ""
+                            prefix = f"[{heading}]\n"
+                            if raw_text.startswith(prefix):
+                                raw_text = raw_text[len(prefix) :]
+                            snippet = raw_text[:200].strip()
+                            jump_offset = item.get("char_offset")
+                            if jump_offset is None:
+                                jump_offset = item.get("heading_char_offset")
+                            used_source_refs.append(
+                                {
+                                    "path": normalized,
+                                    "heading": heading,
+                                    "char_offset": jump_offset,
+                                    "snippet": snippet,
+                                }
+                            )
                 messages.append(
                     {
                         "role": "tool",

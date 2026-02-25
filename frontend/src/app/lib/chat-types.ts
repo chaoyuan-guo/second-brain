@@ -3,6 +3,8 @@ export type ChatRole = 'user' | 'assistant';
 export interface SourceRef {
   path: string;
   heading: string;
+  char_offset?: number;
+  snippet?: string;
 }
 
 export interface ChatMessage {

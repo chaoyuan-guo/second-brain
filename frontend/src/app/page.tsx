@@ -6,6 +6,7 @@ import {
   ReactNode,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -38,6 +39,7 @@ import {
   NOTE_CONTENT_ENDPOINT,
   UPLOAD_ENDPOINT,
   type ChatSession,
+  type SourceRef,
 } from './lib/chat-types';
 
 const urlRegex = /(https?:\/\/[^\s]+)/gi;
@@ -56,17 +58,19 @@ type PreviewCacheEntry = {
   done: boolean;
   nextOffset: number | null;
   totalChars: number;
+  loadedOffset: number;
 };
 
 type PreviewState = PreviewCacheEntry & {
   path: string;
   title: string;
+  scrollTarget?: { charOffset: number; snippet?: string };
 };
 
 type SourceGroup = {
   path: string;
   fileName: string;
-  headingSet: Set<string>;
+  headingRefs: Map<string, SourceRef>;
 };
 
 const renderTextWithLinks = (text: string): ReactNode[] => {
@@ -112,6 +116,121 @@ const formatSourcePath = (path: string): string => {
     return normalized.slice(relativeMarker.length);
   }
   return path;
+};
+
+const normalizeWhitespace = (input: string): string => {
+  let result = '';
+  let lastWasSpace = false;
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i];
+    if (/\s/.test(ch)) {
+      if (!lastWasSpace) {
+        result += ' ';
+        lastWasSpace = true;
+      }
+    } else {
+      result += ch;
+      lastWasSpace = false;
+    }
+  }
+  return result.trim();
+};
+
+const normalizeWhitespaceForSearch = (input: string): { normalized: string; map: number[] } => {
+  let normalized = '';
+  const map: number[] = [];
+  let lastWasSpace = false;
+  for (let i = 0; i < input.length; i += 1) {
+    const ch = input[i];
+    if (/\s/.test(ch)) {
+      if (!lastWasSpace) {
+        normalized += ' ';
+        map.push(i);
+        lastWasSpace = true;
+      }
+    } else {
+      normalized += ch;
+      map.push(i);
+      lastWasSpace = false;
+    }
+  }
+  return { normalized, map };
+};
+
+const PreviewContent = ({
+  content,
+  loadedOffset,
+  scrollTarget,
+}: {
+  content: string;
+  loadedOffset: number;
+  scrollTarget?: { charOffset: number; snippet?: string };
+}) => {
+  const highlightRef = useRef<HTMLElement | null>(null);
+
+  const highlightRange = useMemo(() => {
+    if (!scrollTarget) {
+      return null;
+    }
+
+    const snippet = scrollTarget.snippet?.trim();
+    if (snippet) {
+      const searchKey = snippet.slice(0, 120);
+      const directIndex = content.indexOf(searchKey);
+      if (directIndex !== -1) {
+        return {
+          start: directIndex,
+          end: Math.min(content.length, directIndex + searchKey.length),
+        };
+      }
+
+      const normalizedKey = normalizeWhitespace(searchKey);
+      if (normalizedKey) {
+        const { normalized, map } = normalizeWhitespaceForSearch(content);
+        const normalizedIndex = normalized.indexOf(normalizedKey);
+        if (normalizedIndex !== -1) {
+          const start = map[normalizedIndex] ?? 0;
+          const endIndex = normalizedIndex + normalizedKey.length - 1;
+          const end =
+            endIndex >= 0 && endIndex < map.length ? map[endIndex] + 1 : start + normalizedKey.length;
+          return { start, end: Math.min(content.length, end) };
+        }
+      }
+    }
+
+    const relativeOffset = scrollTarget.charOffset - loadedOffset;
+    if (relativeOffset >= 0 && relativeOffset < content.length) {
+      const lineStart = content.lastIndexOf('\n', relativeOffset) + 1;
+      const lineEnd = content.indexOf('\n', relativeOffset);
+      return { start: lineStart, end: lineEnd === -1 ? content.length : lineEnd };
+    }
+
+    return null;
+  }, [content, loadedOffset, scrollTarget]);
+
+  useEffect(() => {
+    if (highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [highlightRange]);
+
+  if (!highlightRange) {
+    return <pre className="preview-content">{content || '（空文件）'}</pre>;
+  }
+
+  const before = content.slice(0, highlightRange.start);
+  const highlighted = content.slice(highlightRange.start, highlightRange.end);
+  const after = content.slice(highlightRange.end);
+
+  return (
+    <pre className="preview-content">
+      {before}
+      <mark className="preview-highlight" ref={highlightRef}>
+        {highlighted}
+      </mark>
+      {after}
+    </pre>
+  );
 };
 
 export default function HomePage() {
@@ -254,13 +373,17 @@ export default function HomePage() {
     setPreviewLoading(false);
   }, []);
 
-  const normalizePreviewEntry = useCallback((data: NoteContentResponse): PreviewCacheEntry => {
-    const content = typeof data.content === 'string' ? data.content : '';
-    const totalChars = typeof data.total_chars === 'number' ? data.total_chars : content.length;
-    const nextOffset = typeof data.next_offset === 'number' ? data.next_offset : null;
-    const done = typeof data.done === 'boolean' ? data.done : nextOffset === null;
-    return { content, done, nextOffset, totalChars };
-  }, []);
+  const normalizePreviewEntry = useCallback(
+    (data: NoteContentResponse, fallbackOffset = 0): PreviewCacheEntry => {
+      const content = typeof data.content === 'string' ? data.content : '';
+      const totalChars = typeof data.total_chars === 'number' ? data.total_chars : content.length;
+      const nextOffset = typeof data.next_offset === 'number' ? data.next_offset : null;
+      const done = typeof data.done === 'boolean' ? data.done : nextOffset === null;
+      const loadedOffset = typeof data.offset === 'number' ? data.offset : fallbackOffset;
+      return { content, done, nextOffset, totalChars, loadedOffset };
+    },
+    [],
+  );
 
   const fetchNoteContent = useCallback(async (filePath: string, offset = 0) => {
     const url = `${getApiBaseUrl()}${NOTE_CONTENT_ENDPOINT}?path=${encodeURIComponent(
@@ -276,24 +399,45 @@ export default function HomePage() {
   }, []);
 
   const handleOpenPreview = useCallback(
-    async (filePath: string, title: string) => {
+    async (filePath: string, title: string, ref?: SourceRef) => {
       previewPathRef.current = filePath;
       setPreviewError(null);
+
+      const hasOffset = typeof ref?.char_offset === 'number' && !Number.isNaN(ref.char_offset);
+      const scrollTarget = hasOffset
+        ? { charOffset: ref?.char_offset ?? 0, snippet: ref?.snippet }
+        : undefined;
+      const loadOffset = hasOffset ? Math.max(0, (ref?.char_offset ?? 0) - 300) : 0;
+
       const cached = previewCacheRef.current.get(filePath);
       if (cached) {
-        setPreviewState({ path: filePath, title, ...cached });
-        setPreviewLoading(false);
-        return;
+        const cacheStart = cached.loadedOffset;
+        const cacheEnd = cached.loadedOffset + cached.content.length;
+        if (loadOffset >= cacheStart && loadOffset < cacheEnd) {
+          setPreviewState({ path: filePath, title, ...cached, scrollTarget });
+          setPreviewLoading(false);
+          return;
+        }
       }
-      setPreviewState({ path: filePath, title, content: '', done: false, nextOffset: null, totalChars: 0 });
+
+      setPreviewState({
+        path: filePath,
+        title,
+        content: '',
+        done: false,
+        nextOffset: null,
+        totalChars: 0,
+        loadedOffset: loadOffset,
+        scrollTarget,
+      });
       setPreviewLoading(true);
       try {
-        const data = await fetchNoteContent(filePath, 0);
+        const data = await fetchNoteContent(filePath, loadOffset);
         if (previewPathRef.current !== filePath) {
           return;
         }
-        const entry = normalizePreviewEntry(data);
-        setPreviewState({ path: filePath, title, ...entry });
+        const entry = normalizePreviewEntry(data, loadOffset);
+        setPreviewState({ path: filePath, title, ...entry, scrollTarget });
         previewCacheRef.current.set(filePath, entry);
       } catch (error) {
         if (previewPathRef.current === filePath) {
@@ -305,7 +449,7 @@ export default function HomePage() {
         }
       }
     },
-    [fetchNoteContent, normalizePreviewEntry],
+    [fetchNoteContent, getPreviewErrorMessage, normalizePreviewEntry],
   );
 
   const handleLoadMorePreview = useCallback(async () => {
@@ -318,7 +462,7 @@ export default function HomePage() {
     setPreviewLoading(true);
     try {
       const data = await fetchNoteContent(currentPath, currentNextOffset);
-      const entry = normalizePreviewEntry(data);
+      const entry = normalizePreviewEntry(data, currentNextOffset);
       setPreviewState((prev) => {
         if (!prev || prev.path !== currentPath) {
           return prev;
@@ -328,6 +472,7 @@ export default function HomePage() {
           done: entry.done,
           nextOffset: entry.nextOffset,
           totalChars: entry.totalChars || prev.totalChars,
+          loadedOffset: prev.loadedOffset,
         };
         previewCacheRef.current.set(currentPath, merged);
         return { ...prev, ...merged };
@@ -583,14 +728,15 @@ export default function HomePage() {
                       message.timestamp && !Number.isNaN(message.timestamp)
                         ? new Date(message.timestamp).toISOString()
                         : undefined;
-                    const sourceEntries =
+                    const sourceEntries: SourceRef[] =
                       message.sourceRefs ?? message.sources?.map((path) => ({ path, heading: '' })) ?? [];
                     const hasSources = sourceEntries.length > 0;
                     const groupedSources = new Map<string, SourceGroup>();
                     const urlSources: string[] = [];
                     const urlSet = new Set<string>();
 
-                    sourceEntries.forEach(({ path, heading }) => {
+                    sourceEntries.forEach((ref) => {
+                      const { path, heading } = ref;
                       if (!path) return;
                       const isUrl = path.startsWith('http://') || path.startsWith('https://');
                       if (isUrl) {
@@ -602,10 +748,17 @@ export default function HomePage() {
                       }
                       const fileName = path.split('/').pop() ?? path;
                       const existing = groupedSources.get(path);
-                      const group = existing ?? { path, fileName, headingSet: new Set<string>() };
+                      const group = existing ?? { path, fileName, headingRefs: new Map<string, SourceRef>() };
                       const trimmedHeading = heading?.trim();
                       if (trimmedHeading) {
-                        group.headingSet.add(trimmedHeading);
+                        const stored = group.headingRefs.get(trimmedHeading);
+                        if (
+                          !stored ||
+                          (!stored.snippet && ref.snippet) ||
+                          (stored.char_offset === undefined && ref.char_offset !== undefined)
+                        ) {
+                          group.headingRefs.set(trimmedHeading, ref);
+                        }
                       }
                       if (!existing) {
                         groupedSources.set(path, group);
@@ -689,7 +842,7 @@ export default function HomePage() {
                               <p className="sources-label">来源文件</p>
                               <ul className="sources-list">
                                 {Array.from(groupedSources.values()).map((group) => {
-                                  const headings = Array.from(group.headingSet);
+                                  const headingEntries = Array.from(group.headingRefs.entries());
                                   const groupKey = `${message.id}:${group.path}`;
                                   const isExpanded = Boolean(expandedGroups[groupKey]);
                                   const displayPath = formatSourcePath(group.path);
@@ -709,7 +862,7 @@ export default function HomePage() {
                                             {displayPath}
                                           </span>
                                         </div>
-                                        {headings.length > 0 && (
+                                        {headingEntries.length > 0 && (
                                           <button
                                             type="button"
                                             className="source-expand-btn"
@@ -717,18 +870,24 @@ export default function HomePage() {
                                             aria-expanded={isExpanded}
                                           >
                                             {isExpanded ? <ChevronLeftIcon /> : <ChevronRightIcon />}
-                                            {headings.length} 个章节
+                                            {headingEntries.length} 个章节
                                           </button>
                                         )}
                                       </div>
-                                      {headings.length > 0 && isExpanded && (
+                                      {headingEntries.length > 0 && isExpanded && (
                                         <ul className="source-headings-list">
-                                          {headings.map((heading, headingIndex) => (
+                                          {headingEntries.map(([heading, ref], headingIndex) => (
                                             <li
                                               key={`${groupKey}-heading-${headingIndex}`}
                                               className="source-heading-item"
                                             >
-                                              <span className="source-heading">{heading}</span>
+                                              <button
+                                                type="button"
+                                                className="source-heading-btn"
+                                                onClick={() => handleOpenPreview(group.path, group.fileName, ref)}
+                                              >
+                                                {heading}
+                                              </button>
                                             </li>
                                           ))}
                                         </ul>
@@ -881,14 +1040,16 @@ export default function HomePage() {
                       {previewError}
                     </div>
                   )}
-                  <pre className="preview-content">
-                    {previewState.content ? previewState.content : '（空文件）'}
-                  </pre>
+                  <PreviewContent
+                    content={previewState.content}
+                    loadedOffset={previewState.loadedOffset}
+                    scrollTarget={previewState.scrollTarget}
+                  />
                   <div className="preview-footer">
                     <span className="preview-meta">
                       {previewState.totalChars > 0
                         ? `已加载 ${Math.min(
-                            previewState.content.length,
+                            previewState.loadedOffset + previewState.content.length,
                             previewState.totalChars,
                           )} / ${previewState.totalChars} 字符`
                         : '已加载内容'}

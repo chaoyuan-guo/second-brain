@@ -744,6 +744,8 @@ def query_my_notes(query: str, top_k: int | None = None) -> dict[str, Any]:
                 "document_title": record.get("document_title"),
                 "chunk_type": record.get("chunk_type"),
                 "text": display_text,
+                "heading_char_offset": record.get("heading_char_offset"),
+                "char_offset": record.get("char_offset"),
             }
         )
 

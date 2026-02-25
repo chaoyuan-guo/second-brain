@@ -844,6 +844,23 @@ button {
   font-style: italic;
 }
 
+.source-heading-btn {
+  font-size: 0.75rem;
+  color: var(--accent);
+  font-style: italic;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+.source-heading-btn:hover {
+  color: var(--accent-strong, #0f172a);
+}
+
 /* 来源文件分组 */
 .source-group {
   display: flex;
@@ -1015,6 +1032,12 @@ button {
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
+}
+
+.preview-highlight {
+  background-color: rgba(255, 213, 0, 0.45);
+  border-radius: 2px;
+  padding: 0 1px;
 }
 
 .preview-footer {

@@ -36,6 +36,8 @@ class Chunk:
     heading_path: str
     document_title: str
     chunk_type: str
+    heading_char_offset: int = 0
+    char_offset: int = 0
     search_text: str = ""
 
 
@@ -46,6 +48,8 @@ class Section:
     heading_path: str
     text: str
     level: int
+    heading_char_offset: int = 0
+    char_offset: int = 0
 
 
 def discover_markdown_files(root: Path) -> List[Path]:
@@ -104,12 +108,15 @@ def split_markdown_sections(text: str, fallback_title: str) -> Tuple[List[Sectio
     heading_stack: List[str] = []
     buffer: List[str] = []
     document_title = ""
+    char_cursor = 0
+    current_heading_offset = 0
+    current_section_offset = 0
 
     def current_path() -> str:
         return " > ".join(heading_stack) if heading_stack else fallback_title
 
     def flush_section() -> None:
-        content = "\n".join(buffer).strip()
+        content = "".join(buffer).strip()
         if not content:
             buffer.clear()
             return
@@ -118,12 +125,14 @@ def split_markdown_sections(text: str, fallback_title: str) -> Tuple[List[Sectio
                 heading_path=current_path(),
                 text=content,
                 level=len(heading_stack),
+                heading_char_offset=current_heading_offset,
+                char_offset=current_section_offset,
             )
         )
         buffer.clear()
 
-    for raw_line in text.splitlines():
-        line = raw_line.rstrip()
+    for raw_line in text.splitlines(keepends=True):
+        line = raw_line.rstrip("\n").rstrip()
         match = heading_pattern.match(line)
         if match:
             flush_section()
@@ -134,13 +143,25 @@ def split_markdown_sections(text: str, fallback_title: str) -> Tuple[List[Sectio
             heading_stack.append(title)
             if level == 1 and not document_title:
                 document_title = title
+            current_heading_offset = char_cursor
+            current_section_offset = char_cursor + len(raw_line)
+            char_cursor += len(raw_line)
             continue
         buffer.append(raw_line)
+        char_cursor += len(raw_line)
 
     flush_section()
 
     if not sections and text.strip():
-        sections.append(Section(heading_path=fallback_title, text=text.strip(), level=0))
+        sections.append(
+            Section(
+                heading_path=fallback_title,
+                text=text.strip(),
+                level=0,
+                heading_char_offset=0,
+                char_offset=0,
+            )
+        )
 
     if not document_title:
         document_title = heading_stack[0] if heading_stack else fallback_title
@@ -204,6 +225,8 @@ def load_chunks(
                         heading_path=section.heading_path,
                         document_title=document_title,
                         chunk_type="summary",
+                        heading_char_offset=section.heading_char_offset,
+                        char_offset=section.char_offset,
                         search_text=search_text,
                     )
                 )
@@ -229,6 +252,8 @@ def load_chunks(
                         heading_path=section.heading_path,
                         document_title=document_title,
                         chunk_type="detail",
+                        heading_char_offset=section.heading_char_offset,
+                        char_offset=section.char_offset,
                         search_text=search_text,
                     )
                 )
@@ -285,6 +310,8 @@ def save_metadata(chunks: List[Chunk], path: Path) -> None:
             "chunk_type": chunk.chunk_type,
             "text": chunk.text,
             "search_text": chunk.search_text,
+            "heading_char_offset": chunk.heading_char_offset,
+            "char_offset": chunk.char_offset,
         }
         for idx, chunk in enumerate(chunks)
     ]
