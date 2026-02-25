@@ -1422,18 +1422,24 @@ async def run_chat_conversation(
                     )
                 if event_callback:
                     try:
-                        seen_ref_keys: set = set()
+                        seen_ref_keys: dict[tuple[str | None, str | None], int] = {}
                         deduped_refs: List[dict] = []
                         for ref in used_source_refs:
-                            key = (
-                                ref.get("path"),
-                                ref.get("heading"),
-                                ref.get("char_offset"),
-                                ref.get("snippet"),
-                            )
-                            if key not in seen_ref_keys:
-                                seen_ref_keys.add(key)
-                                deduped_refs.append(ref)
+                            key = (ref.get("path"), ref.get("heading"))
+                            if key in seen_ref_keys:
+                                existing_index = seen_ref_keys[key]
+                                existing = deduped_refs[existing_index]
+                                existing_has_snippet = bool(existing.get("snippet"))
+                                new_has_snippet = bool(ref.get("snippet"))
+                                existing_has_offset = existing.get("char_offset") is not None
+                                new_has_offset = ref.get("char_offset") is not None
+                                if (not existing_has_snippet and new_has_snippet) or (
+                                    not existing_has_offset and new_has_offset
+                                ):
+                                    deduped_refs[existing_index] = ref
+                                continue
+                            seen_ref_keys[key] = len(deduped_refs)
+                            deduped_refs.append(ref)
                         event_callback(
                             {
                                 "type": "sources",
