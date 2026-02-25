@@ -61,8 +61,8 @@ Thumbs.db
 
 runtime/logs/
 
-# Local-only deployment prompt notes
-docs/deployment-prompt.md
+docs/refer
+docs/features
 
 .codex
 
