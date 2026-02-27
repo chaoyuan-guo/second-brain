@@ -7,11 +7,13 @@
 ## Build, Test, and Development Commands
 - 本仓库 Python 统一使用项目内 `.venv`，不要依赖 conda/system python。初始化：`python -m venv .venv && ./.venv/bin/python -m pip install -r requirements.txt`，随后使用 `./.venv/bin/python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 9000` 作为本地后端入口。 Set up a venv, install requirements, then run `uvicorn backend.app.main:app` for hot reload.
 - 前端工作流：`cd frontend && npm install && npm run dev` 提供本地调试，`npm run build` 生成产物供 `npm run start` 或静态部署使用。Use `start_services.sh` when you need both tiers plus synchronized log files.
-- Docker 镜像构建与容器启动（不读取项目 `.env`、不挂载 `data/runtime`，token 走当前 shell 环境变量）：
-  - 构建镜像：`docker build -t second_brain:local .`
-  - 启动容器（宿主机 18000 → 容器 8000）：`docker rm -f second_brain_18000 2>/dev/null || true && docker run -d --name second_brain_18000 --restart unless-stopped -p 18000:8000 -e AI_BUILDER_TOKEN second_brain:local`
-  - 验证：`curl "http://127.0.0.1:18000/hello?input=test"`
-  - 日志/停止：`docker logs -f second_brain_18000` / `docker stop second_brain_18000`
+- Docker（OpenCode 一体化容器）：
+  - 构建镜像：`docker build -t second_brain:opencode -f docker/Dockerfile.opencode .`
+  - 推荐环境变量文件：`.env.docker`（示例：`SUPER_MIND_API_BASE_URL=https://space.ai-builders.com/backend/v1`，必须带 `/v1`）
+  - 默认启动（仅暴露前端端口）：`docker rm -f second_brain_opencode 2>/dev/null || true && docker run -d --name second_brain_opencode --restart unless-stopped -p 9080:9080 --env-file .env.docker -v "$PWD/data:/app/data" second_brain:opencode`
+  - 调试启动（额外暴露 OpenCode/RAG）：`docker rm -f second_brain_opencode 2>/dev/null || true && docker run -d --name second_brain_opencode --restart unless-stopped -p 9080:9080 -p 9090:9090 -p 9070:9070 --env-file .env.docker -v "$PWD/data:/app/data" second_brain:opencode`
+  - 验证：`curl -I "http://127.0.0.1:9080"`
+  - 日志/停止：`docker logs -f second_brain_opencode` / `docker stop second_brain_opencode`
 
 ## Logging Guidelines
 - 本地开发仅写日志文件：后端 `runtime/logs/backend.log`、前端 `runtime/logs/frontend.log`、工具输出 `runtime/logs/tool_output.log`。

@@ -9,35 +9,29 @@ Second Brain 是一个基于本地 Markdown 的智能检索系统。它索引个
 ## 架构
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Frontend (Next.js)                       │
-│                    localhost:9080 / frontend/                    │
-└─────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Backend (FastAPI)                           │
-│                   localhost:9000 / backend/app/                  │
-│  ┌──────────┐  ┌──────────────┐  ┌────────────────────────────┐ │
-│  │ Routes   │→ │ Chat Service │→ │ Tools (query, read, code)  │ │
-│  │ /chat/*  │  │ (chat.py)    │  │ (tools.py)                 │ │
-│  └──────────┘  └──────────────┘  └────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-                                  │
-                    ┌─────────────┴─────────────┐
-                    ▼                           ▼
-┌─────────────────────────────────┐   ┌─────────────────────────────┐
-│   FAISS Index + Metadata        │   │    MCP Python Interpreter   │
-│   data/indexes/                 │   │    localhost:9070 (SSE)     │
-│   data/notes/                   │   │    or embedded interpreter  │
-└─────────────────────────────────┘   └─────────────────────────────┘
+┌──────────────────────────── Docker Container ────────────────────────────┐
+│                                                                            │
+│  Frontend (Next.js)  :9080                                                 │
+│  - 浏览器统一访问前端                                                       │
+│  - 通过 Next.js API Proxy 转发到内部服务                                   │
+│                                                                            │
+│  OpenCode Server (Node.js, 无头模式) :9090                                 │
+│  - Agentic Loop / session API / 全局 SSE 事件流                            │
+│                                                                            │
+│  RAG & Data Server (FastAPI + FastMCP) :9070                               │
+│  - MCP SSE `/sse`（供 OpenCode 调用）                                      │
+│  - REST `/notes/content`、`/notes/upload`（供前端代理调用）                 │
+│                                                                            │
+│  OpenCode  ── MCP SSE ──▶  RAG & Data                                      │
+│  Frontend ── API Proxy ──▶  OpenCode / RAG                                 │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **核心数据流：**
-- 聊天请求访问 `/chat/stream`（NDJSON 流式）或 `/chat`（阻塞式）
-- 后端使用兼容 OpenAI 的 API 进行工具调用（query_my_notes、read_note_file、run_code_interpreter、load_skill）
-- 笔记通过 FAISS 进行语义搜索索引；元数据存储在 `data/notes/my_notes_metadata.json`
-- 代码执行使用 MCP SSE 服务器（本地开发）或内嵌解释器（容器环境）
+- 浏览器请求仅进入前端 `:9080`，前端再通过 `/api/*` 代理到内部 `:9090/:9070`
+- 对话通过 OpenCode session API（`/session`、`/session/:id/prompt_async`）与全局事件流 `/event` 完成
+- source refs 从 `ToolPart.state.completed.metadata.source_refs` 透传给前端来源面板
+- 笔记检索与上传建索引由同一 RAG & Data Server 进程处理，避免跨进程状态不一致
 
 ## 开发命令
 
@@ -113,9 +107,25 @@ npm run build    # 生产构建输出到 frontend/out/
 ### Docker
 
 ```bash
-docker build -t second_brain:local .
-docker run -d --name second_brain_18000 -p 18000:8000 -e AI_BUILDER_TOKEN second_brain:local
-curl "http://127.0.0.1:18000/hello?input=test"
+docker build -t second_brain:opencode -f docker/Dockerfile.opencode .
+docker rm -f second_brain_opencode 2>/dev/null || true
+
+# 推荐：仅暴露前端端口（浏览器访问）
+docker run -d --name second_brain_opencode \
+  -p 9080:9080 \
+  --env-file .env.docker \
+  -v "$PWD/data:/app/data" \
+  second_brain:opencode
+
+# 调试：需要直连 OpenCode/RAG 时再额外暴露
+# docker run -d --name second_brain_opencode \
+#   -p 9080:9080 -p 9090:9090 -p 9070:9070 \
+#   --env-file .env.docker \
+#   -v "$PWD/data:/app/data" \
+#   second_brain:opencode
+
+# 健康检查
+curl -I "http://127.0.0.1:9080"
 ```
 
 ## 关键目录
@@ -139,6 +149,8 @@ curl "http://127.0.0.1:18000/hello?input=test"
 - `CHAT_ALLOWED_ORIGINS` - CORS 来源（默认：localhost:9080）
 - `MCP_SSE_ENDPOINT` - MCP 解释器端点（默认：http://127.0.0.1:9070/sse/）
 - `MCP_INTERPRETER_BACKEND` - 强制使用 `embedded` 或 `mcp` 解释器模式
+- `OPENCODE_SELF_CHECK` - 容器启动后是否执行 OpenCode 自检（默认 `1`，设为 `0` 可跳过）
+- `.env.docker` - 容器推荐环境文件，统一维护 ai-builder/Azure 变量
 
 ### Chat 模型端点配置
 
@@ -153,7 +165,7 @@ curl "http://127.0.0.1:18000/hello?input=test"
 - 如需强制使用 ai-builder 端点，设置 `use_azure=False`
 
 **容器服务环境**（默认使用 ai-builder）：
-- 使用 `SUPER_MIND_API_BASE_URL`（默认：https://space.ai-builders.com/backend/v1）
+- 使用 `SUPER_MIND_API_BASE_URL`（默认：https://space.ai-builders.com/backend/v1，必须带 `/v1`）
 - 使用 `SUPER_MIND_CHAT_MODEL`（默认：gpt-5）
 - 如需强制使用 Azure 端点，设置 `use_azure=True` 并配置相应的 Azure 环境变量
 
