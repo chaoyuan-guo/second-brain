@@ -1,0 +1,55 @@
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /app/frontend
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_OUTPUT_MODE=server
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm config set fetch-retries 5 \
+  && npm config set fetch-retry-mintimeout 20000 \
+  && npm config set fetch-retry-maxtimeout 120000 \
+  && npm ci
+
+COPY frontend ./
+RUN npm run build
+
+FROM node:20-slim AS node-runtime
+
+FROM python:3.11-slim AS runtime
+
+ARG OPENCODE_VERSION=1.2.15
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_OUTPUT_MODE=server \
+    SECOND_BRAIN_OPENCODE_BASE_URL=http://127.0.0.1:9090 \
+    SECOND_BRAIN_RAG_BASE_URL=http://127.0.0.1:9070 \
+    SECOND_BRAIN_LEGACY_BACKEND_BASE_URL=http://127.0.0.1:9070
+
+WORKDIR /app
+
+COPY --from=node-runtime /usr/local/ /usr/local/
+
+RUN node --version \
+  && npm --version \
+  && npm install -g "opencode-ai@${OPENCODE_VERSION}" \
+  && opencode --version
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend ./backend
+COPY data ./data
+COPY .opencode ./.opencode
+COPY docker/opencode/AGENTS.md ./AGENTS.md
+COPY docker/opencode/entrypoint.sh ./docker/opencode/entrypoint.sh
+
+COPY --from=frontend-builder /app/frontend ./frontend
+
+RUN mkdir -p runtime/logs data/notes/indexes \
+  && chmod +x ./docker/opencode/entrypoint.sh
+
+EXPOSE 9080 9090 9070
+
+CMD ["./docker/opencode/entrypoint.sh"]

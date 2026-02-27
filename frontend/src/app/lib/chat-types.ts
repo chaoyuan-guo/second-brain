@@ -65,6 +65,7 @@ export interface ChatSession {
   messages: ChatMessage[];
   createdAt: number;
   isCustomTitle?: boolean;
+  upstreamSessionId?: string;
 }
 
 export interface MessageSegment {
@@ -73,52 +74,22 @@ export interface MessageSegment {
   language?: string;
 }
 
-const DEFAULT_BACKEND_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT ?? '9000';
-const LOCAL_FALLBACK_BASE = 'http://127.0.0.1:9000';
-
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, '');
-
-const inferBrowserApiBase = (): string | null => {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  const { protocol, hostname, origin } = window.location;
-  const codespaceMatch = hostname.match(/^(\d+)-(.+)$/);
-  if (codespaceMatch) {
-    const [, , remainder] = codespaceMatch;
-    return `${protocol}//${DEFAULT_BACKEND_PORT}-${remainder}`;
-  }
-
-  if (process.env.NODE_ENV !== 'development') {
-    return origin;
-  }
-
-  const shouldOmitPort =
-    !DEFAULT_BACKEND_PORT ||
-    (protocol === 'https:' && DEFAULT_BACKEND_PORT === '443') ||
-    (protocol === 'http:' && DEFAULT_BACKEND_PORT === '80');
-
-  const portSegment = shouldOmitPort ? '' : `:${DEFAULT_BACKEND_PORT}`;
-  return `${protocol}//${hostname}${portSegment}`;
-};
 
 export const getApiBaseUrl = (): string => {
   const explicit = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
   if (explicit) {
     return trimTrailingSlash(explicit);
   }
-
-  const inferred = inferBrowserApiBase();
-  if (inferred) {
-    return trimTrailingSlash(inferred);
-  }
-
-  return LOCAL_FALLBACK_BASE;
+  return '';
 };
 
-export const STORAGE_KEY = 'second_brain_sessions_v1';
-export const STREAM_ENDPOINT = '/chat/stream';
-export const TITLE_ENDPOINT = '/chat/title';
-export const UPLOAD_ENDPOINT = '/notes/upload';
-export const NOTE_CONTENT_ENDPOINT = '/notes/content';
+export const STORAGE_KEY = 'second_brain_sessions_v2';
+export const STREAM_ENDPOINT = '/api/chat/stream/';
+export const TITLE_ENDPOINT = '/api/chat/title/';
+export const SESSION_ENDPOINT = '/api/chat/session/';
+export const EVENT_ENDPOINT = '/api/chat/event/';
+export const sessionMessageEndpoint = (sessionId: string): string =>
+  `/api/chat/session/${encodeURIComponent(sessionId)}/message/`;
+export const UPLOAD_ENDPOINT = '/api/notes/upload/';
+export const NOTE_CONTENT_ENDPOINT = '/api/notes/content/';

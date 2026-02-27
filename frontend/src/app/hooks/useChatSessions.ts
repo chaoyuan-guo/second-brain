@@ -1,21 +1,16 @@
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  EVENT_ENDPOINT,
   getApiBaseUrl,
-  type ApiMessagePayload,
   type ChatMessage,
   type ChatSession,
-  type StreamEvent,
+  SESSION_ENDPOINT,
+  sessionMessageEndpoint,
+  type SourceRef,
   STORAGE_KEY,
-  STREAM_ENDPOINT,
-  TITLE_ENDPOINT,
 } from '../lib/chat-types';
-import {
-  createEmptySession,
-  createId,
-  deriveTitle,
-  serializeMessagesForApi,
-} from '../lib/chat-helpers';
+import { createEmptySession, createId, deriveTitle } from '../lib/chat-helpers';
 
 interface UseChatSessionsResult {
   sessions: ChatSession[];
@@ -34,8 +29,46 @@ interface UseChatSessionsResult {
   clearActiveSession: () => void;
   handleSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   abortSessionRequest: (sessionId: string) => void;
-  refreshSessionTitle: (sessionId: string, messagesOverride?: ApiMessagePayload[]) => Promise<void>;
+  refreshSessionTitle: () => Promise<void>;
 }
+
+type JsonRecord = Record<string, unknown>;
+type ToolStatus = 'pending' | 'running' | 'completed' | 'error';
+
+const LEGACY_STORAGE_KEY = 'second_brain_sessions_v1';
+const DEFAULT_OPENCODE_SESSION_PATH =
+  process.env.NEXT_PUBLIC_OPENCODE_SESSION_PATH?.trim() || '/app';
+
+const asRecord = (value: unknown): JsonRecord | undefined =>
+  value && typeof value === 'object' ? (value as JsonRecord) : undefined;
+
+const asString = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+
+const extractSourceRefs = (metadata: unknown): SourceRef[] => {
+  const record = asRecord(metadata);
+  const raw = record?.source_refs;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const refs: SourceRef[] = [];
+  raw.forEach((item) => {
+    const entry = asRecord(item);
+    const path = asString(entry?.path)?.trim();
+    if (!path) {
+      return;
+    }
+
+    const heading = asString(entry?.heading)?.trim() ?? '';
+    const snippet = asString(entry?.snippet);
+    const charOffsetRaw = entry?.char_offset;
+    const char_offset = typeof charOffsetRaw === 'number' ? charOffsetRaw : undefined;
+    refs.push({ path, heading, snippet, char_offset });
+  });
+
+  return refs;
+};
 
 export function useChatSessions(): UseChatSessionsResult {
   const defaultSession = useMemo(() => createEmptySession(), []);
@@ -45,14 +78,18 @@ export function useChatSessions(): UseChatSessionsResult {
   const [pendingSessions, setPendingSessions] = useState<Record<string, boolean>>({});
   const [hydrated, setHydrated] = useState(false);
 
+  const sessionsRef = useRef<ChatSession[]>([defaultSession]);
   const streamControllersRef = useRef(new Map<string, AbortController>());
   const apiBaseUrlRef = useRef<string>(typeof window === 'undefined' ? '' : getApiBaseUrl());
-  const titleRefreshTrackerRef = useRef<Map<string, number>>(new Map());
 
   const activeSession =
     sessions.find((session) => session.id === activeSessionId) ?? sessions[0] ?? defaultSession;
   const isActivePending = Boolean(activeSession && pendingSessions[activeSession.id]);
   const isAnyPending = Object.values(pendingSessions).some(Boolean);
+
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
 
   const setSessionPending = useCallback((sessionId: string, pending: boolean) => {
     setPendingSessions((prev) => {
@@ -84,7 +121,7 @@ export function useChatSessions(): UseChatSessionsResult {
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
       if (stored) {
         const parsed: ChatSession[] = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -98,7 +135,7 @@ export function useChatSessions(): UseChatSessionsResult {
     } finally {
       setHydrated(true);
     }
-  }, [defaultSession.id]);
+  }, []);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -120,14 +157,148 @@ export function useChatSessions(): UseChatSessionsResult {
   const upsertSession = useCallback(
     (sessionId: string, updater: (session: ChatSession) => ChatSession) => {
       setSessions((prev) => {
-        const existing =
-          prev.find((item) => item.id === sessionId) ?? createEmptySession(sessionId);
+        const existing = prev.find((item) => item.id === sessionId) ?? createEmptySession(sessionId);
         const updated = updater(existing);
         const others = prev.filter((item) => item.id !== sessionId);
         return [updated, ...others];
       });
     },
     [],
+  );
+
+  const updateAssistantMessage = useCallback(
+    (
+      sessionId: string,
+      messageId: string,
+      updater: (prev: ChatMessage) => ChatMessage,
+    ) => {
+      upsertSession(sessionId, (session) => {
+        if (!session.messages.some((message) => message.id === messageId)) {
+          return session;
+        }
+        return {
+          ...session,
+          messages: session.messages.map((message) =>
+            message.id === messageId ? updater(message) : message,
+          ),
+        };
+      });
+    },
+    [upsertSession],
+  );
+
+  const parseSseStream = useCallback(
+    async (
+      reader: ReadableStreamDefaultReader<Uint8Array>,
+      onEvent: (eventName: string, data: string) => void,
+    ) => {
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+      let eventName = 'message';
+      let dataLines: string[] = [];
+
+      const dispatch = () => {
+        if (!dataLines.length) {
+          eventName = 'message';
+          return;
+        }
+        onEvent(eventName, dataLines.join('\n'));
+        eventName = 'message';
+        dataLines = [];
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        if (!value) {
+          continue;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        let newlineIndex = buffer.indexOf('\n');
+        while (newlineIndex !== -1) {
+          let line = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+          if (line.endsWith('\r')) {
+            line = line.slice(0, -1);
+          }
+
+          if (!line) {
+            dispatch();
+            newlineIndex = buffer.indexOf('\n');
+            continue;
+          }
+
+          if (line.startsWith(':')) {
+            newlineIndex = buffer.indexOf('\n');
+            continue;
+          }
+
+          if (line.startsWith('event:')) {
+            eventName = line.slice(6).trim() || 'message';
+            newlineIndex = buffer.indexOf('\n');
+            continue;
+          }
+
+          if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).trimStart());
+          }
+
+          newlineIndex = buffer.indexOf('\n');
+        }
+      }
+
+      buffer += decoder.decode();
+      if (buffer) {
+        let tail = buffer;
+        if (tail.endsWith('\r')) {
+          tail = tail.slice(0, -1);
+        }
+        if (tail.startsWith('data:')) {
+          dataLines.push(tail.slice(5).trimStart());
+        }
+      }
+      dispatch();
+    },
+    [],
+  );
+
+  const ensureUpstreamSessionId = useCallback(
+    async (sessionId: string, baseUrl: string): Promise<string> => {
+      const existing = sessionsRef.current.find((item) => item.id === sessionId)?.upstreamSessionId;
+      if (existing) {
+        return existing;
+      }
+
+      const response = await fetch(`${baseUrl}${SESSION_ENDPOINT}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ path: DEFAULT_OPENCODE_SESSION_PATH }),
+      });
+
+      if (!response.ok) {
+        const detail = (await response.text()).trim();
+        throw new Error(detail || `创建 OpenCode 会话失败: ${response.status}`);
+      }
+
+      const payload = (await response.json().catch(() => null)) as { id?: string } | null;
+      const upstreamSessionId = payload?.id?.trim();
+      if (!upstreamSessionId) {
+        throw new Error('创建 OpenCode 会话失败：响应缺少 session id');
+      }
+
+      upsertSession(sessionId, (session) => ({
+        ...session,
+        upstreamSessionId,
+      }));
+
+      return upstreamSessionId;
+    },
+    [upsertSession],
   );
 
   const createNewSession = useCallback(() => {
@@ -168,63 +339,6 @@ export function useChatSessions(): UseChatSessionsResult {
     [upsertSession],
   );
 
-  const refreshSessionTitle = useCallback(
-    async (sessionId: string, messagesOverride?: ApiMessagePayload[]) => {
-      const session = sessions.find((item) => item.id === sessionId);
-      if (!session || session.isCustomTitle) {
-        return;
-      }
-
-      const tracker = titleRefreshTrackerRef.current;
-      const now = Date.now();
-      const lastRequested = tracker.get(sessionId) ?? 0;
-      if (now - lastRequested < 5000) {
-        return;
-      }
-      tracker.set(sessionId, now);
-
-      try {
-        const baseUrl = apiBaseUrlRef.current || getApiBaseUrl();
-        apiBaseUrlRef.current = baseUrl;
-        const messagesForTitle: ApiMessagePayload[] = messagesOverride?.length
-          ? messagesOverride
-          : serializeMessagesForApi(session);
-        if (!messagesForTitle.length) {
-          return;
-        }
-
-        const response = await fetch(`${baseUrl}${TITLE_ENDPOINT}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ messages: messagesForTitle }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`生成标题失败: ${response.status}`);
-        }
-
-        const data = (await response.json()) as { title?: string };
-        const generatedTitle = data.title?.trim();
-        if (generatedTitle) {
-          upsertSession(sessionId, (current) => {
-            if (current.isCustomTitle) {
-              return current;
-            }
-            return {
-              ...current,
-              title: generatedTitle,
-            };
-          });
-        }
-      } catch (error) {
-        console.warn('自动生成标题失败', error);
-      }
-    },
-    [sessions, upsertSession],
-  );
-
   const clearActiveSession = useCallback(() => {
     if (!activeSession) return;
     abortSessionRequest(activeSession.id);
@@ -234,71 +348,7 @@ export function useChatSessions(): UseChatSessionsResult {
     }));
   }, [abortSessionRequest, activeSession, upsertSession]);
 
-  const updateAssistantMessage = useCallback(
-    (
-      sessionId: string,
-      messageId: string,
-      updater: (prev: ChatMessage) => ChatMessage,
-    ) => {
-      upsertSession(sessionId, (session) => {
-        if (!session.messages.some((message) => message.id === messageId)) {
-          return session;
-        }
-        return {
-          ...session,
-          messages: session.messages.map((message) =>
-            message.id === messageId ? updater(message) : message,
-          ),
-        };
-      });
-    },
-    [upsertSession],
-  );
-
-  const parseNdjsonStream = useCallback(
-    async (
-      reader: ReadableStreamDefaultReader<Uint8Array>,
-      onEvent: (event: StreamEvent) => void,
-    ) => {
-      const decoder = new TextDecoder('utf-8');
-      let buffer = '';
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) {
-          break;
-        }
-        if (!value) {
-          continue;
-        }
-        buffer += decoder.decode(value, { stream: true });
-        let newlineIndex = buffer.indexOf('\n');
-        while (newlineIndex !== -1) {
-          const line = buffer.slice(0, newlineIndex).trim();
-          buffer = buffer.slice(newlineIndex + 1);
-          if (line) {
-            try {
-              onEvent(JSON.parse(line) as StreamEvent);
-            } catch {
-              // ignore malformed chunks
-            }
-          }
-          newlineIndex = buffer.indexOf('\n');
-        }
-      }
-
-      buffer += decoder.decode();
-      const tail = buffer.trim();
-      if (tail) {
-        try {
-          onEvent(JSON.parse(tail) as StreamEvent);
-        } catch {
-          // ignore
-        }
-      }
-    },
-    [],
-  );
+  const refreshSessionTitle = useCallback(async () => undefined, []);
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -313,28 +363,6 @@ export function useChatSessions(): UseChatSessionsResult {
         return;
       }
 
-      const payloadMessages: ApiMessagePayload[] = [
-        ...serializeMessagesForApi(activeSession),
-        {
-          role: 'user',
-          content,
-        },
-      ];
-
-      const triggerTitleUpdate = (assistantContent: string) => {
-        if (!assistantContent.trim()) {
-          return;
-        }
-        const messagesForTitle: ApiMessagePayload[] = [
-          ...payloadMessages,
-          {
-            role: 'assistant',
-            content: assistantContent,
-          },
-        ];
-        refreshSessionTitle(targetSessionId, messagesForTitle).catch(() => undefined);
-      };
-
       const userMessage: ChatMessage = {
         id: createId(),
         role: 'user',
@@ -346,8 +374,8 @@ export function useChatSessions(): UseChatSessionsResult {
         id: createId(),
         role: 'assistant',
         content: '',
-        isThinking: false,
-        statusText: '',
+        isThinking: true,
+        statusText: '准备连接 OpenCode...',
         timestamp: Date.now(),
       };
 
@@ -363,214 +391,283 @@ export function useChatSessions(): UseChatSessionsResult {
       const controller = new AbortController();
       streamControllersRef.current.set(targetSessionId, controller);
 
-      let thinkingTimer: number | undefined;
-      let statusTimer: number | undefined;
+      let completionTimer: number | undefined;
+      let timeoutTimer: number | undefined;
+      let autoCompletedAbort = false;
+      let timeoutAbort = false;
+      let sawStepFinish = false;
+      let assistantContent = '';
+
+      const sourceRefMap = new Map<string, SourceRef>();
+      const toolStatusByCall = new Map<string, ToolStatus>();
+
+      const clearCompletionTimer = () => {
+        if (completionTimer) {
+          window.clearTimeout(completionTimer);
+          completionTimer = undefined;
+        }
+      };
+
+      const activeToolCount = (): number => {
+        let count = 0;
+        toolStatusByCall.forEach((status) => {
+          if (status === 'pending' || status === 'running') {
+            count += 1;
+          }
+        });
+        return count;
+      };
+
+      const buildSourceRefs = (): SourceRef[] => Array.from(sourceRefMap.values());
+
+      const mergeSourceRefs = (refs: SourceRef[]) => {
+        refs.forEach((ref) => {
+          const key = [ref.path, ref.heading ?? '', ref.char_offset ?? '', ref.snippet ?? ''].join('|');
+          if (!sourceRefMap.has(key)) {
+            sourceRefMap.set(key, ref);
+          }
+        });
+      };
+
+      const scheduleCompletionAbort = () => {
+        clearCompletionTimer();
+        completionTimer = window.setTimeout(() => {
+          autoCompletedAbort = true;
+          controller.abort();
+        }, 700);
+      };
+
+      const maybeScheduleCompletion = () => {
+        if (sawStepFinish && activeToolCount() === 0) {
+          scheduleCompletionAbort();
+        }
+      };
+
+      const updateAssistantState = (overrides: Partial<ChatMessage>) => {
+        updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
+          ...prev,
+          ...overrides,
+          timestamp: Date.now(),
+        }));
+      };
 
       try {
         const baseUrl = apiBaseUrlRef.current || getApiBaseUrl();
         apiBaseUrlRef.current = baseUrl;
 
-        // 轻量等待：避免短请求闪烁
-        thinkingTimer = window.setTimeout(() => {
-          updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
-            ...prev,
-            isThinking: true,
-          }));
-        }, 300);
+        const upstreamSessionId = await ensureUpstreamSessionId(targetSessionId, baseUrl);
 
-        // 复杂场景：若迟迟无文本输出，则展示状态文案
-        let latestStatusText = '';
-        let statusVisible = false;
-        statusTimer = window.setTimeout(() => {
-          statusVisible = true;
-          updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
-            ...prev,
-            isThinking: true,
-            statusText: prev.statusText || latestStatusText || '正在思考…',
-          }));
-        }, 700);
-
-        const response = await fetch(`${baseUrl}${STREAM_ENDPOINT}`, {
-          method: 'POST',
+        const streamResponse = await fetch(`${baseUrl}${EVENT_ENDPOINT}`, {
+          method: 'GET',
           headers: {
-            'Content-Type': 'application/json',
-            'X-Stream-Format': 'ndjson',
-            Accept: 'application/x-ndjson',
+            Accept: 'text/event-stream',
           },
-          body: JSON.stringify({ messages: payloadMessages }),
+          cache: 'no-store',
           signal: controller.signal,
         });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(errorText || `请求失败: ${response.status}`);
+        if (!streamResponse.ok || !streamResponse.body) {
+          const detail = (await streamResponse.text()).trim();
+          throw new Error(detail || `连接 OpenCode 事件流失败: ${streamResponse.status}`);
         }
 
-        const contentType = response.headers.get('content-type') ?? '';
-        if (!contentType.includes('application/x-ndjson')) {
-          const reader = response.body?.getReader();
-          if (!reader) {
-            const fallbackText = (await response.text()).trim() || '助手暂时没有回复。';
-            updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
-              ...prev,
-              content: fallbackText,
-              isThinking: false,
-              statusText: '',
-              timestamp: Date.now(),
-            }));
-            triggerTitleUpdate(fallbackText);
+        updateAssistantState({
+          isThinking: true,
+          statusText: '已连接 OpenCode，等待响应...',
+        });
+
+        const promptResponse = await fetch(`${baseUrl}${sessionMessageEndpoint(upstreamSessionId)}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            parts: [{ type: 'text', text: content }],
+          }),
+          signal: controller.signal,
+        });
+
+        if (!promptResponse.ok) {
+          const detail = (await promptResponse.text()).trim();
+          throw new Error(detail || `发送消息失败: ${promptResponse.status}`);
+        }
+
+        updateAssistantState({
+          isThinking: true,
+          statusText: '正在思考...',
+        });
+
+        timeoutTimer = window.setTimeout(() => {
+          timeoutAbort = true;
+          controller.abort();
+        }, 120000);
+
+        const reader = streamResponse.body.getReader();
+        await parseSseStream(reader, (eventName, data) => {
+          let parsedValue: unknown;
+          try {
+            parsedValue = JSON.parse(data);
+          } catch {
+            return;
+          }
+          const parsed = asRecord(parsedValue);
+          if (!parsed) {
             return;
           }
 
-          const decoder = new TextDecoder('utf-8');
-          let aggregated = '';
-          let receivedFirstChunk = false;
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            if (!value) continue;
-            if (!receivedFirstChunk) {
-              receivedFirstChunk = true;
-              if (thinkingTimer) {
-                window.clearTimeout(thinkingTimer);
-                thinkingTimer = undefined;
-              }
-              if (statusTimer) {
-                window.clearTimeout(statusTimer);
-                statusTimer = undefined;
-              }
-            }
-            const chunk = decoder.decode(value, { stream: true });
-            if (!chunk) continue;
-            aggregated += chunk;
-            updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
-              ...prev,
-              content: aggregated,
-              isThinking: true,
-              statusText: '',
-              timestamp: prev.timestamp ?? Date.now(),
-            }));
-          }
-          aggregated += decoder.decode();
-          const finalText = (aggregated || '助手暂时没有回复。').trim();
-          updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
-            ...prev,
-            content: finalText,
-            isThinking: false,
-            statusText: '',
-            timestamp: Date.now(),
-          }));
-          triggerTitleUpdate(finalText);
-          return;
-        }
-
-        if (!response.body) {
-          const fallbackText = (await response.text()).trim() || '助手暂时没有回复。';
-          updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
-            ...prev,
-            content: fallbackText,
-            isThinking: false,
-            timestamp: Date.now(),
-          }));
-          triggerTitleUpdate(fallbackText);
-          return;
-        }
-
-        const reader = response.body.getReader();
-        let aggregated = '';
-        let hasDelta = false;
-
-        await parseNdjsonStream(reader, (event) => {
-          if (event.type === 'delta') {
-            hasDelta = true;
-            statusVisible = false;
-            if (thinkingTimer) {
-              window.clearTimeout(thinkingTimer);
-              thinkingTimer = undefined;
-            }
-            if (statusTimer) {
-              window.clearTimeout(statusTimer);
-              statusTimer = undefined;
-            }
-            aggregated += event.delta;
-            updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
-              ...prev,
-              content: aggregated,
-              isThinking: true,
-              statusText: '',
-              timestamp: prev.timestamp ?? Date.now(),
-            }));
+          const eventType = asString(parsed.type) ?? eventName;
+          if (eventType !== 'message.part.updated') {
             return;
           }
 
-          if (event.type === 'tool' || event.type === 'status') {
-            latestStatusText = event.message;
-            const shouldShow = event.type === 'tool' || (statusVisible && !hasDelta);
-            if (!shouldShow) {
+          const properties = asRecord(parsed.properties);
+          const part = asRecord(properties?.part ?? parsed.part);
+          if (!part) {
+            return;
+          }
+
+          const partSessionId = asString(part.sessionID);
+          if (!partSessionId || partSessionId !== upstreamSessionId) {
+            return;
+          }
+
+          const partType = asString(part.type);
+          if (!partType) {
+            return;
+          }
+
+          if (partType === 'text') {
+            const delta = asString(properties?.delta ?? parsed.delta);
+            const partText = asString(part.text);
+            if (delta && delta.length > 0) {
+              assistantContent += delta;
+            } else if (partText !== undefined) {
+              assistantContent = partText;
+            }
+
+            clearCompletionTimer();
+            updateAssistantState({
+              content: assistantContent,
+              isThinking: true,
+              statusText: '',
+              sourceRefs: buildSourceRefs(),
+            });
+            return;
+          }
+
+          if (partType === 'tool') {
+            const toolName = asString(part.tool) ?? 'tool';
+            const callId = asString(part.callID) ?? `${toolName}-${toolStatusByCall.size}`;
+            const state = asRecord(part.state);
+            const status = asString(state?.status) as ToolStatus | undefined;
+
+            if (!status) {
               return;
             }
-            if (thinkingTimer) {
-              window.clearTimeout(thinkingTimer);
-              thinkingTimer = undefined;
+
+            toolStatusByCall.set(callId, status);
+
+            if (status === 'pending' || status === 'running') {
+              clearCompletionTimer();
+              updateAssistantState({
+                isThinking: true,
+                statusText: `正在调用工具：${toolName}`,
+              });
+              return;
             }
-            updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
-              ...prev,
+
+            if (status === 'completed') {
+              mergeSourceRefs(extractSourceRefs(state?.metadata));
+              updateAssistantState({
+                isThinking: true,
+                statusText: activeToolCount() > 0 ? '等待其他工具完成...' : '',
+                sourceRefs: buildSourceRefs(),
+              });
+              maybeScheduleCompletion();
+              return;
+            }
+
+            if (status === 'error') {
+              const message = asString(state?.error) ?? '工具执行失败';
+              updateAssistantState({
+                isThinking: true,
+                statusText: `${toolName} 失败：${message}`,
+              });
+              maybeScheduleCompletion();
+            }
+            return;
+          }
+
+          if (partType === 'step-start') {
+            clearCompletionTimer();
+            updateAssistantState({
               isThinking: true,
-              statusText: event.message,
-              timestamp: prev.timestamp ?? Date.now(),
-            }));
+              statusText: assistantContent.trim() ? '' : '正在思考...',
+            });
             return;
           }
 
-          if (event.type === 'sources') {
-            if (event.sources && event.sources.length > 0) {
-              updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
-                ...prev,
-                sources: event.sources,
-                sourceRefs: event.source_refs,
-              }));
-            }
-            return;
-          }
-
-          if (event.type === 'done') {
-            return;
+          if (partType === 'step-finish') {
+            sawStepFinish = true;
+            maybeScheduleCompletion();
           }
         });
 
-        const finalText = (aggregated || (hasDelta ? '' : '助手暂时没有回复。')).trim();
-        updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
-          ...prev,
+        const finalText = assistantContent.trim() || '助手暂时没有回复。';
+        updateAssistantState({
           content: finalText,
           isThinking: false,
           statusText: '',
-          timestamp: Date.now(),
-        }));
-        triggerTitleUpdate(finalText);
+          sourceRefs: buildSourceRefs(),
+        });
       } catch (error) {
-        // 确保定时器被清理
         if ((error as DOMException)?.name === 'AbortError') {
-          updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
-            ...prev,
-            content: prev.content || '（请求已取消）',
+          if (autoCompletedAbort) {
+            const finalText = assistantContent.trim() || '助手暂时没有回复。';
+            updateAssistantState({
+              content: finalText,
+              isThinking: false,
+              statusText: '',
+              sourceRefs: buildSourceRefs(),
+            });
+            return;
+          }
+
+          if (timeoutAbort) {
+            updateAssistantState({
+              content: assistantContent || '响应超时，请重试。',
+              isThinking: false,
+              isError: true,
+              statusText: '',
+              sourceRefs: buildSourceRefs(),
+            });
+            return;
+          }
+
+          updateAssistantState({
+            content: assistantContent || '（请求已取消）',
             isThinking: false,
             statusText: '',
-            timestamp: Date.now(),
-          }));
+            sourceRefs: buildSourceRefs(),
+          });
           return;
         }
+
         const errorText = error instanceof Error ? error.message : '发生未知错误';
-        updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
-          ...prev,
+        updateAssistantState({
           content: errorText,
           isThinking: false,
           isError: true,
           statusText: '',
-          timestamp: Date.now(),
-        }));
+          sourceRefs: buildSourceRefs(),
+        });
       } finally {
-        if (thinkingTimer) window.clearTimeout(thinkingTimer);
-        if (statusTimer) window.clearTimeout(statusTimer);
+        if (completionTimer) {
+          window.clearTimeout(completionTimer);
+        }
+        if (timeoutTimer) {
+          window.clearTimeout(timeoutTimer);
+        }
         const storedController = streamControllersRef.current.get(targetSessionId);
         if (storedController === controller) {
           streamControllersRef.current.delete(targetSessionId);
@@ -579,15 +676,14 @@ export function useChatSessions(): UseChatSessionsResult {
       }
     },
     [
-      inputValue,
       activeSession,
+      ensureUpstreamSessionId,
+      inputValue,
+      parseSseStream,
       pendingSessions,
-      upsertSession,
       setSessionPending,
-      setInputValue,
       updateAssistantMessage,
-      refreshSessionTitle,
-      parseNdjsonStream,
+      upsertSession,
     ],
   );
 
