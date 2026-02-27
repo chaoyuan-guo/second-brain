@@ -10,6 +10,7 @@
 - Docker（OpenCode 一体化容器）：
   - 构建镜像：`docker build -t second_brain:opencode -f docker/Dockerfile.opencode .`
   - 推荐环境变量文件：`.env.docker`（示例：`SUPER_MIND_API_BASE_URL=https://space.ai-builders.com/backend/v1`，必须带 `/v1`）
+  - 启动前校验：确保 `.env.docker` 中 `SUPER_MIND_API_KEY`（或 `AI_BUILDER_TOKEN`）非空，避免后端因缺少 token 启动失败。
   - 默认启动（仅暴露前端端口）：`docker rm -f second_brain_opencode 2>/dev/null || true && docker run -d --name second_brain_opencode --restart unless-stopped -p 9080:9080 --env-file .env.docker -v "$PWD/data:/app/data" second_brain:opencode`
   - 调试启动（额外暴露 OpenCode/RAG）：`docker rm -f second_brain_opencode 2>/dev/null || true && docker run -d --name second_brain_opencode --restart unless-stopped -p 9080:9080 -p 9090:9090 -p 9070:9070 --env-file .env.docker -v "$PWD/data:/app/data" second_brain:opencode`
   - 验证：`curl -I "http://127.0.0.1:9080"`
