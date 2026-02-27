@@ -6,32 +6,10 @@
 
 Second Brain 是一个基于本地 Markdown 的智能检索系统。它索引个人笔记（主要是算法练习和 LeetCode 提交记录），并提供一个聊天界面，能够带引用地回答来自源文档的问题。
 
-## 架构
+## 项目结构与模块组织
 
-```
-┌──────────────────────────── Docker Container ────────────────────────────┐
-│                                                                            │
-│  Frontend (Next.js)  :9080                                                 │
-│  - 浏览器统一访问前端                                                       │
-│  - 通过 Next.js API Proxy 转发到内部服务                                   │
-│                                                                            │
-│  OpenCode Server (Node.js, 无头模式) :9090                                 │
-│  - Agentic Loop / session API / 全局 SSE 事件流                            │
-│                                                                            │
-│  RAG & Data Server (FastAPI + FastMCP) :9070                               │
-│  - MCP SSE `/sse`（供 OpenCode 调用）                                      │
-│  - REST `/notes/content`、`/notes/upload`（供前端代理调用）                 │
-│                                                                            │
-│  OpenCode  ── MCP SSE ──▶  RAG & Data                                      │
-│  Frontend ── API Proxy ──▶  OpenCode / RAG                                 │
-└────────────────────────────────────────────────────────────────────────────┘
-```
-
-**核心数据流：**
-- 浏览器请求仅进入前端 `:9080`，前端再通过 `/api/*` 代理到内部 `:9090/:9070`
-- 对话通过 OpenCode session API（`/session`、`/session/:id/prompt_async`）与全局事件流 `/event` 完成
-- source refs 从 `ToolPart.state.completed.metadata.source_refs` 透传给前端来源面板
-- 笔记检索与上传建索引由同一 RAG & Data Server 进程处理，避免跨进程状态不一致
+- 后端代码位于 `backend/app`，`backend/app/main.py` 通过 FastAPI + OpenAI 工具链暴露 API，运行日志统一写入 `runtime/logs/backend.log`，而自定义笔记资源集中于 `data/notes/my_markdowns/` 方便复用。
+- Next.js 前端置于 `frontend/src/app`，静态导出产物写入 `frontend/out`，`start_services.sh` 负责同时拉起 `uvicorn` 与 `npm run dev`，常态开发请从该脚本或分别在两个终端启动服务。
 
 ## 开发命令
 
@@ -52,11 +30,13 @@ Second Brain 是一个基于本地 Markdown 的智能检索系统。它索引个
 ./start_services.sh status
 ```
 
-健康检查成功时输出 `服务健康检查：OK`。
+**健康检查成功时输出 `服务健康检查：OK`。**
 
 ### 手动启动后端
 
 ```bash
+# 本仓库 Python 统一使用项目内 .venv，不要依赖 conda/system python
+python -m venv .venv && ./.venv/bin/python -m pip install -r requirements.txt
 ./.venv/bin/python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 9000
 ```
 
@@ -69,20 +49,57 @@ npm run dev      # 开发服务器运行在端口 9080
 npm run build    # 生产构建输出到 frontend/out/
 ```
 
-### 测试
+### Docker（OpenCode 一体化容器）
 
 ```bash
-# 运行所有测试
-./.venv/bin/python -m pytest -q
+docker build -t second_brain:opencode -f docker/Dockerfile.opencode .
+docker rm -f second_brain_opencode 2>/dev/null || true
 
-# 运行单个测试文件
-./.venv/bin/python -m pytest tests/test_chat_stream_events.py -v
+# 推荐：仅暴露前端端口（浏览器访问）
+docker run -d --name second_brain_opencode --restart unless-stopped \
+  -p 9080:9080 \
+  --env-file .env.docker \
+  -v "$PWD/data:/app/data" \
+  second_brain:opencode
 
-# 运行特定测试
-./.venv/bin/python -m pytest tests/test_chat_stream_events.py::test_stream_events_basic -v
+# 调试：需要直连 OpenCode/RAG 时再额外暴露
+# docker run -d --name second_brain_opencode --restart unless-stopped \
+#   -p 9080:9080 -p 9090:9090 -p 9070:9070 \
+#   --env-file .env.docker \
+#   -v "$PWD/data:/app/data" \
+#   second_brain:opencode
+
+# 健康检查
+curl -I "http://127.0.0.1:9080"
+
+# 查看日志
+docker logs -f second_brain_opencode
+
+# 停止容器
+docker stop second_brain_opencode
 ```
 
-### 评估
+## 日志规范
+
+- 本地开发仅写日志文件：后端 `runtime/logs/backend.log`、前端 `runtime/logs/frontend.log`、工具输出 `runtime/logs/tool_output.log`。
+- 容器部署仅输出 stdout（供 `docker logs`），后端/工具不写 `runtime/logs/*.log`；如需在容器运行前端，同样保持 stdout 输出。
+- 后端/工具输出可用 `LOG_TO_STDOUT` 与 `LOG_TO_FILE` 覆盖默认行为；如显式启用双写，请确保 stdout 不再重定向回同一文件，避免重复。
+
+## 编码规范
+
+- **后端**：遵循 PEP 8 与类型注解优先原则，保持 4 空格缩进、短小协程、集中式异常 `ToolExecutionError`；配置项放在 `BASE_DIR` 旁的常量里，新增工具函数时请以 `snake_case` 命名并补充 docstring。
+- **前端**：使用 TypeScript + Next.js App Router，组件命名采用 `PascalCase`，hooks/工具使用 `camelCase`；尽量将 UI 状态封装为客户端组件，网络请求统一调用 `/api` 代理或现有 FastAPI 端点。
+- **提交**：遵循 Conventional Commits 格式（如 `feat: add web_search retries`、`fix: guard empty query`），保持可读性；单次提交聚焦单一功能或缺陷修复。
+- **语言**：文档和讨论使用中文，代码和命令使用英文。
+
+## 测试指南
+
+- 仓库尚未附带后端测试，请在根目录建立 `tests/`，以 `test_<module>.py` 命名，使用 `pytest -q` 作为默认命令，并针对每个工具函数提供成功与失败分支的协程测试，目标覆盖率 ≥80%。
+- 前端建议在 `frontend/src/__tests__/` 下采用 React Testing Library；新增 `npm run test`（映射至 `next test` 或 `vitest run`）后，命名遵循 `<Component>.test.tsx`，同时通过 `npm run lint`（Next 自带）保证 JSX/TS 规范。
+
+## 评估指南
+
+评估采用 LLM-as-Judge 方法，使用 Azure 端点的 `gpt-52` 模型，围绕个性化命中、精准简洁、诚实性、可追溯性四个维度评分：
 
 ```bash
 # 针对测试集运行评估（需要后端运行中，LLM-as-Judge 评分）
@@ -104,29 +121,23 @@ npm run build    # 生产构建输出到 frontend/out/
   --output eval/reports/report.json
 ```
 
-### Docker
+## 提交与 Pull Request 规范
 
-```bash
-docker build -t second_brain:opencode -f docker/Dockerfile.opencode .
-docker rm -f second_brain_opencode 2>/dev/null || true
+- 仓库已初始化 Git，请继续遵循 Conventional Commits 保持可读性；单次提交聚焦单一功能或缺陷修复。
+- PR 需包含变更摘要、验证方式（命令输出或截图）、相关 Issue 链接以及潜在风险；若触及 env/脚本，请同时更新 `start_services.sh` 或 README 片段以免部署偏差。
 
-# 推荐：仅暴露前端端口（浏览器访问）
-docker run -d --name second_brain_opencode \
-  -p 9080:9080 \
-  --env-file .env.docker \
-  -v "$PWD/data:/app/data" \
-  second_brain:opencode
+## 安全与配置提示
 
-# 调试：需要直连 OpenCode/RAG 时再额外暴露
-# docker run -d --name second_brain_opencode \
-#   -p 9080:9080 -p 9090:9090 -p 9070:9070 \
-#   --env-file .env.docker \
-#   -v "$PWD/data:/app/data" \
-#   second_brain:opencode
+- `.env` 必须提供 `SUPER_MIND_API_KEY` 与可选 `CHAT_ALLOWED_ORIGINS`；不要将密钥写入日志或前端 bundle，可通过 `os.getenv` 访问并在启动时校验。
+- 生产部署需将 `frontend/out` 置于受控 CDN，并以 `uvicorn main:app --proxy-headers --forwarded-allow-ips="*"` 运行后端；任何外部请求都应保持 20s 超时与错误日志，以免工具链卡死。
 
-# 健康检查
-curl -I "http://127.0.0.1:9080"
-```
+## 模型端点使用规则
+
+- **Chat 模型**：系统根据运行环境自动选择端点（通过 `running_in_container()` 判断）：
+  - **本地开发 / 脚本启动**：默认使用 Azure 端点（`azure_base_url`、`azure_api_key`、`azure_api-version`、`azure_use_model`），可通过 `use_azure=False` 覆盖。
+  - **容器服务**：默认使用 ai-builder 端点（`SUPER_MIND_API_BASE_URL`、`SUPER_MIND_CHAT_MODEL`），可通过 `use_azure=True` 覆盖。
+- **Embedding 模型**：所有环境统一使用 ai-builder 端点（https://space.ai-builders.com/backend/v1），通过 `SUPER_MIND_API_KEY` 或 `AI_BUILDER_TOKEN` 认证。
+- **评估评分**（`eval/scripts/grade_by_llm.py`）：默认使用 Azure 端点的 `gpt-52` 模型进行 LLM-as-Judge 评分，可通过 `azure_base_url`、`azure_api_key`、`azure_use_model` 环境变量覆盖。
 
 ## 关键目录
 
@@ -139,6 +150,7 @@ curl -I "http://127.0.0.1:9080"
 | `data/indexes/` | FAISS 索引文件 |
 | `skills/` | 技能定义（SKILL.md 文件），用于专门查询 |
 | `eval/` | 评估脚本和测试集 |
+| `runtime/logs/` | 运行时日志文件 |
 
 ## 环境变量
 
@@ -152,38 +164,24 @@ curl -I "http://127.0.0.1:9080"
 - `OPENCODE_SELF_CHECK` - 容器启动后是否执行 OpenCode 自检（默认 `1`，设为 `0` 可跳过）
 - `.env.docker` - 容器推荐环境文件，统一维护 ai-builder/Azure 变量
 
-### Chat 模型端点配置
+## 协作与设计原则
 
-系统根据运行环境自动选择 chat 模型端点：
+- 讨论技术实现方案时，请优先从更通用、可复用、泛化能力更强的角度思考与给出建议。
+- Agentic 系统倾向遵循 "less structure, more intelligence" 的设计哲学：尽量让系统能力建立在模型能力之上，避免过度结构化/过度工程化的约束，从而在模型变强时让系统能力能够同步“水涨船高”。
+- 当我下达任务或提出请求时，如果你认为信息不足、表述不清晰、存在隐含前提，或你有更优方案/替代路径，请主动提问、澄清并阐述你的思考与权衡。
 
-**本地开发环境**（默认使用 Azure）：
-- 需要配置以下 Azure 相关环境变量：
-  - `azure_base_url` - Azure OpenAI 端点（例如：https://td06.openai.azure.com/openai/v1）
-  - `azure_api_key` - Azure API 密钥
-  - `azure_api-version` - Azure API 版本（例如：2025-04-01-preview）
-  - `azure_use_model` - Azure 部署的模型名（例如：gpt-52）
-- 如需强制使用 ai-builder 端点，设置 `use_azure=False`
+## 其他说明
 
-**容器服务环境**（默认使用 ai-builder）：
-- 使用 `SUPER_MIND_API_BASE_URL`（默认：https://space.ai-builders.com/backend/v1，必须带 `/v1`）
-- 使用 `SUPER_MIND_CHAT_MODEL`（默认：gpt-5）
-- 如需强制使用 Azure 端点，设置 `use_azure=True` 并配置相应的 Azure 环境变量
+默认使用中文进行说明与讨论，除非内容为代码片段、命令或规范要求英文表述。
 
-**Embedding 模型**：
-- 所有环境下都使用 ai-builder 端点（https://space.ai-builders.com/backend/v1）
-- 通过 `SUPER_MIND_API_KEY` 或 `AI_BUILDER_TOKEN` 认证
+## 运行规范补充
 
-**评估脚本**（eval/scripts/grade_by_llm.py）：
-- 默认使用 Azure 端点的 gpt-52 模型进行 LLM-as-Judge 评分
-- 可通过环境变量覆盖：`azure_base_url`、`azure_api_key`、`azure_use_model`
-
-## 编码规范
-
-- 后端：PEP 8、类型注解、4 空格缩进、函数使用 snake_case
-- 前端：TypeScript、Next.js App Router、组件使用 PascalCase、hooks 使用 camelCase
-- 提交：Conventional Commits 格式（`feat:`、`fix:`、`chore:`）
-- 语言：文档和讨论使用中文，代码和命令使用英文
-
-## 设计理念
-
-本项目遵循"少结构，多智能"原则——基于模型智能构建能力，而非过度工程化的约束。在提出解决方案时，优先考虑通用性和可复用性。当需求模糊或存在更好的替代方案时，请提出澄清问题。
+- `start_services.sh` 现支持 `./start_services.sh [start|stop|restart|status] [all|backend|frontend|mcp]`，可按需单独管理各服务；`status` 仍会附带端口与孤儿进程检测。
+- 修改不同模块时请按以下策略重启并等待脚本输出 `服务健康检查：OK`：
+  - 仅改动后端（如 `main.py`、工具脚本等）：执行 `./start_services.sh restart backend`
+  - 仅改动前端（`frontend/` 范围）：执行 `./start_services.sh restart frontend`
+  - 同时影响前后端、MCP 或更新 `start_services.sh` 本身：执行 `./start_services.sh restart all`（或省略目标，默认 all）
+  - 若脚本返回非 0 或显示 `FAILED`，需立即查看对应日志（`backend.log` / `frontend.log` / `mcp_interpreter.log`）定位问题并修复后再重启。
+- 脚本健康检查逻辑：
+  - 正常：后端打印 `OK (端口 9000, PID xxxx)`，前端打印 `OK (HTTP 检测通过，端口 9080)`，MCP 打印 `OK (端口 9070, PID xxxx)`。
+  - 异常：会提示 `FAILED - 端口 xxxx 未监听` 或列出匹配进程，此时请按提示检查对应日志及 PID。
