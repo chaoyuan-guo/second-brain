@@ -11,6 +11,7 @@ RAG_PORT="${RAG_PORT:-9070}"
 FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
 FRONTEND_PORT="${FRONTEND_PORT:-9080}"
 OPENCODE_LOG_LEVEL="${OPENCODE_LOG_LEVEL:-INFO}"
+OPENCODE_SELF_CHECK="${OPENCODE_SELF_CHECK:-1}"
 
 normalize_base_url() {
   local raw="${1:-}"
@@ -45,5 +46,10 @@ opencode serve --print-logs --log-level "$OPENCODE_LOG_LEVEL" --hostname "$OPENC
 
 echo "[entrypoint] starting frontend on ${FRONTEND_HOST}:${FRONTEND_PORT}"
 ./frontend/node_modules/.bin/next start frontend -H "$FRONTEND_HOST" -p "$FRONTEND_PORT" &
+
+if [ "$OPENCODE_SELF_CHECK" = "1" ]; then
+  echo "[entrypoint] running opencode startup self-check"
+  ./docker/opencode/selfcheck.sh
+fi
 
 wait -n

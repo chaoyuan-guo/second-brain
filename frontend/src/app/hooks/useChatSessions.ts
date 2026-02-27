@@ -396,6 +396,8 @@ export function useChatSessions(): UseChatSessionsResult {
       let autoCompletedAbort = false;
       let timeoutAbort = false;
       let sawStepFinish = false;
+      let sawStepStart = false;
+      let assistantUpstreamMessageId: string | undefined;
       let assistantContent = '';
 
       const sourceRefMap = new Map<string, SourceRef>();
@@ -532,16 +534,25 @@ export function useChatSessions(): UseChatSessionsResult {
           }
 
           const partType = asString(part.type);
+          const partMessageId = asString(part.messageID);
           if (!partType) {
             return;
           }
 
           if (partType === 'text') {
+            if (!sawStepStart) {
+              return;
+            }
+
+            if (assistantUpstreamMessageId && partMessageId !== assistantUpstreamMessageId) {
+              return;
+            }
+
             const delta = asString(properties?.delta ?? parsed.delta);
             const partText = asString(part.text);
             if (delta && delta.length > 0) {
               assistantContent += delta;
-            } else if (partText !== undefined) {
+            } else if (partText !== undefined && partText.length > 0) {
               assistantContent = partText;
             }
 
@@ -599,6 +610,10 @@ export function useChatSessions(): UseChatSessionsResult {
           }
 
           if (partType === 'step-start') {
+            sawStepStart = true;
+            if (!assistantUpstreamMessageId && partMessageId) {
+              assistantUpstreamMessageId = partMessageId;
+            }
             clearCompletionTimer();
             updateAssistantState({
               isThinking: true,
@@ -608,6 +623,9 @@ export function useChatSessions(): UseChatSessionsResult {
           }
 
           if (partType === 'step-finish') {
+            if (assistantUpstreamMessageId && partMessageId !== assistantUpstreamMessageId) {
+              return;
+            }
             sawStepFinish = true;
             maybeScheduleCompletion();
           }
