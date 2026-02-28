@@ -52,6 +52,7 @@ frontend/dist/
 frontend/out/
 dist/
 build/
+*.tsbuildinfo
 
 # OS / editor clutter
 .DS_Store
