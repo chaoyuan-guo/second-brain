@@ -24,12 +24,11 @@
       }
     },
     "azure": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Azure OpenAI (Compatible)",
+      "npm": "@ai-sdk/openai",
+      "name": "Azure OpenAI (v1)",
       "options": {
         "baseURL": "{env:OPENCODE_AZURE_BASE_URL}",
-        "apiKey": "{env:azure_api_key}",
-        "compatibility": "compatible"
+        "apiKey": "{env:azure_api_key}"
       },
       "models": {
         "gpt-52": {

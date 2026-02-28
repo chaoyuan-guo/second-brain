@@ -42,12 +42,14 @@ export const forwardCommonHeaders = (request: Request, requestId?: string): Head
   const contentType = request.headers.get('content-type');
   const authorization = request.headers.get('authorization');
   const xStreamFormat = request.headers.get('x-stream-format');
+  const traceId = request.headers.get('x-trace-id');
   const resolvedRequestId = requestId || getOrCreateRequestId(request);
 
   if (accept) headers.Accept = accept;
   if (contentType) headers['Content-Type'] = contentType;
   if (authorization) headers.Authorization = authorization;
   if (xStreamFormat) headers['X-Stream-Format'] = xStreamFormat;
+  if (traceId) headers['X-Trace-Id'] = traceId;
   headers['X-Request-Id'] = resolvedRequestId;
 
   return headers;

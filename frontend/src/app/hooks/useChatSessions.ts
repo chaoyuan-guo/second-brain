@@ -45,6 +45,11 @@ const asRecord = (value: unknown): JsonRecord | undefined =>
 const asString = (value: unknown): string | undefined =>
   typeof value === 'string' ? value : undefined;
 
+const buildTraceId = (sessionId: string): string => {
+  const suffix = createId().slice(0, 8);
+  return `chat-${sessionId}-${suffix}`;
+};
+
 const extractSourceRefs = (metadata: unknown): SourceRef[] => {
   const record = asRecord(metadata);
   const raw = record?.source_refs;
@@ -266,7 +271,7 @@ export function useChatSessions(): UseChatSessionsResult {
   );
 
   const ensureUpstreamSessionId = useCallback(
-    async (sessionId: string, baseUrl: string): Promise<string> => {
+    async (sessionId: string, baseUrl: string, traceId: string): Promise<string> => {
       const existing = sessionsRef.current.find((item) => item.id === sessionId)?.upstreamSessionId;
       if (existing) {
         return existing;
@@ -276,6 +281,8 @@ export function useChatSessions(): UseChatSessionsResult {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Request-Id': traceId,
+          'X-Trace-Id': traceId,
         },
         body: JSON.stringify({ path: DEFAULT_OPENCODE_SESSION_PATH }),
       });
@@ -456,13 +463,17 @@ export function useChatSessions(): UseChatSessionsResult {
       try {
         const baseUrl = apiBaseUrlRef.current || getApiBaseUrl();
         apiBaseUrlRef.current = baseUrl;
+        const traceId = buildTraceId(targetSessionId);
 
-        const upstreamSessionId = await ensureUpstreamSessionId(targetSessionId, baseUrl);
+        const upstreamSessionId = await ensureUpstreamSessionId(targetSessionId, baseUrl, traceId);
 
         const streamResponse = await fetch(`${baseUrl}${EVENT_ENDPOINT}`, {
           method: 'GET',
           headers: {
             Accept: 'text/event-stream',
+            'X-Request-Id': traceId,
+            'X-Trace-Id': traceId,
+            'X-Session-Id': upstreamSessionId,
           },
           cache: 'no-store',
           signal: controller.signal,
@@ -482,6 +493,8 @@ export function useChatSessions(): UseChatSessionsResult {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-Request-Id': traceId,
+            'X-Trace-Id': traceId,
           },
           body: JSON.stringify({
             parts: [{ type: 'text', text: content }],
