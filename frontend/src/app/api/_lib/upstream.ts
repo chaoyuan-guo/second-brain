@@ -7,11 +7,6 @@ const getBaseUrl = (envName: string, fallback: string): string => {
   return trimTrailingSlash(value || fallback);
 };
 
-export const LEGACY_BACKEND_BASE_URL = getBaseUrl(
-  'SECOND_BRAIN_LEGACY_BACKEND_BASE_URL',
-  'http://127.0.0.1:9000',
-);
-
 export const OPENCODE_BASE_URL = getBaseUrl(
   'SECOND_BRAIN_OPENCODE_BASE_URL',
   'http://127.0.0.1:9090',
@@ -19,7 +14,7 @@ export const OPENCODE_BASE_URL = getBaseUrl(
 
 export const RAG_BASE_URL = getBaseUrl(
   'SECOND_BRAIN_RAG_BASE_URL',
-  LEGACY_BACKEND_BASE_URL,
+  'http://127.0.0.1:9070',
 );
 
 export const buildUpstreamUrl = (
