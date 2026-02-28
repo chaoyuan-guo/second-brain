@@ -404,11 +404,12 @@ export function useChatSessions(): UseChatSessionsResult {
       let timeoutAbort = false;
       let sawStepFinish = false;
       let sawStepStart = false;
-      let assistantUpstreamMessageId: string | undefined;
+      let currentStepMessageId: string | undefined;
       let assistantContent = '';
 
       const sourceRefMap = new Map<string, SourceRef>();
       const toolStatusByCall = new Map<string, ToolStatus>();
+      const normalizedUserInput = content.trim();
 
       const clearCompletionTimer = () => {
         if (completionTimer) {
@@ -443,11 +444,14 @@ export function useChatSessions(): UseChatSessionsResult {
         completionTimer = window.setTimeout(() => {
           autoCompletedAbort = true;
           controller.abort();
-        }, 700);
+        }, 1800);
       };
 
       const maybeScheduleCompletion = () => {
-        if (sawStepFinish && activeToolCount() === 0) {
+        const normalizedAssistant = assistantContent.trim();
+        const hasMeaningfulContent =
+          normalizedAssistant.length > 0 && normalizedAssistant !== normalizedUserInput;
+        if (sawStepFinish && activeToolCount() === 0 && hasMeaningfulContent) {
           scheduleCompletionAbort();
         }
       };
@@ -515,7 +519,7 @@ export function useChatSessions(): UseChatSessionsResult {
         timeoutTimer = window.setTimeout(() => {
           timeoutAbort = true;
           controller.abort();
-        }, 120000);
+        }, 240000);
 
         const reader = streamResponse.body.getReader();
         await parseSseStream(reader, (eventName, data) => {
@@ -557,7 +561,7 @@ export function useChatSessions(): UseChatSessionsResult {
               return;
             }
 
-            if (assistantUpstreamMessageId && partMessageId !== assistantUpstreamMessageId) {
+            if (currentStepMessageId && partMessageId && partMessageId !== currentStepMessageId) {
               return;
             }
 
@@ -624,8 +628,8 @@ export function useChatSessions(): UseChatSessionsResult {
 
           if (partType === 'step-start') {
             sawStepStart = true;
-            if (!assistantUpstreamMessageId && partMessageId) {
-              assistantUpstreamMessageId = partMessageId;
+            if (partMessageId) {
+              currentStepMessageId = partMessageId;
             }
             clearCompletionTimer();
             updateAssistantState({
@@ -636,7 +640,7 @@ export function useChatSessions(): UseChatSessionsResult {
           }
 
           if (partType === 'step-finish') {
-            if (assistantUpstreamMessageId && partMessageId !== assistantUpstreamMessageId) {
+            if (currentStepMessageId && partMessageId && partMessageId !== currentStepMessageId) {
               return;
             }
             sawStepFinish = true;
@@ -645,8 +649,13 @@ export function useChatSessions(): UseChatSessionsResult {
         });
 
         const finalText = assistantContent.trim() || '助手暂时没有回复。';
+        const normalizedFinal = finalText.trim();
+        const safeFinalText =
+          normalizedFinal && normalizedFinal !== normalizedUserInput
+            ? finalText
+            : '本次请求未产出可展示的最终回复，请重试或缩小问题范围。';
         updateAssistantState({
-          content: finalText,
+          content: safeFinalText,
           isThinking: false,
           statusText: '',
           sourceRefs: buildSourceRefs(),
@@ -654,9 +663,13 @@ export function useChatSessions(): UseChatSessionsResult {
       } catch (error) {
         if ((error as DOMException)?.name === 'AbortError') {
           if (autoCompletedAbort) {
-            const finalText = assistantContent.trim() || '助手暂时没有回复。';
+            const finalText = assistantContent.trim();
+            const safeFinalText =
+              finalText && finalText !== normalizedUserInput
+                ? finalText
+                : '本次请求未产出可展示的最终回复，请重试或缩小问题范围。';
             updateAssistantState({
-              content: finalText,
+              content: safeFinalText,
               isThinking: false,
               statusText: '',
               sourceRefs: buildSourceRefs(),
@@ -665,8 +678,13 @@ export function useChatSessions(): UseChatSessionsResult {
           }
 
           if (timeoutAbort) {
+            const normalizedAssistant = assistantContent.trim();
+            const timeoutContent =
+              normalizedAssistant && normalizedAssistant !== normalizedUserInput
+                ? normalizedAssistant
+                : '响应超时，请重试（建议缩小问题范围或分步提问）。';
             updateAssistantState({
-              content: assistantContent || '响应超时，请重试。',
+              content: timeoutContent,
               isThinking: false,
               isError: true,
               statusText: '',
