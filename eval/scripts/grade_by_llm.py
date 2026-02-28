@@ -489,7 +489,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        help="Model for LLM judge (default: from env or gpt-5)",
+        help="Model for LLM judge (default: from env or gpt-52)",
     )
     parser.add_argument(
         "--concurrency",

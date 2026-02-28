@@ -94,8 +94,8 @@ docker stop second_brain_opencode
 
 ## 测试指南
 
-- 仓库尚未附带后端测试，请在根目录建立 `tests/`，以 `test_<module>.py` 命名，使用 `pytest -q` 作为默认命令，并针对每个工具函数提供成功与失败分支的协程测试，目标覆盖率 ≥80%。
-- 前端建议在 `frontend/src/__tests__/` 下采用 React Testing Library；新增 `npm run test`（映射至 `next test` 或 `vitest run`）后，命名遵循 `<Component>.test.tsx`，同时通过 `npm run lint`（Next 自带）保证 JSX/TS 规范。
+- 后端测试已位于根目录 `tests/`（`test_<module>.py`），默认执行命令为 `pytest -q`；新增后端测试时请覆盖成功与失败分支，目标覆盖率 ≥80%。
+- 前端测试位于 `frontend/src/__tests__/`，采用 React Testing Library + Vitest；执行 `npm run test`（`vitest run`）并通过 `npm run lint`（`tsc --noEmit`）保证 TS/JSX 规范，命名遵循 `<Component>.test.tsx`。
 
 ## 评估指南
 

@@ -2,7 +2,7 @@
 """Run evaluation by calling chat/OpenCode endpoints and collecting answers.
 
 Usage:
-  python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9090
+  python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000
   python eval/scripts/run_eval_stream.py --testset eval/testsets/testset.json --out eval/reports/answers.json
   python eval/scripts/run_eval_stream.py --report eval/reports/report.json
   python eval/scripts/run_eval_stream.py --question-ids Q01,Q14

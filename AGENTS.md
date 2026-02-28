@@ -26,8 +26,8 @@
 - 前端使用 TypeScript + Next.js App Router，组件命名采用 `PascalCase`，hooks/工具使用 `camelCase`；尽量将 UI 状态封装为客户端组件，网络请求统一调用 `/api` 代理或现有 FastAPI 端点。 Keep styles colocated via CSS modules or inline Tailwind classes for consistency.
 
 ## Testing Guidelines
-- 仓库尚未附带后端测试，请在根目录建立 `tests/`，以 `test_<module>.py` 命名，使用 `pytest -q` 作为默认命令，并针对每个工具函数提供成功与失败分支的协程测试，目标覆盖率 ≥80%。 Add fixtures for external HTTP clients and patch network calls to keep tests deterministic.
-- 前端建议在 `frontend/src/__tests__/` 下采用 React Testing Library；新增 `npm run test`（映射至 `next test` 或 `vitest run`）后，命名遵循 `<Component>.test.tsx`，同时通过 `npm run lint`（Next 自带）保证 JSX/TS 规范。 Snapshot tests should be paired with meaningful interaction assertions.
+- 后端测试已位于根目录 `tests/`（`test_<module>.py`），默认执行命令为 `pytest -q`；新增后端测试时请覆盖成功与失败分支，目标覆盖率 ≥80%。 Add fixtures for external HTTP clients and patch network calls to keep tests deterministic.
+- 前端测试位于 `frontend/src/__tests__/`，采用 React Testing Library + Vitest；执行 `npm run test`（`vitest run`）并通过 `npm run lint`（`tsc --noEmit`）保证 TS/JSX 规范，命名遵循 `<Component>.test.tsx`。 Snapshot tests should be paired with meaningful interaction assertions.
 
 ## Evaluation Guidelines
 - 评估采用 LLM-as-Judge 方法，使用 Azure 端点的 `gpt-52` 模型，围绕个性化命中、精准简洁、诚实性、可追溯性四个维度评分：`./.venv/bin/python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000 --concurrency 10 --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。

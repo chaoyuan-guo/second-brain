@@ -71,7 +71,7 @@
   --answers eval/reports/answers.json \
   --tool-traces eval/reports/answers_tool_traces.json \
   --output eval/reports/report.json \
-  --model gpt-5
+  --model gpt-52
 ```
 
 ## 报告格式
@@ -81,7 +81,7 @@
   "meta": {
     "testset_name": "personalization_eval",
     "scoring_mode": "llm_judge",
-    "model": "gpt-5",
+    "model": "gpt-52",
     "version": "1.0"
   },
   "summary": {
