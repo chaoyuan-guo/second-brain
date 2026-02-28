@@ -23,6 +23,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 from urllib import error as urlerror
 from urllib import request as urlrequest
+from urllib.parse import urlsplit
+
+_DIRECT_OPENER = urlrequest.build_opener(urlrequest.ProxyHandler({}))
 
 
 def load_testset(path: Path) -> List[dict]:
@@ -56,6 +59,41 @@ def _build_request(
     return req
 
 
+def _candidate_base_urls(base_url: str) -> List[str]:
+    raw = base_url.rstrip("/")
+    parsed = urlsplit(raw)
+    host = parsed.hostname or ""
+    scheme = parsed.scheme or "http"
+    port = f":{parsed.port}" if parsed.port else ""
+
+    ordered: List[str] = []
+    if host in {"localhost", "127.0.0.1"}:
+        ordered.extend(
+            [
+                f"{scheme}://[::1]{port}",
+                f"{scheme}://localhost{port}",
+                f"{scheme}://127.0.0.1{port}",
+            ]
+        )
+    elif host == "::1":
+        ordered.extend(
+            [
+                f"{scheme}://[::1]{port}",
+                f"{scheme}://localhost{port}",
+                f"{scheme}://127.0.0.1{port}",
+            ]
+        )
+    else:
+        ordered.append(raw)
+
+    deduped: List[str] = []
+    for item in ordered:
+        normalized = item.rstrip("/")
+        if normalized not in deduped:
+            deduped.append(normalized)
+    return deduped
+
+
 def _request_json(
     url: str,
     method: str,
@@ -71,7 +109,7 @@ def _request_json(
 
     req = _build_request(url=url, method=method, data=data, extra_headers=headers)
     try:
-        with urlrequest.urlopen(req, timeout=timeout) as resp:
+        with _DIRECT_OPENER.open(req, timeout=timeout) as resp:
             raw = resp.read().decode("utf-8", errors="ignore")
             if not raw:
                 return resp.status, {}
@@ -107,7 +145,7 @@ def stream_chat(
 
     if stage_cb:
         stage_cb("connect_start")
-    with urlrequest.urlopen(req, timeout=timeout) as resp:
+    with _DIRECT_OPENER.open(req, timeout=timeout) as resp:
         if stage_cb:
             stage_cb("response_opened")
         saw_first_chunk = False
@@ -169,15 +207,24 @@ def stream_opencode(
 
     if stage_cb:
         stage_cb("session_create_start")
-    session_status, session_payload = _request_json(
-        url=base_url.rstrip("/") + "/session",
-        method="POST",
-        payload={"path": session_path},
-        timeout=timeout,
-        extra_headers=headers,
-    )
-    if session_status // 100 != 2 or not isinstance(session_payload, dict):
-        raise RuntimeError(f"create session failed: status={session_status} payload={session_payload}")
+
+    resolved_base_url = ""
+    last_error = ""
+    for candidate in _candidate_base_urls(base_url):
+        session_status, session_payload = _request_json(
+            url=candidate + "/session",
+            method="POST",
+            payload={"path": session_path},
+            timeout=timeout,
+            extra_headers=headers,
+        )
+        if session_status // 100 == 2 and isinstance(session_payload, dict):
+            resolved_base_url = candidate
+            break
+        last_error = f"candidate={candidate} status={session_status} payload={session_payload}"
+
+    if not resolved_base_url:
+        raise RuntimeError(f"create session failed: {last_error}")
 
     session_id = str(session_payload.get("id") or "").strip()
     if not session_id:
@@ -186,7 +233,7 @@ def stream_opencode(
         stage_cb("session_created")
 
     event_req = _build_request(
-        url=base_url.rstrip("/") + "/event",
+        url=resolved_base_url + "/event",
         method="GET",
         extra_headers={
             **headers,
@@ -212,12 +259,12 @@ def stream_opencode(
 
     if stage_cb:
         stage_cb("event_connect_start")
-    with urlrequest.urlopen(event_req, timeout=timeout) as event_resp:
+    with _DIRECT_OPENER.open(event_req, timeout=timeout) as event_resp:
         if stage_cb:
             stage_cb("event_opened")
 
         prompt_status, prompt_payload = _request_json(
-            url=base_url.rstrip("/") + f"/session/{session_id}/prompt_async",
+            url=resolved_base_url + f"/session/{session_id}/prompt_async",
             method="POST",
             payload={"parts": [{"type": "text", "text": query}]},
             timeout=timeout,
@@ -376,7 +423,7 @@ def chat_once(
 
     if stage_cb:
         stage_cb("connect_start")
-    with urlrequest.urlopen(req, timeout=timeout) as resp:
+    with _DIRECT_OPENER.open(req, timeout=timeout) as resp:
         if stage_cb:
             stage_cb("response_opened")
         raw = resp.read().decode("utf-8", errors="ignore")
