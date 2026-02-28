@@ -10,8 +10,8 @@ RAG_HOST="${RAG_HOST:-0.0.0.0}"
 RAG_PORT="${RAG_PORT:-9070}"
 FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
 FRONTEND_PORT="${FRONTEND_PORT:-9080}"
-OPENCODE_LOG_LEVEL="${OPENCODE_LOG_LEVEL:-WARN}"
-OPENCODE_PRINT_LOGS="${OPENCODE_PRINT_LOGS:-0}"
+OPENCODE_LOG_LEVEL="${OPENCODE_LOG_LEVEL:-INFO}"
+OPENCODE_PRINT_LOGS="${OPENCODE_PRINT_LOGS:-1}"
 OPENCODE_SELF_CHECK="${OPENCODE_SELF_CHECK:-1}"
 
 require_api_token() {
@@ -61,6 +61,8 @@ opencode serve "${OPENCODE_LOG_ARGS[@]}" --hostname "$OPENCODE_HOST" --port "$OP
 
 echo "[entrypoint] starting frontend on ${FRONTEND_HOST}:${FRONTEND_PORT}"
 ./frontend/node_modules/.bin/next start frontend -H "$FRONTEND_HOST" -p "$FRONTEND_PORT" &
+
+echo "[entrypoint] logging: opencode_level=${OPENCODE_LOG_LEVEL} opencode_print_logs=${OPENCODE_PRINT_LOGS} backend_log_to_stdout=${LOG_TO_STDOUT:-auto} backend_log_to_file=${LOG_TO_FILE:-auto}"
 
 if [ "$OPENCODE_SELF_CHECK" = "1" ]; then
   echo "[entrypoint] running opencode startup self-check"

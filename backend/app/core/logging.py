@@ -95,20 +95,33 @@ def _configure_logging() -> tuple[logging.Logger, logging.Logger]:
     tool_output_logger = logging.getLogger("super-mind-tool-output")
     tool_output_logger.setLevel(logging.INFO)
     tool_output_logger.propagate = False
-    tool_handler = TimedRotatingFileHandler(
-        settings.tool_log_path,
-        when="midnight",
-        backupCount=6,
-        encoding="utf-8",
-    )
-    tool_handler.setFormatter(formatter)
-    tool_handler.addFilter(context_filter)
-    if not any(
-        isinstance(handler, TimedRotatingFileHandler)
-        and getattr(handler, "baseFilename", None) == tool_handler.baseFilename
-        for handler in tool_output_logger.handlers
-    ):
-        tool_output_logger.addHandler(tool_handler)
+
+    if file_enabled:
+        tool_file_handler = TimedRotatingFileHandler(
+            settings.tool_log_path,
+            when="midnight",
+            backupCount=6,
+            encoding="utf-8",
+        )
+        tool_file_handler.setFormatter(formatter)
+        tool_file_handler.addFilter(context_filter)
+        if not any(
+            isinstance(handler, TimedRotatingFileHandler)
+            and getattr(handler, "baseFilename", None) == tool_file_handler.baseFilename
+            for handler in tool_output_logger.handlers
+        ):
+            tool_output_logger.addHandler(tool_file_handler)
+
+    if stdout_enabled:
+        tool_stream_handler = logging.StreamHandler(sys.stdout)
+        tool_stream_handler.setFormatter(formatter)
+        tool_stream_handler.addFilter(context_filter)
+        if not any(
+            isinstance(handler, logging.StreamHandler)
+            and getattr(handler, "stream", None) is sys.stdout
+            for handler in tool_output_logger.handlers
+        ):
+            tool_output_logger.addHandler(tool_stream_handler)
 
     return app_logger, tool_output_logger
 

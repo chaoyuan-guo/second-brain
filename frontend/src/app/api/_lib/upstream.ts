@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+
 const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, '');
 
 const getBaseUrl = (envName: string, fallback: string): string => {
@@ -34,17 +36,19 @@ export const buildUpstreamUrl = (
   return url.toString();
 };
 
-export const forwardCommonHeaders = (request: Request): HeadersInit => {
+export const forwardCommonHeaders = (request: Request, requestId?: string): HeadersInit => {
   const headers: Record<string, string> = {};
   const accept = request.headers.get('accept');
   const contentType = request.headers.get('content-type');
   const authorization = request.headers.get('authorization');
   const xStreamFormat = request.headers.get('x-stream-format');
+  const resolvedRequestId = requestId || getOrCreateRequestId(request);
 
   if (accept) headers.Accept = accept;
   if (contentType) headers['Content-Type'] = contentType;
   if (authorization) headers.Authorization = authorization;
   if (xStreamFormat) headers['X-Stream-Format'] = xStreamFormat;
+  headers['X-Request-Id'] = resolvedRequestId;
 
   return headers;
 };
@@ -63,3 +67,26 @@ export const copySelectedResponseHeaders = (
   return headers;
 };
 
+export const getOrCreateRequestId = (request: Request): string => {
+  const existing = request.headers.get('x-request-id')?.trim();
+  if (existing) {
+    return existing;
+  }
+  return randomUUID();
+};
+
+export const logProxy = (
+  level: 'info' | 'error',
+  payload: Record<string, unknown>,
+): void => {
+  const line = JSON.stringify({
+    scope: 'next-proxy',
+    ...payload,
+    ts: new Date().toISOString(),
+  });
+  if (level === 'error') {
+    console.error(line);
+    return;
+  }
+  console.info(line);
+};
