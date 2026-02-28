@@ -11,7 +11,10 @@ import {
   useState,
 } from 'react';
 
+import './styles/thinking-timeline.css';
+
 import { LinkCard } from './components/LinkCard';
+import { ThinkingTimeline } from './components/ThinkingTimeline';
 import {
   BotIcon,
   CheckIcon,
@@ -830,6 +833,13 @@ export default function HomePage() {
                                 {showThinking && !message.statusText && <ThinkingDots />}
                               </div>
                             </div>
+                          )}
+                          {message.thinkingSteps && message.thinkingSteps.length > 0 && (
+                            <ThinkingTimeline
+                              steps={message.thinkingSteps}
+                              currentStepId={message.currentStepId}
+                              isComplete={!message.isThinking}
+                            />
                           )}
                           {message.statusText && (
                             <div className="message-status" role="status" aria-live="polite">

@@ -5,6 +5,8 @@ import {
   getApiBaseUrl,
   type ChatMessage,
   type ChatSession,
+  type ThinkingStep,
+  type ToolInvocation,
   SESSION_ENDPOINT,
   sessionMessageEndpoint,
   type SourceRef,
@@ -411,6 +413,29 @@ export function useChatSessions(): UseChatSessionsResult {
       const toolStatusByCall = new Map<string, ToolStatus>();
       const normalizedUserInput = content.trim();
 
+      // 步骤管理
+      const steps: ThinkingStep[] = [];
+      let currentStepId: string | undefined;
+
+      const addStep = (step: ThinkingStep) => {
+        steps.push(step);
+        currentStepId = step.id;
+        updateAssistantState({
+          thinkingSteps: [...steps],
+          currentStepId,
+        });
+      };
+
+      const updateStep = (stepId: string, updates: Partial<ThinkingStep>) => {
+        const index = steps.findIndex(s => s.id === stepId);
+        if (index !== -1) {
+          steps[index] = { ...steps[index], ...updates };
+          updateAssistantState({
+            thinkingSteps: [...steps],
+          });
+        }
+      };
+
       const clearCompletionTimer = () => {
         if (completionTimer) {
           window.clearTimeout(completionTimer);
@@ -595,12 +620,41 @@ export function useChatSessions(): UseChatSessionsResult {
 
             toolStatusByCall.set(callId, status);
 
+            // 查找或创建工具步骤
+            let toolStep = steps.find(s => s.tool?.id === callId);
+
             if (status === 'pending' || status === 'running') {
               clearCompletionTimer();
               updateAssistantState({
                 isThinking: true,
                 statusText: `正在调用工具：${toolName}`,
               });
+
+              // 创建新的工具步骤
+              if (!toolStep) {
+                const stepId = createId();
+                toolStep = {
+                  id: stepId,
+                  type: 'tool',
+                  tool: {
+                    id: callId,
+                    name: toolName,
+                    status: status,
+                    arguments: state?.arguments as Record<string, unknown>,
+                    startedAt: Date.now(),
+                  },
+                  timestamp: Date.now(),
+                };
+                addStep(toolStep);
+              } else {
+                // 更新状态
+                updateStep(toolStep.id, {
+                  tool: {
+                    ...toolStep.tool!,
+                    status: status,
+                  }
+                });
+              }
               return;
             }
 
@@ -612,6 +666,18 @@ export function useChatSessions(): UseChatSessionsResult {
                 sourceRefs: buildSourceRefs(),
               });
               maybeScheduleCompletion();
+
+              // 更新工具步骤为完成状态
+              if (toolStep) {
+                updateStep(toolStep.id, {
+                  tool: {
+                    ...toolStep.tool!,
+                    status: 'completed',
+                    result: state?.result,
+                    completedAt: Date.now(),
+                  }
+                });
+              }
               return;
             }
 
@@ -622,6 +688,18 @@ export function useChatSessions(): UseChatSessionsResult {
                 statusText: `${toolName} 失败：${message}`,
               });
               maybeScheduleCompletion();
+
+              // 更新工具步骤为错误状态
+              if (toolStep) {
+                updateStep(toolStep.id, {
+                  tool: {
+                    ...toolStep.tool!,
+                    status: 'error',
+                    error: message,
+                    completedAt: Date.now(),
+                  }
+                });
+              }
             }
             return;
           }
@@ -636,6 +714,15 @@ export function useChatSessions(): UseChatSessionsResult {
               isThinking: true,
               statusText: assistantContent.trim() ? '' : '正在思考...',
             });
+
+            // 添加思考步骤
+            const stepId = asString(part.stepID) || createId();
+            addStep({
+              id: stepId,
+              type: 'thought',
+              content: asString(part.content) || '正在思考...',
+              timestamp: Date.now(),
+            });
             return;
           }
 
@@ -648,6 +735,7 @@ export function useChatSessions(): UseChatSessionsResult {
           }
         });
 
+          // 最终步骤：合并思考步骤
         const finalText = assistantContent.trim() || '助手暂时没有回复。';
         const normalizedFinal = finalText.trim();
         const safeFinalText =

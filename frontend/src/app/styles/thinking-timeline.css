@@ -1,0 +1,295 @@
+/* 思考时间线样式 */
+.thinking-timeline {
+  background: var(--bg-secondary, #f8f9fa);
+  border: 1px solid var(--border-color, #e9ecef);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 12px 0;
+  font-size: 14px;
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color, #e9ecef);
+}
+
+.timeline-title {
+  font-weight: 600;
+  color: var(--text-primary, #212529);
+}
+
+.timeline-complete {
+  font-size: 12px;
+  color: var(--success-color, #28a745);
+  background: var(--success-bg, #d4edda);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+/* 时间线步骤 */
+.timeline-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timeline-step {
+  display: flex;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+}
+
+.timeline-step:hover {
+  background-color: var(--hover-bg, rgba(0,0,0,0.02));
+}
+
+.timeline-step.current {
+  background-color: var(--current-step-bg, rgba(0,123,255,0.05));
+  border-left: 3px solid var(--primary-color, #007bff);
+}
+
+.step-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 24px;
+}
+
+.step-number {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--step-number-bg, #6c757d);
+  color: white;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.timeline-step.current .step-number {
+  background: var(--primary-color, #007bff);
+}
+
+.step-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.step-status.pending {
+  background: var(--warning-color, #ffc107);
+  animation: pulse 1.5s infinite;
+}
+
+.step-status.running {
+  background: var(--primary-color, #007bff);
+  animation: pulse 1s infinite;
+}
+
+.step-status.completed {
+  background: var(--success-color, #28a745);
+}
+
+.step-status.error {
+  background: var(--danger-color, #dc3545);
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.step-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.thought-content {
+  color: var(--text-secondary, #495057);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* 工具调用卡片 */
+.tool-invocation {
+  background: white;
+  border: 1px solid var(--border-color, #e9ecef);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tool-invocation.running {
+  border-color: var(--primary-color, #007bff);
+}
+
+.tool-invocation.completed {
+  border-color: var(--success-color, #28a745);
+}
+
+.tool-invocation.error {
+  border-color: var(--danger-color, #dc3545);
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-secondary, #f8f9fa);
+  border: none;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+}
+
+.tool-header:hover {
+  background: var(--hover-bg, #e9ecef);
+}
+
+.tool-status-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.tool-status-icon.pending svg,
+.tool-status-icon.running svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tool-status-icon.completed {
+  color: var(--success-color, #28a745);
+}
+
+.tool-status-icon.error {
+  color: var(--danger-color, #dc3545);
+}
+
+.tool-name {
+  font-weight: 600;
+  color: var(--text-primary, #212529);
+  text-transform: capitalize;
+}
+
+.tool-duration {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted, #6c757d);
+  font-family: monospace;
+}
+
+.tool-expand-icon {
+  color: var(--text-muted, #6c757d);
+  display: flex;
+  align-items: center;
+}
+
+.tool-details {
+  padding: 12px;
+  border-top: 1px solid var(--border-color, #e9ecef);
+  background: white;
+}
+
+.tool-section {
+  margin-bottom: 12px;
+}
+
+.tool-section:last-child {
+  margin-bottom: 0;
+}
+
+.tool-section-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #6c757d);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.tool-code {
+  background: var(--code-bg, #f8f9fa);
+  border: 1px solid var(--border-color, #e9ecef);
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 12px;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tool-code.result {
+  background: var(--success-bg, #d4edda);
+  border-color: var(--success-color, #28a745);
+}
+
+.tool-section.error .tool-section-label {
+  color: var(--danger-color, #dc3545);
+}
+
+.tool-error-message {
+  color: var(--danger-color, #dc3545);
+  font-size: 13px;
+  background: var(--danger-bg, #f8d7da);
+  padding: 8px;
+  border-radius: 4px;
+}
+
+/* 暗色主题适配 */
+@media (prefers-color-scheme: dark) {
+  .thinking-timeline {
+    --bg-secondary: #1e1e1e;
+    --border-color: #333;
+    --text-primary: #e0e0e0;
+    --text-secondary: #a0a0a0;
+    --hover-bg: rgba(255,255,255,0.05);
+    --current-step-bg: rgba(0,123,255,0.1);
+    --code-bg: #2d2d2d;
+    --success-bg: rgba(40,167,69,0.2);
+    --danger-bg: rgba(220,53,69,0.2);
+  }
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+  .thinking-timeline {
+    padding: 12px;
+  }
+
+  .tool-header {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .tool-duration {
+    margin-left: 0;
+    width: 100%;
+  }
+}

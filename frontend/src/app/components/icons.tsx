@@ -148,3 +148,31 @@ export const UploadIcon = () => (
     <path d="M4 20h16" />
   </IconSvg>
 );
+
+// 时间线相关图标
+export const LoaderIcon = () => (
+  <IconSvg>
+    <path d="M12 2v4" />
+    <path d="M12 18v4" />
+    <path d="M4.93 4.93l2.83 2.83" />
+    <path d="M16.24 16.24l2.83 2.83" />
+    <path d="M2 12h4" />
+    <path d="M18 12h4" />
+    <path d="M4.93 19.07l2.83-2.83" />
+    <path d="M16.24 7.76l2.83-2.83" />
+  </IconSvg>
+);
+
+export const ErrorIcon = () => (
+  <IconSvg>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M15 9l-6 6" />
+    <path d="M9 9l6 6" />
+  </IconSvg>
+);
+
+export const ChevronDownIcon = () => (
+  <IconSvg>
+    <path d="M6 9l6 6 6-6" />
+  </IconSvg>
+);
