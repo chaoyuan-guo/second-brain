@@ -3,17 +3,18 @@
 import {
   ChangeEvent,
   KeyboardEvent as ReactKeyboardEvent,
-  ReactNode,
+  isValidElement,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 import './styles/thinking-timeline.css';
 
-import { LinkCard } from './components/LinkCard';
 import { ThinkingTimeline } from './components/ThinkingTimeline';
 import {
   BotIcon,
@@ -34,8 +35,6 @@ import { useChatSessions } from './hooks/useChatSessions';
 import {
   deriveSessionTimestamp,
   formatTimestamp,
-  isStandaloneUrl,
-  parseMessageSegments,
 } from './lib/chat-helpers';
 import {
   getApiBaseUrl,
@@ -45,7 +44,6 @@ import {
   type SourceRef,
 } from './lib/chat-types';
 
-const urlRegex = /(https?:\/\/[^\s]+)/gi;
 type NoteContentResponse = {
   content: string;
   source_file?: string;
@@ -74,38 +72,6 @@ type SourceGroup = {
   path: string;
   fileName: string;
   headingRefs: Map<string, SourceRef>;
-};
-
-const renderTextWithLinks = (text: string): ReactNode[] => {
-  const nodes: ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  const regex = new RegExp(urlRegex);
-
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      nodes.push(text.slice(lastIndex, match.index));
-    }
-    const href = match[0];
-    nodes.push(
-      <a
-        key={`inline-link-${href}-${match.index}`}
-        className="inline-link"
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-      >
-        {href.replace(/^https?:\/\//, '').replace(/^www\./, '')}
-      </a>,
-    );
-    lastIndex = match.index + href.length;
-  }
-
-  if (lastIndex < text.length) {
-    nodes.push(text.slice(lastIndex));
-  }
-
-  return nodes.length ? nodes : [text];
 };
 
 const formatSourcePath = (path: string): string => {
@@ -233,6 +199,82 @@ const PreviewContent = ({
       </mark>
       {after}
     </pre>
+  );
+};
+
+const MarkdownMessage = ({
+  content,
+  messageId,
+  copiedKey,
+  onCopyCode,
+}: {
+  content: string;
+  messageId: string;
+  copiedKey: string | null;
+  onCopyCode: (value: string, key: string) => void;
+}) => {
+  let codeBlockIndex = 0;
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        a: ({ href, children, ...props }) => {
+          const normalizedHref = typeof href === 'string' ? href : '';
+          if (!normalizedHref) {
+            return <span>{children}</span>;
+          }
+          return (
+            <a
+              {...props}
+              className="inline-link"
+              href={normalizedHref}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {children}
+            </a>
+          );
+        },
+        pre: ({ children }) => {
+          const firstChild = Array.isArray(children) ? children[0] : children;
+          if (!isValidElement(firstChild)) {
+            return <pre>{children}</pre>;
+          }
+
+          const codeProps = firstChild.props as { className?: string; children?: unknown };
+          const className = codeProps.className ?? '';
+          const codeText = String(codeProps.children ?? '').replace(/\n$/, '');
+          const languageMatch = /language-([\w-]+)/.exec(className);
+          const language = languageMatch?.[1] ?? 'code';
+          const codeKey = `${messageId}-code-${codeBlockIndex}`;
+          codeBlockIndex += 1;
+
+          return (
+            <div className="code-block">
+              <div className="code-header">
+                <span>{language}</span>
+                <button type="button" onClick={() => onCopyCode(codeText, codeKey)} aria-label="复制代码">
+                  {copiedKey === codeKey ? '已复制' : '复制'}
+                </button>
+              </div>
+              <pre>
+                <code className={className}>{codeText}</code>
+              </pre>
+            </div>
+          );
+        },
+        code: ({ className, children, ...props }) => {
+          return (
+            <code className={className} {...props}>
+              {children}
+            </code>
+          );
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
   );
 };
 
@@ -723,7 +765,6 @@ export default function HomePage() {
 
                     const showThinking = message.role === 'assistant' && message.isThinking;
                     const hasTextContent = Boolean(message.content.trim());
-                    const segments = hasTextContent ? parseMessageSegments(message.content) : [];
                     const shouldRenderBubble =
                       message.role !== 'assistant' || hasTextContent || (showThinking && !message.statusText);
                     const timestampLabel = hydrated ? formatTimestamp(message.timestamp) : '';
@@ -779,57 +820,15 @@ export default function HomePage() {
                           {shouldRenderBubble && (
                             <div className="message-bubble">
                               <div className="message-content">
-                                {segments.map((segment, index) => {
-                                  if (segment.type === 'code') {
-                                    return (
-                                      <div key={`${message.id}-code-${index}`} className="code-block">
-                                        <div className="code-header">
-                                          <span>{segment.language}</span>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handleCopy(segment.content, `${message.id}-code-${index}`)
-                                            }
-                                            aria-label="复制代码"
-                                          >
-                                            {copiedKey === `${message.id}-code-${index}`
-                                              ? '已复制'
-                                              : '复制'}
-                                          </button>
-                                        </div>
-                                        <pre>
-                                          <code>{segment.content}</code>
-                                        </pre>
-                                      </div>
-                                    );
-                                  }
-
-                                  const paragraphs = segment.content.split(/\n{2,}/);
-                                  return paragraphs.map((paragraph, paragraphIndex) => {
-                                    const trimmed = paragraph.trim();
-                                    if (isStandaloneUrl(trimmed)) {
-                                      return (
-                                        <LinkCard
-                                          key={`${message.id}-link-${index}-${paragraphIndex}`}
-                                          href={trimmed}
-                                        />
-                                      );
-                                    }
-                                    return (
-                                      <p key={`${message.id}-p-${index}-${paragraphIndex}`}>
-                                        {paragraph.split('\n').map((line, lineIndex) => (
-                                          <span
-                                            key={`${message.id}-line-${index}-${paragraphIndex}-${lineIndex}`}
-                                          >
-                                            {renderTextWithLinks(line)}
-                                            {lineIndex < paragraph.split('\n').length - 1 && <br />}
-                                          </span>
-                                        ))}
-                                      </p>
-                                    );
-                                  });
-                                })}
-                                {!segments.length && showThinking && <span>&nbsp;</span>}
+                                {hasTextContent && (
+                                  <MarkdownMessage
+                                    content={message.content}
+                                    messageId={message.id}
+                                    copiedKey={copiedKey}
+                                    onCopyCode={handleCopy}
+                                  />
+                                )}
+                                {!hasTextContent && showThinking && <span>&nbsp;</span>}
                                 {showThinking && !message.statusText && <ThinkingDots />}
                               </div>
                             </div>
