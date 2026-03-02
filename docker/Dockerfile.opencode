@@ -3,6 +3,8 @@ FROM node:20-slim AS frontend-builder
 WORKDIR /app/frontend
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_OUTPUT_MODE=server
+ARG NEXT_PUBLIC_FEATURE_ANSWER_FIRST=1
+ENV NEXT_PUBLIC_FEATURE_ANSWER_FIRST=${NEXT_PUBLIC_FEATURE_ANSWER_FIRST}
 
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm config set fetch-retries 5 \

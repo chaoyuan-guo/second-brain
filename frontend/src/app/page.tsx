@@ -46,8 +46,26 @@ import {
   type ChatMessage,
 } from './lib/chat-types';
 
-// Feature Flag: Answer-first 重构开关
-const FEATURE_ANSWER_FIRST_REDESIGN = process.env.NEXT_PUBLIC_FEATURE_ANSWER_FIRST === '1';
+// Feature Flag: Answer-first 重构开关（默认开启，可通过环境变量关闭）
+const parseFeatureFlag = (value: string | undefined, defaultValue = true): boolean => {
+  if (value === undefined) {
+    return defaultValue;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (['0', 'false', 'off', 'no'].includes(normalized)) {
+    return false;
+  }
+  if (['1', 'true', 'on', 'yes'].includes(normalized)) {
+    return true;
+  }
+  return defaultValue;
+};
+
+const FEATURE_ANSWER_FIRST_REDESIGN = parseFeatureFlag(
+  process.env.NEXT_PUBLIC_FEATURE_ANSWER_FIRST
+    ?? process.env.NEXT_PUBLIC_FEATURE_ANSWER_FIRST_REDESIGN,
+  true,
+);
 
 type NoteContentResponse = {
   content: string;
