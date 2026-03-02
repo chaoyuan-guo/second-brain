@@ -4,11 +4,99 @@ import {
   getOrCreateRequestId,
   logProxy,
 } from '../../_lib/upstream';
+import {
+  createProcessAccumulator,
+  updateToolCall,
+  mergeSourceRefs,
+  computeProcessOverview,
+  synthesizeFinalEvent,
+  getPhaseUserMessage,
+  getToolSemantic,
+  type ToolCallRecord,
+} from '../../_lib/event-adapter';
+import type { EvidenceRef } from '../../../lib/chat-types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const LOG_EVENT_SUMMARY = process.env.OPENCODE_EVENT_SUMMARY_LOG !== '0';
+
+// ============================================================================
+// 辅助函数
+// ============================================================================
+
+const asRecord = (value: unknown): Record<string, unknown> | undefined =>
+  value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
+
+const asString = (value: unknown): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+
+const asNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' ? value : undefined;
+
+/**
+ * 从工具 metadata 中提取 source_refs
+ */
+const extractSourceRefs = (metadata: unknown): EvidenceRef[] => {
+  const record = asRecord(metadata);
+  const raw = record?.source_refs;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const refs: EvidenceRef[] = [];
+  raw.forEach((item) => {
+    const entry = asRecord(item);
+    const path = asString(entry?.path)?.trim();
+    if (!path) {
+      return;
+    }
+
+    const heading = asString(entry?.heading)?.trim();
+    const snippet = asString(entry?.snippet);
+    const charOffset = asNumber(entry?.char_offset);
+
+    refs.push({
+      sourcePath: path,
+      heading,
+      snippet,
+      charOffsetStart: charOffset,
+    });
+  });
+
+  return refs;
+};
+
+/**
+ * 解析 OpenCode 事件
+ */
+const parseOpenCodeEvent = (
+  data: string
+): { type: string; part: Record<string, unknown>; properties: Record<string, unknown> } | null => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return null;
+  }
+
+  const record = asRecord(parsed);
+  if (!record) return null;
+
+  const type = asString(record.type) || 'message';
+  if (type !== 'message.part.updated') {
+    return null;
+  }
+
+  const properties = asRecord(record.properties) || {};
+  const part = asRecord(properties.part ?? record.part) || {};
+
+  return { type, part, properties };
+};
+
+// ============================================================================
+// 事件日志摘要
+// ============================================================================
 
 const summarizeEvent = (
   requestId: string,
@@ -19,55 +107,47 @@ const summarizeEvent = (
   if (!LOG_EVENT_SUMMARY) {
     return;
   }
-  let parsed: Record<string, unknown> | undefined;
-  try {
-    parsed = JSON.parse(payload) as Record<string, unknown>;
-  } catch {
-    return;
-  }
-  const type = typeof parsed.type === 'string' ? parsed.type : '';
-  if (type !== 'message.part.updated' && type !== 'session.error') {
+
+  const parsed = parseOpenCodeEvent(payload);
+  if (!parsed) {
+    // 检查是否是 session.error
+    let errorParsed: Record<string, unknown> | undefined;
+    try {
+      errorParsed = JSON.parse(payload) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+    const type = typeof errorParsed.type === 'string' ? errorParsed.type : '';
+    if (type === 'session.error') {
+      logProxy('error', {
+        route: '/api/chat/event',
+        requestId,
+        traceId,
+        phase: 'event',
+        eventType: 'session.error',
+        payload: errorParsed.properties ?? errorParsed,
+      });
+    }
     return;
   }
 
-  if (type === 'session.error') {
-    logProxy('error', {
-      route: '/api/chat/event',
-      requestId,
-      traceId,
-      phase: 'event',
-      eventType: 'session.error',
-      payload: parsed.properties ?? parsed,
-    });
-    return;
-  }
+  const { part } = parsed;
+  const partType = asString(part.type);
+  const sessionID = asString(part.sessionID);
+  const messageID = asString(part.messageID);
 
-  const properties =
-    parsed.properties && typeof parsed.properties === 'object'
-      ? (parsed.properties as Record<string, unknown>)
-      : undefined;
-  const part =
-    properties?.part && typeof properties.part === 'object'
-      ? (properties.part as Record<string, unknown>)
-      : undefined;
-  if (!part) {
-    return;
-  }
-  const partType = typeof part.type === 'string' ? part.type : '';
-  const sessionID = typeof part.sessionID === 'string' ? part.sessionID : '';
-  const messageID = typeof part.messageID === 'string' ? part.messageID : '';
   if (targetSessionId && sessionID && sessionID !== targetSessionId) {
     return;
   }
 
   if (partType === 'tool') {
-    const state = part.state && typeof part.state === 'object' ? (part.state as Record<string, unknown>) : {};
+    const state = asRecord(part.state) || {};
     logProxy('info', {
       route: '/api/chat/event',
       requestId,
       traceId,
       phase: 'event',
-      eventType: type,
+      eventType: 'message.part.updated',
       partType,
       sessionID,
       messageID,
@@ -84,13 +164,17 @@ const summarizeEvent = (
       requestId,
       traceId,
       phase: 'event',
-      eventType: type,
+      eventType: 'message.part.updated',
       partType,
       sessionID,
       messageID,
     });
   }
 };
+
+// ============================================================================
+// 主处理逻辑
+// ============================================================================
 
 export async function GET(request: Request): Promise<Response> {
   const requestId = getOrCreateRequestId(request);
@@ -99,6 +183,7 @@ export async function GET(request: Request): Promise<Response> {
   const route = '/api/chat/event';
   const upstreamUrl = buildUpstreamUrl(OPENCODE_BASE_URL, '/event');
   const start = Date.now();
+
   logProxy('info', {
     route,
     requestId,
@@ -148,6 +233,7 @@ export async function GET(request: Request): Promise<Response> {
     status: upstream.status,
     durationMs,
   });
+
   if (!upstream.body) {
     return new Response(await upstream.text(), {
       status: upstream.status,
@@ -158,16 +244,140 @@ export async function GET(request: Request): Promise<Response> {
     });
   }
 
+  // 创建过程累加器
+  const acc = createProcessAccumulator();
+  let sawStepFinish = false;
+  let currentStepMessageId: string | undefined;
+
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = '';
+
+  /**
+   * 处理单个事件并返回是否需要发送给客户端
+   */
+  const processEvent = (eventName: string, data: string): boolean => {
+    // 日志摘要
+    summarizeEvent(requestId, traceId, targetSessionId, data);
+
+    const parsed = parseOpenCodeEvent(data);
+    if (!parsed) {
+      return true; // 非 message.part.updated 事件，直接透传
+    }
+
+    const { part, properties } = parsed;
+    const partType = asString(part.type);
+    const partMessageId = asString(part.messageID);
+    const sessionID = asString(part.sessionID);
+
+    // 会话过滤
+    if (targetSessionId && sessionID && sessionID !== targetSessionId) {
+      return false;
+    }
+
+    // 处理不同 partType
+    if (partType === 'text') {
+      const delta = asString(properties?.delta ?? parsed.properties?.delta);
+      const partText = asString(part.text);
+      if (delta && delta.length > 0) {
+        acc.assistantContent += delta;
+      } else if (partText !== undefined && partText.length > 0) {
+        acc.assistantContent = partText;
+      }
+      return true;
+    }
+
+    if (partType === 'tool') {
+      const toolName = asString(part.tool) ?? 'tool';
+      const callId = asString(part.callID) ?? `${toolName}-${Date.now()}`;
+      const state = asRecord(part.state) || {};
+      const status = asString(state.status) as ToolCallRecord['status'] | undefined;
+
+      if (status) {
+        updateToolCall(acc, callId, toolName, status, {
+          arguments: state.arguments as Record<string, unknown>,
+          error: asString(state.error),
+          result: state.result,
+        });
+
+        // completed 时提取 source_refs
+        if (status === 'completed') {
+          const refs = extractSourceRefs(state.metadata);
+          if (refs.length > 0) {
+            mergeSourceRefs(acc, refs);
+            // 更新工具调用记录
+            const record = acc.completedCalls.find((c) => c.id === callId);
+            if (record) {
+              record.sourceRefs = refs;
+            }
+          }
+        }
+      }
+      return true;
+    }
+
+    if (partType === 'step-start') {
+      if (partMessageId) {
+        currentStepMessageId = partMessageId;
+      }
+      return true;
+    }
+
+    if (partType === 'step-finish') {
+      if (currentStepMessageId && partMessageId && partMessageId !== currentStepMessageId) {
+        return false;
+      }
+      sawStepFinish = true;
+      return true;
+    }
+
+    return true;
+  };
+
+  /**
+   * 生成语义化中间事件
+   */
+  const generateSemanticEvent = (): string | null => {
+    const activeSemantics = new Set<string>();
+    acc.activeCalls.forEach((call) => {
+      activeSemantics.add(getToolSemantic(call.name));
+    });
+
+    // 简单阶段判定
+    let phase: 'retrieving' | 'validating' | 'synthesizing' | 'completed' = 'retrieving';
+    if (activeSemantics.has('retrieve')) {
+      phase = 'retrieving';
+    } else if (activeSemantics.has('validate')) {
+      phase = 'validating';
+    } else if (activeSemantics.has('synthesize_helper')) {
+      phase = 'synthesizing';
+    } else if (sawStepFinish && acc.activeCalls.size === 0) {
+      phase = 'synthesizing';
+    }
+
+    const userMessage = getPhaseUserMessage(phase);
+    const processOverview = computeProcessOverview(acc);
+
+    acc.eventVersion += 1;
+
+    const semanticEvent = {
+      event_kind: 'intermediate',
+      event_version: acc.eventVersion,
+      phase,
+      severity: 'info' as const,
+      impact: processOverview.impact,
+      user_message: userMessage,
+      processOverview,
+    };
+
+    return `event: semantic\ndata: ${JSON.stringify(semanticEvent)}\n\n`;
+  };
+
   const observed = upstream.body.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
         controller.enqueue(chunk);
-        if (!LOG_EVENT_SUMMARY) {
-          return;
-        }
+
         buffer += decoder.decode(chunk, { stream: true });
         let newlineIndex = buffer.indexOf('\n');
         while (newlineIndex !== -1) {
@@ -176,25 +386,47 @@ export async function GET(request: Request): Promise<Response> {
           if (line.endsWith('\r')) {
             line = line.slice(0, -1);
           }
-          if (line.startsWith('data:')) {
-            summarizeEvent(requestId, traceId, targetSessionId, line.slice(5).trimStart());
+
+          if (!line || line.startsWith(':')) {
+            newlineIndex = buffer.indexOf('\n');
+            continue;
           }
+
+          if (line.startsWith('event:')) {
+            newlineIndex = buffer.indexOf('\n');
+            continue;
+          }
+
+          if (line.startsWith('data:')) {
+            const data = line.slice(5).trimStart();
+            processEvent('message', data);
+          }
+
           newlineIndex = buffer.indexOf('\n');
         }
       },
       flush(controller) {
-        if (!LOG_EVENT_SUMMARY) {
-          return;
-        }
         buffer += decoder.decode();
         const tail = buffer.trim();
         if (tail.startsWith('data:')) {
-          summarizeEvent(requestId, traceId, targetSessionId, tail.slice(5).trimStart());
+          const data = tail.slice(5).trimStart();
+          processEvent('message', data);
         }
-        const remaining = encoder.encode('');
-        if (remaining.length > 0) {
-          controller.enqueue(remaining);
-        }
+
+        // 合成终态事件
+        const finalEvent = synthesizeFinalEvent(acc);
+        const finalPayload = `event: final\ndata: ${JSON.stringify(finalEvent)}\n\n`;
+        controller.enqueue(encoder.encode(finalPayload));
+
+        logProxy('info', {
+          route: '/api/chat/event',
+          requestId,
+          traceId,
+          phase: 'final_event',
+          completionState: finalEvent.completionState,
+          eventVersion: finalEvent.event_version,
+          durationMs: Date.now() - start,
+        });
       },
     }),
   );

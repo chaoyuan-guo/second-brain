@@ -1,5 +1,58 @@
 export type ChatRole = 'user' | 'assistant';
 
+// ============================================================================
+// Answer-first 重构新增类型（2026-03-02）
+// ============================================================================
+
+/** 运行阶段 */
+export type RunPhase = 'retrieving' | 'validating' | 'synthesizing' | 'completed';
+
+/** 完成状态 */
+export type CompletionState = 'completed' | 'partial_completed' | 'failed';
+
+/** 置信度等级 */
+export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'unknown';
+
+/** 证据引用 */
+export interface EvidenceRef {
+  sourcePath: string;
+  sourceTitle?: string;
+  heading?: string;
+  charOffsetStart?: number;
+  charOffsetEnd?: number;
+  snippet?: string;
+}
+
+/** 证据项：断言-来源映射 */
+export interface EvidenceItem {
+  claimId: string;
+  claimText: string;
+  refs: EvidenceRef[];
+}
+
+/** 决策摘要 */
+export interface DecisionSummary {
+  conclusion: string;
+  actions: string[];
+  confidence: ConfidenceLevel;
+  assumptions: string[];
+  risks: string[];
+  failureReason?: string;
+}
+
+/** 过程概览 */
+export interface ProcessOverview {
+  phase: RunPhase;
+  durationMs: number;
+  warningCount: number;
+  blockingErrorCount: number;
+  impact: 'none' | 'partial' | 'blocking';
+}
+
+// ============================================================================
+// 原有类型定义
+// ============================================================================
+
 export interface SourceRef {
   path: string;
   heading: string;
@@ -45,6 +98,19 @@ export interface ChatMessage {
   // 新增：保存完整的思考步骤
   thinkingSteps?: ThinkingStep[];
   currentStepId?: string;  // 当前正在执行的步骤
+  // ============================================================================
+  // Answer-first 重构新增字段（2026-03-02）
+  // ============================================================================
+  /** 决策摘要（结论、行动、置信度等） */
+  decisionSummary?: DecisionSummary;
+  /** 过程概览（阶段、耗时、异常数等） */
+  processOverview?: ProcessOverview;
+  /** 完成状态 */
+  completionState?: CompletionState;
+  /** 证据与引用 */
+  evidence?: EvidenceItem[];
+  /** 终态事件版本号，用于防止乱序/重复 */
+  finalizedEventVersion?: number;
 }
 
 export type ApiRole = 'system' | 'user' | 'assistant' | 'tool' | 'developer';

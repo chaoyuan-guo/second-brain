@@ -11,6 +11,12 @@ import {
   sessionMessageEndpoint,
   type SourceRef,
   STORAGE_KEY,
+  // Answer-first 新增类型
+  type DecisionSummary,
+  type ProcessOverview,
+  type CompletionState,
+  type EvidenceItem,
+  type RunPhase,
 } from '../lib/chat-types';
 import { createEmptySession, createId, deriveTitle } from '../lib/chat-helpers';
 
@@ -547,6 +553,22 @@ export function useChatSessions(): UseChatSessionsResult {
         }, 240000);
 
         const reader = streamResponse.body.getReader();
+
+        // Answer-first: 结构化数据存储
+        let finalizedEventVersion: number | undefined;
+        let decisionSummary: DecisionSummary | undefined;
+        let processOverview: ProcessOverview | undefined;
+        let completionState: CompletionState | undefined;
+        let evidence: EvidenceItem[] | undefined;
+
+        // 语义化状态文案映射
+        const phaseStatusText: Record<RunPhase, string> = {
+          retrieving: '正在检索相关信息',
+          validating: '正在验证关键证据',
+          synthesizing: '正在生成最终结论',
+          completed: '',
+        };
+
         await parseSseStream(reader, (eventName, data) => {
           let parsedValue: unknown;
           try {
@@ -559,6 +581,91 @@ export function useChatSessions(): UseChatSessionsResult {
             return;
           }
 
+          // 处理终态事件 (event: final)
+          if (eventName === 'final') {
+            const eventVersion = typeof parsed.event_version === 'number' ? parsed.event_version : 0;
+
+            // 终态竞态检查：只接受更高版本
+            if (finalizedEventVersion !== undefined && eventVersion <= finalizedEventVersion) {
+              return;
+            }
+
+            finalizedEventVersion = eventVersion;
+
+            // 提取结构化字段
+            const ds = asRecord(parsed.decisionSummary);
+            const po = asRecord(parsed.processOverview);
+            const cs = asString(parsed.completionState) as CompletionState | undefined;
+            const ev = parsed.evidence;
+
+            if (ds && po && cs && Array.isArray(ev)) {
+              decisionSummary = {
+                conclusion: asString(ds.conclusion) || '',
+                actions: Array.isArray(ds.actions) ? ds.actions.filter((a): a is string => typeof a === 'string') : [],
+                confidence: (['high', 'medium', 'low', 'unknown'].includes(asString(ds.confidence) || '') ? ds.confidence : 'unknown') as 'high' | 'medium' | 'low' | 'unknown',
+                assumptions: Array.isArray(ds.assumptions) ? ds.assumptions.filter((a): a is string => typeof a === 'string') : [],
+                risks: Array.isArray(ds.risks) ? ds.risks.filter((a): a is string => typeof a === 'string') : [],
+                failureReason: asString(ds.failureReason),
+              };
+
+              processOverview = {
+                phase: (['retrieving', 'validating', 'synthesizing', 'completed'].includes(asString(po.phase) || '') ? po.phase : 'retrieving') as RunPhase,
+                durationMs: typeof po.durationMs === 'number' ? po.durationMs : 0,
+                warningCount: typeof po.warningCount === 'number' ? po.warningCount : 0,
+                blockingErrorCount: typeof po.blockingErrorCount === 'number' ? po.blockingErrorCount : 0,
+                impact: (['none', 'partial', 'blocking'].includes(asString(po.impact) || '') ? po.impact : 'none') as 'none' | 'partial' | 'blocking',
+              };
+
+              completionState = cs;
+              evidence = ev as EvidenceItem[];
+
+              // 更新状态
+              updateAssistantState({
+                isThinking: false,
+                statusText: '',
+                sourceRefs: buildSourceRefs(),
+                decisionSummary,
+                processOverview,
+                completionState,
+                evidence,
+                finalizedEventVersion,
+              });
+            }
+            return;
+          }
+
+          // 处理语义中间事件 (event: semantic)
+          if (eventName === 'semantic') {
+            const eventVersion = typeof parsed.event_version === 'number' ? parsed.event_version : 0;
+
+            // 若已终态，忽略中间事件
+            if (finalizedEventVersion !== undefined) {
+              return;
+            }
+
+            // 更新过程概览
+            const po = asRecord(parsed.processOverview);
+            if (po) {
+              processOverview = {
+                phase: (['retrieving', 'validating', 'synthesizing', 'completed'].includes(asString(po.phase) || '') ? po.phase : 'retrieving') as RunPhase,
+                durationMs: typeof po.durationMs === 'number' ? po.durationMs : 0,
+                warningCount: typeof po.warningCount === 'number' ? po.warningCount : 0,
+                blockingErrorCount: typeof po.blockingErrorCount === 'number' ? po.blockingErrorCount : 0,
+                impact: (['none', 'partial', 'blocking'].includes(asString(po.impact) || '') ? po.impact : 'none') as 'none' | 'partial' | 'blocking',
+              };
+
+              const phase = processOverview.phase;
+              const statusText = phaseStatusText[phase] || '';
+
+              updateAssistantState({
+                statusText,
+                processOverview,
+              });
+            }
+            return;
+          }
+
+          // 处理 OpenCode 原始事件 (message.part.updated)
           const eventType = asString(parsed.type) ?? eventName;
           if (eventType !== 'message.part.updated') {
             return;
@@ -742,12 +849,36 @@ export function useChatSessions(): UseChatSessionsResult {
           normalizedFinal && normalizedFinal !== normalizedUserInput
             ? finalText
             : '本次请求未产出可展示的最终回复，请重试或缩小问题范围。';
-        updateAssistantState({
+
+        // 如果没有收到 final 事件，使用降级状态
+        const finalUpdate: Partial<ChatMessage> = {
           content: safeFinalText,
           isThinking: false,
           statusText: '',
           sourceRefs: buildSourceRefs(),
-        });
+        };
+
+        // 仅在未收到终态事件时才设置默认值
+        if (decisionSummary === undefined) {
+          finalUpdate.decisionSummary = {
+            conclusion: safeFinalText.slice(0, 200),
+            actions: [],
+            confidence: 'unknown',
+            assumptions: [],
+            risks: [],
+          };
+          finalUpdate.processOverview = processOverview || {
+            phase: 'completed',
+            durationMs: 0,
+            warningCount: 0,
+            blockingErrorCount: 0,
+            impact: 'none',
+          };
+          finalUpdate.completionState = 'completed';
+          finalUpdate.evidence = [];
+        }
+
+        updateAssistantState(finalUpdate);
       } catch (error) {
         if ((error as DOMException)?.name === 'AbortError') {
           if (autoCompletedAbort) {

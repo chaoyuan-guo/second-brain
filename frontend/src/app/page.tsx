@@ -31,6 +31,7 @@ import {
   UploadIcon,
   UserIcon,
 } from './components/icons';
+import { AnswerPanel, ProcessPanel } from './components/chat';
 import { useChatSessions } from './hooks/useChatSessions';
 import {
   deriveSessionTimestamp,
@@ -42,7 +43,11 @@ import {
   UPLOAD_ENDPOINT,
   type ChatSession,
   type SourceRef,
+  type ChatMessage,
 } from './lib/chat-types';
+
+// Feature Flag: Answer-first 重构开关
+const FEATURE_ANSWER_FIRST_REDESIGN = process.env.NEXT_PUBLIC_FEATURE_ANSWER_FIRST === '1';
 
 type NoteContentResponse = {
   content: string;
@@ -817,107 +822,131 @@ export default function HomePage() {
                           </div>
                         </div>
                         <div className="message-stack">
-                          {shouldRenderBubble && (
-                            <div className="message-bubble">
-                              <div className="message-content">
-                                {hasTextContent && (
-                                  <MarkdownMessage
-                                    content={message.content}
-                                    messageId={message.id}
-                                    copiedKey={copiedKey}
-                                    onCopyCode={handleCopy}
-                                  />
-                                )}
-                                {!hasTextContent && showThinking && <span>&nbsp;</span>}
-                                {showThinking && !message.statusText && <ThinkingDots />}
-                              </div>
-                            </div>
-                          )}
-                          {message.thinkingSteps && message.thinkingSteps.length > 0 && (
-                            <ThinkingTimeline
-                              steps={message.thinkingSteps}
-                              currentStepId={message.currentStepId}
-                              isComplete={!message.isThinking}
-                            />
-                          )}
-                          {message.statusText && (
-                            <div className="message-status" role="status" aria-live="polite">
-                              <span className="status-spinner" aria-hidden />
-                              <span>{message.statusText}</span>
-                            </div>
-                          )}
-                          {message.role === 'assistant' && hasSources && !message.isThinking && (
-                            <div className="sources-panel">
-                              <p className="sources-label">来源文件</p>
-                              <ul className="sources-list">
-                                {Array.from(groupedSources.values()).map((group) => {
-                                  const headingEntries = Array.from(group.headingRefs.entries());
-                                  const groupKey = `${message.id}:${group.path}`;
-                                  const isExpanded = Boolean(expandedGroups[groupKey]);
-                                  const displayPath = formatSourcePath(group.path);
-                                  return (
-                                    <li key={groupKey} className="source-group">
-                                      <div className="source-group-header">
-                                        <div className="source-group-meta">
-                                          <button
-                                            type="button"
-                                            className="source-filename-btn"
-                                            onClick={() => handleOpenPreview(group.path, group.fileName)}
-                                            aria-label={`预览 ${group.fileName}`}
-                                          >
-                                            {group.fileName}
-                                          </button>
-                                          <span className="source-path" title={group.path}>
-                                            {displayPath}
-                                          </span>
-                                        </div>
-                                        {headingEntries.length > 0 && (
-                                          <button
-                                            type="button"
-                                            className="source-expand-btn"
-                                            onClick={() => toggleGroup(groupKey)}
-                                            aria-expanded={isExpanded}
-                                          >
-                                            {isExpanded ? <ChevronLeftIcon /> : <ChevronRightIcon />}
-                                            {headingEntries.length} 个章节
-                                          </button>
-                                        )}
-                                      </div>
-                                      {headingEntries.length > 0 && isExpanded && (
-                                        <ul className="source-headings-list">
-                                          {headingEntries.map(([heading, ref], headingIndex) => (
-                                            <li
-                                              key={`${groupKey}-heading-${headingIndex}`}
-                                              className="source-heading-item"
-                                            >
+                          {/* Answer-first 渲染模式 */}
+                          {FEATURE_ANSWER_FIRST_REDESIGN && message.role === 'assistant' && !message.isThinking ? (
+                            <>
+                              <AnswerPanel
+                                message={message}
+                                copiedKey={copiedKey}
+                                onCopyCode={handleCopy}
+                                onOpenPreview={(path, title, ref) => {
+                                  const sourceRef: SourceRef | undefined = ref ? {
+                                    path,
+                                    heading: '',
+                                    char_offset: ref.char_offset,
+                                    snippet: ref.snippet,
+                                  } : undefined;
+                                  handleOpenPreview(path, title, sourceRef);
+                                }}
+                              />
+                              <ProcessPanel message={message} />
+                            </>
+                          ) : (
+                            <>
+                              {/* 旧版渲染模式 */}
+                              {shouldRenderBubble && (
+                                <div className="message-bubble">
+                                  <div className="message-content">
+                                    {hasTextContent && (
+                                      <MarkdownMessage
+                                        content={message.content}
+                                        messageId={message.id}
+                                        copiedKey={copiedKey}
+                                        onCopyCode={handleCopy}
+                                      />
+                                    )}
+                                    {!hasTextContent && showThinking && <span>&nbsp;</span>}
+                                    {showThinking && !message.statusText && <ThinkingDots />}
+                                  </div>
+                                </div>
+                              )}
+                              {message.thinkingSteps && message.thinkingSteps.length > 0 && (
+                                <ThinkingTimeline
+                                  steps={message.thinkingSteps}
+                                  currentStepId={message.currentStepId}
+                                  isComplete={!message.isThinking}
+                                />
+                              )}
+                              {message.statusText && (
+                                <div className="message-status" role="status" aria-live="polite">
+                                  <span className="status-spinner" aria-hidden />
+                                  <span>{message.statusText}</span>
+                                </div>
+                              )}
+                              {message.role === 'assistant' && hasSources && !message.isThinking && (
+                                <div className="sources-panel">
+                                  <p className="sources-label">来源文件</p>
+                                  <ul className="sources-list">
+                                    {Array.from(groupedSources.values()).map((group) => {
+                                      const headingEntries = Array.from(group.headingRefs.entries());
+                                      const groupKey = `${message.id}:${group.path}`;
+                                      const isExpanded = Boolean(expandedGroups[groupKey]);
+                                      const displayPath = formatSourcePath(group.path);
+                                      return (
+                                        <li key={groupKey} className="source-group">
+                                          <div className="source-group-header">
+                                            <div className="source-group-meta">
                                               <button
                                                 type="button"
-                                                className="source-heading-btn"
-                                                onClick={() => handleOpenPreview(group.path, group.fileName, ref)}
+                                                className="source-filename-btn"
+                                                onClick={() => handleOpenPreview(group.path, group.fileName)}
+                                                aria-label={`预览 ${group.fileName}`}
                                               >
-                                                {heading}
+                                                {group.fileName}
                                               </button>
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      )}
-                                    </li>
-                                  );
-                                })}
-                                {urlSources.map((path, sourceIndex) => (
-                                  <li key={`${message.id}-url-${sourceIndex}`} className="source-item">
-                                    <a
-                                      href={path}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="source-link"
-                                    >
-                                      {path}
-                                    </a>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
+                                              <span className="source-path" title={group.path}>
+                                                {displayPath}
+                                              </span>
+                                            </div>
+                                            {headingEntries.length > 0 && (
+                                              <button
+                                                type="button"
+                                                className="source-expand-btn"
+                                                onClick={() => toggleGroup(groupKey)}
+                                                aria-expanded={isExpanded}
+                                              >
+                                                {isExpanded ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+                                                {headingEntries.length} 个章节
+                                              </button>
+                                            )}
+                                          </div>
+                                          {headingEntries.length > 0 && isExpanded && (
+                                            <ul className="source-headings-list">
+                                              {headingEntries.map(([heading, ref], headingIndex) => (
+                                                <li
+                                                  key={`${groupKey}-heading-${headingIndex}`}
+                                                  className="source-heading-item"
+                                                >
+                                                  <button
+                                                    type="button"
+                                                    className="source-heading-btn"
+                                                    onClick={() => handleOpenPreview(group.path, group.fileName, ref)}
+                                                  >
+                                                    {heading}
+                                                  </button>
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          )}
+                                        </li>
+                                      );
+                                    })}
+                                    {urlSources.map((path, sourceIndex) => (
+                                      <li key={`${message.id}-url-${sourceIndex}`} className="source-item">
+                                        <a
+                                          href={path}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="source-link"
+                                        >
+                                          {path}
+                                        </a>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </>
                           )}
                           <div className="message-meta">
                             <div className="bubble-actions">
