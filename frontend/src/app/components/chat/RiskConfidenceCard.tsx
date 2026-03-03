@@ -8,11 +8,11 @@ interface RiskConfidenceCardProps {
   assumptions: string[];
 }
 
-const confidenceLabels: Record<ConfidenceLevel, { text: string; className: string }> = {
-  high: { text: '高', className: 'confidence-high' },
-  medium: { text: '中', className: 'confidence-medium' },
-  low: { text: '低', className: 'confidence-low' },
-  unknown: { text: '未知', className: 'confidence-unknown' },
+const confidenceConfig: Record<ConfidenceLevel, { text: string; className: string }> = {
+  high: { text: '高', className: 'high' },
+  medium: { text: '中', className: 'medium' },
+  low: { text: '低', className: 'low' },
+  unknown: { text: '未知', className: 'unknown' },
 };
 
 /**
@@ -21,47 +21,39 @@ const confidenceLabels: Record<ConfidenceLevel, { text: string; className: strin
  * 使用语义色，不以红绿唯一编码（兼容色弱）
  */
 export function RiskConfidenceCard({ confidence, risks, assumptions }: RiskConfidenceCardProps) {
-  const confidenceInfo = confidenceLabels[confidence] || confidenceLabels.unknown;
+  const config = confidenceConfig[confidence] || confidenceConfig.unknown;
+
+  // 合并风险和假设一起展示
+  const allRisks = [
+    ...(risks || []),
+    ...(assumptions || []).map(a => `假设: ${a}`),
+  ];
 
   return (
     <div className="risk-confidence-card">
       {/* 置信度 */}
       <div className="confidence-section">
-        <span className="confidence-label">置信度</span>
-        <span className={`confidence-value ${confidenceInfo.className}`}>
-          {confidenceInfo.text}
+        <span className="section-label">置信度</span>
+        <span className={`confidence-badge ${config.className}`}>
+          {config.text}
         </span>
       </div>
 
-      {/* 主要风险 */}
-      {risks?.length > 0 && (
-        <div className="risks-section">
-          <h5 className="risks-title">主要风险</h5>
-          <ul className="risks-list">
-            {risks.map((risk, index) => (
+      {/* 风险与假设 */}
+      <div className="risk-section">
+        <span className="section-label">风险与假设</span>
+        <ul className="risk-list">
+          {allRisks.length > 0 ? (
+            allRisks.map((risk, index) => (
               <li key={`risk-${index}`} className="risk-item">
-                <span className="risk-icon" aria-hidden>⚠</span>
-                <span className="risk-text">{risk}</span>
+                {risk}
               </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* 关键假设 */}
-      {assumptions?.length > 0 && (
-        <div className="assumptions-section">
-          <h5 className="assumptions-title">关键假设</h5>
-          <ul className="assumptions-list">
-            {assumptions.map((assumption, index) => (
-              <li key={`assumption-${index}`} className="assumption-item">
-                <span className="assumption-icon" aria-hidden>💡</span>
-                <span className="assumption-text">{assumption}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+            ))
+          ) : (
+            <li className="risk-item empty">无已知风险</li>
+          )}
+        </ul>
+      </div>
     </div>
   );
 }

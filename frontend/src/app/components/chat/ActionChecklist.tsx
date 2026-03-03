@@ -22,7 +22,7 @@ export function ActionChecklist({ actions }: ActionChecklistProps) {
       <ul className="action-list">
         {displayActions.map((action, index) => (
           <li key={`action-${index}`} className="action-item">
-            <span className="action-number">{index + 1}</span>
+            <span className="action-checkbox" aria-hidden />
             <span className="action-text">{action}</span>
           </li>
         ))}

@@ -28,7 +28,8 @@ export function FullResponseMarkdown({
   }
 
   return (
-    <div className="full-response-markdown">
+    <div className="full-response">
+      <h4 className="full-response-title">完整回答</h4>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

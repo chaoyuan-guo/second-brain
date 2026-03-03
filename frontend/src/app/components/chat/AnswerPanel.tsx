@@ -58,10 +58,16 @@ export function AnswerPanel({
 }: AnswerPanelProps) {
   const hasStructured = useMemo(() => hasValidStructuredData(message), [message]);
 
-  // 降级渲染：缺失结构化字段时，仅展示原始回答正文和来源
+  // 降级渲染：缺失结构化字段时，展示原始回答正文和降级提示
   if (!hasStructured) {
     return (
       <div className="answer-panel degraded">
+        <div className="degraded-notice">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span>结构化数据暂不可用，以下为原始回答</span>
+        </div>
         <FullResponseMarkdown
           content={message.content}
           messageId={message.id}
@@ -84,6 +90,13 @@ export function AnswerPanel({
             {decisionSummary?.failureReason || '请重试或缩小问题范围'}
           </p>
         </div>
+        {/* 即使失败也展示完整内容 */}
+        <FullResponseMarkdown
+          content={message.content}
+          messageId={message.id}
+          copiedKey={copiedKey}
+          onCopyCode={onCopyCode}
+        />
       </div>
     );
   }

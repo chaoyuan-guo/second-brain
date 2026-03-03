@@ -1,0 +1,787 @@
+/**
+ * 聊天组件样式 - Answer-first 重构
+ * 包含 AnswerPanel、ProcessPanel、EvidencePanel 等组件样式
+ */
+
+/* ============================================================================
+   AnswerPanel - 主答案面板
+   ============================================================================ */
+
+.answer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: var(--content-max);
+}
+
+.answer-panel.degraded {
+  padding: 12px 0;
+}
+
+.answer-panel.failed {
+  padding: 20px;
+  background: var(--danger-soft);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: var(--radius-md);
+}
+
+/* ============================================================================
+   ConclusionCard - 一句话结论卡片
+   ============================================================================ */
+
+.conclusion-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, rgba(79, 107, 255, 0.06) 0%, rgba(79, 107, 255, 0.02) 100%);
+  border: 1px solid rgba(79, 107, 255, 0.15);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--accent);
+}
+
+.conclusion-icon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+}
+
+.conclusion-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.conclusion-text {
+  flex: 1;
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--text-strong);
+}
+
+/* ============================================================================
+   ActionChecklist - 行动清单
+   ============================================================================ */
+
+.action-checklist {
+  padding: 14px 16px;
+  background: var(--surface-muted);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+}
+
+.action-title {
+  margin: 0 0 10px 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.action-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+}
+
+.action-checkbox {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.action-text {
+  flex: 1;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-strong);
+}
+
+/* ============================================================================
+   RiskConfidenceCard - 风险与置信度卡片
+   ============================================================================ */
+
+.risk-confidence-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .risk-confidence-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+.confidence-section,
+.risk-section {
+  padding: 12px 14px;
+  background: var(--surface-muted);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+}
+
+.section-label {
+  margin: 0 0 8px 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.confidence-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.confidence-badge.high {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.confidence-badge.medium {
+  background: rgba(251, 191, 36, 0.16);
+  color: #b45309;
+}
+
+.confidence-badge.low {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+.confidence-badge.unknown {
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--text-muted);
+}
+
+.risk-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.risk-item {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  padding-left: 12px;
+  position: relative;
+}
+
+.risk-item::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+}
+
+.risk-item.empty {
+  color: rgba(15, 23, 42, 0.4);
+  font-style: italic;
+}
+
+/* ============================================================================
+   EvidencePanel - 证据面板
+   ============================================================================ */
+
+.evidence-panel {
+  padding: 14px 16px;
+  background: rgba(79, 107, 255, 0.03);
+  border: 1px solid rgba(79, 107, 255, 0.12);
+  border-radius: var(--radius-md);
+}
+
+.evidence-title {
+  margin: 0 0 12px 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.evidence-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.evidence-item {
+  padding: 10px 12px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+}
+
+.claim-text {
+  margin: 0 0 8px 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-strong);
+}
+
+.evidence-refs {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.evidence-ref {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.evidence-ref-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(79, 107, 255, 0.08);
+  border: 1px solid rgba(79, 107, 255, 0.15);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  text-align: left;
+  width: fit-content;
+}
+
+.evidence-ref-btn:hover:not(:disabled) {
+  background: rgba(79, 107, 255, 0.12);
+}
+
+.evidence-ref-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ref-source {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.ref-heading {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.ref-snippet {
+  margin: 0;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: rgba(15, 23, 42, 0.04);
+  border-radius: 4px;
+  line-height: 1.4;
+  font-style: italic;
+}
+
+/* ============================================================================
+   FullResponseMarkdown - 完整回答正文
+   ============================================================================ */
+
+.full-response {
+  padding: 16px 0;
+  border-top: 1px solid var(--panel-border);
+}
+
+.full-response-title {
+  margin: 0 0 12px 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ============================================================================
+   ProcessPanel - 过程面板
+   ============================================================================ */
+
+.process-panel {
+  margin-top: 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  overflow: hidden;
+}
+
+/* ============================================================================
+   ProcessOverviewBar - 过程摘要条
+   ============================================================================ */
+
+.process-overview-bar {
+  display: flex;
+  flex-direction: column;
+}
+
+.process-toggle-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--surface-overlay);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.process-toggle-btn:hover {
+  background: var(--surface-strong);
+}
+
+.process-phase-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.process-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.process-duration {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.process-warning {
+  font-size: 0.78rem;
+  padding: 2px 6px;
+  background: rgba(251, 191, 36, 0.16);
+  color: #b45309;
+  border-radius: 4px;
+}
+
+.process-error {
+  font-size: 0.78rem;
+  padding: 2px 6px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-radius: 4px;
+}
+
+.process-chevron {
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+  transform: rotate(0deg);
+}
+
+.process-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.process-impact {
+  padding: 8px 14px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.process-impact.impact-partial {
+  background: rgba(251, 191, 36, 0.1);
+  color: #b45309;
+  border-top: 1px solid rgba(251, 191, 36, 0.2);
+}
+
+.process-impact.impact-blocking {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-top: 1px solid rgba(220, 38, 38, 0.2);
+}
+
+/* ============================================================================
+   ProcessGroupList - 过程分组列表
+   ============================================================================ */
+
+.process-group-list {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.process-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.process-group-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--panel-border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.process-group-meta {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.process-group-items {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.process-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--surface-overlay);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+}
+
+.process-item.status-running {
+  border-color: rgba(79, 107, 255, 0.3);
+  background: rgba(79, 107, 255, 0.04);
+}
+
+.process-item.status-error {
+  border-color: rgba(220, 38, 38, 0.3);
+  background: var(--danger-soft);
+}
+
+.tool-name {
+  font-weight: 500;
+  color: var(--text-strong);
+}
+
+.tool-status {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.thought-content {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.debug-toggle-btn {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px dashed var(--panel-border);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+
+.debug-toggle-btn:hover {
+  background: var(--surface-strong);
+  border-style: solid;
+  color: var(--text-strong);
+}
+
+/* ============================================================================
+   ProcessDebugDrawer - 调试抽屉
+   ============================================================================ */
+
+.debug-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 1100;
+}
+
+.debug-drawer {
+  width: 100%;
+  max-width: 600px;
+  height: 100%;
+  background: var(--surface-overlay);
+  box-shadow: -4px 0 24px rgba(15, 23, 42, 0.15);
+  display: flex;
+  flex-direction: column;
+  animation: slideIn 0.2s ease;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.debug-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--panel-border);
+  flex-shrink: 0;
+}
+
+.debug-drawer-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.debug-drawer-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.debug-drawer-close:hover {
+  background: var(--surface-strong);
+  color: var(--text-strong);
+}
+
+.debug-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.debug-step {
+  padding: 12px;
+  background: var(--surface-muted);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+}
+
+.debug-step-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.debug-step-index {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 2px 6px;
+  background: var(--surface-strong);
+  border-radius: 4px;
+}
+
+.debug-step-type {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.debug-step-time {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.debug-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.debug-tool-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.debug-tool-row.error {
+  padding: 8px;
+  background: var(--danger-soft);
+  border-radius: 4px;
+}
+
+.debug-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.debug-value {
+  font-size: 0.85rem;
+  color: var(--text-strong);
+  word-break: break-word;
+}
+
+.debug-value.mono {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.8rem;
+}
+
+.debug-value.status-completed {
+  color: #15803d;
+}
+
+.debug-value.status-error {
+  color: var(--danger);
+}
+
+.debug-value.status-running {
+  color: var(--accent);
+}
+
+.debug-json {
+  margin: 0;
+  padding: 10px;
+  background: rgba(15, 23, 42, 0.06);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.debug-thought {
+  padding: 10px;
+  background: var(--surface-overlay);
+  border-radius: 6px;
+}
+
+.debug-thought-content {
+  margin: 8px 0 0 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text-strong);
+}
+
+.debug-empty {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* ============================================================================
+   Failure Card - 失败状态卡片
+   ============================================================================ */
+
+.failure-card {
+  padding: 20px;
+  text-align: center;
+}
+
+.failure-title {
+  margin: 0 0 8px 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.failure-reason {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* ============================================================================
+   降级提示
+   ============================================================================ */
+
+.degraded-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: #b45309;
+}
+
+.degraded-notice svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
