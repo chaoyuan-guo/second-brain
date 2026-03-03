@@ -2,11 +2,9 @@
 
 ## Project Structure & Module Organization
 - 后端代码位于 `backend/app`，`backend/app/main.py` 通过 FastAPI + OpenAI 工具链暴露 API，运行日志统一写入 `runtime/logs/backend.log`，而自定义笔记资源集中于 `data/notes/my_markdowns/` 方便复用。 Backend logic lives under `backend/app`, logs to `runtime/logs/backend.log`, while knowledge snippets live in `data/notes/my_markdowns/` for reuse.
-- Next.js 前端置于 `frontend/src/app`，静态导出产物写入 `frontend/out`，`start_services.sh` 负责同时拉起 `uvicorn` 与 `npm run dev`，常态开发请从该脚本或分别在两个终端启动服务。 The UI resides under `frontend/src/app`, static export lands in `frontend/out`, and `start_services.sh` orchestrates both uvicorn and npm dev servers.
+- Next.js 前端置于 `frontend/src/app`，静态导出产物写入 `frontend/out`，运行入口统一为 OpenCode 一体化 Docker 容器。 The UI resides under `frontend/src/app`, static export lands in `frontend/out`, and services are started via the integrated Docker container.
 
 ## Build, Test, and Development Commands
-- 本仓库 Python 统一使用项目内 `.venv`，不要依赖 conda/system python。初始化：`python -m venv .venv && ./.venv/bin/python -m pip install -r requirements.txt`，随后使用 `./.venv/bin/python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 9000` 作为本地后端入口。 Set up a venv, install requirements, then run `uvicorn backend.app.main:app` for hot reload.
-- 前端工作流：`cd frontend && npm install && npm run dev` 提供本地调试，`npm run build` 生成产物供 `npm run start` 或静态部署使用。Use `start_services.sh` when you need both tiers plus synchronized log files.
 - Docker（OpenCode 一体化容器）：
   - 构建镜像：`docker build -t second_brain:opencode -f docker/Dockerfile.opencode .`
   - 推荐环境变量文件：`.env.docker`（示例：`SUPER_MIND_API_BASE_URL=https://space.ai-builders.com/backend/v1`，必须带 `/v1`）
@@ -17,7 +15,6 @@
   - 日志/停止：`docker logs -f second_brain_opencode` / `docker stop second_brain_opencode`
 
 ## Logging Guidelines
-- 本地开发仅写日志文件：后端 `runtime/logs/backend.log`、前端 `runtime/logs/frontend.log`、工具输出 `runtime/logs/tool_output.log`。
 - 容器部署仅输出 stdout（供 `docker logs`），后端/工具不写 `runtime/logs/*.log`；如需在容器运行前端，同样保持 stdout 输出。
 - 后端/工具输出可用 `LOG_TO_STDOUT` 与 `LOG_TO_FILE` 覆盖默认行为；如显式启用双写，请确保 stdout 不再重定向回同一文件，避免重复。
 
@@ -30,19 +27,19 @@
 - 前端测试位于 `frontend/src/__tests__/`，采用 React Testing Library + Vitest；执行 `npm run test`（`vitest run`）并通过 `npm run lint`（`tsc --noEmit`）保证 TS/JSX 规范，命名遵循 `<Component>.test.tsx`。 Snapshot tests should be paired with meaningful interaction assertions.
 
 ## Evaluation Guidelines
-- 评估采用 LLM-as-Judge 方法，使用 Azure 端点的 `gpt-52` 模型，围绕个性化命中、精准简洁、诚实性、可追溯性四个维度评分：`./.venv/bin/python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9000 --concurrency 10 --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。
+- 评估采用 LLM-as-Judge 方法，使用 Azure 端点的 `gpt-52` 模型，围绕个性化命中、精准简洁、诚实性、可追溯性四个维度评分：`./.venv/bin/python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9090 --concurrency 10 --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。
 
 ## Commit & Pull Request Guidelines
 - 仓库已初始化 Git，请继续遵循 Conventional Commits（如 `feat: add web_search retries`、`fix: guard empty query`）保持可读性；单次提交聚焦单一功能或缺陷修复。 Commits should stay atomic on the `main` branch unless stated otherwise.
-- PR 需包含变更摘要、验证方式（命令输出或截图）、相关 Issue 链接以及潜在风险；若触及 env/脚本，请同时更新 `start_services.sh` 或 README 片段以免部署偏差。 Request reviewers familiar with both FastAPI and Next.js when changes cross the stack.
+- PR 需包含变更摘要、验证方式（命令输出或截图）、相关 Issue 链接以及潜在风险；若触及容器启动参数或环境变量，请同步更新 Docker 启动说明以免部署偏差。 Request reviewers familiar with both FastAPI and Next.js when changes cross the stack.
 
 ## Security & Configuration Tips
 - `.env` 必须提供 `SUPER_MIND_API_KEY` 与可选 `CHAT_ALLOWED_ORIGINS`；不要将密钥写入日志或前端 bundle，可通过 `os.getenv` 访问并在启动时校验。 Keep the `.env` file out of version control.
-- 生产部署需将 `frontend/out` 置于受控 CDN，并以 `uvicorn main:app --proxy-headers --forwarded-allow-ips="*"` 运行后端；任何外部请求都应保持 20s 超时与错误日志，以免工具链卡死。 Rotate API tokens regularly and scrub `backend.log` before sharing.
+- 生产部署建议优先使用容器镜像发布，默认仅暴露 9080 端口；外部请求保持 20s 超时并保留错误日志，避免工具链卡死。 Rotate API tokens regularly and scrub logs before sharing.
 
 ## 模型端点使用规则
 - **Chat 模型**：系统根据运行环境自动选择端点（通过 `running_in_container()` 判断）：
-  - **本地开发 / 脚本启动**：默认使用 Azure 端点（`azure_base_url`、`azure_api_key`、`azure_api-version`、`azure_use_model`），可通过 `use_azure=False` 覆盖。
+  - **非容器环境**：默认使用 Azure 端点（`azure_base_url`、`azure_api_key`、`azure_api-version`、`azure_use_model`），可通过 `use_azure=False` 覆盖。
   - **容器服务**：默认使用 ai-builder 端点（`SUPER_MIND_API_BASE_URL`、`SUPER_MIND_CHAT_MODEL`），可通过 `use_azure=True` 覆盖。
 - **Embedding 模型**：所有环境统一使用 ai-builder 端点（https://space.ai-builders.com/backend/v1），通过 `SUPER_MIND_API_KEY` 或 `AI_BUILDER_TOKEN` 认证。
 - **评估评分**（`eval/scripts/grade_by_llm.py`）：默认使用 Azure 端点的 `gpt-52` 模型进行 LLM-as-Judge 评分，可通过 `azure_base_url`、`azure_api_key`、`azure_use_model` 环境变量覆盖。
@@ -56,12 +53,6 @@
 默认使用中文进行说明与讨论，除非内容为代码片段、命令或规范要求英文表述。
 
 ## 运行规范补充
-- `start_services.sh` 现支持 `./start_services.sh [start|stop|restart|status] [all|backend|frontend|mcp]`，可按需单独管理各服务；`status` 仍会附带端口与孤儿进程检测。
-- 修改不同模块时请按以下策略重启并等待脚本输出 `服务健康检查：OK`：
-  - 仅改动后端（如 `main.py`、工具脚本等）：执行 `./start_services.sh restart backend`
-  - 仅改动前端（`frontend/` 范围）：执行 `./start_services.sh restart frontend`
-  - 同时影响前后端、MCP 或更新 `start_services.sh` 本身：执行 `./start_services.sh restart all`（或省略目标，默认 all）
-  - 若脚本返回非 0 或显示 `FAILED`，需立即查看对应日志（`backend.log` / `frontend.log` / `mcp_interpreter.log`）定位问题并修复后再重启。
-- 脚本健康检查逻辑：
-  - 正常：后端打印 `OK (端口 9000, PID xxxx)`，前端打印 `OK (HTTP 检测通过，端口 9080)`，MCP 打印 `OK (端口 9070, PID xxxx)`。
-  - 异常：会提示 `FAILED - 端口 xxxx 未监听` 或列出匹配进程，此时请按提示检查对应日志及 PID。
+- 服务运行统一通过 Docker 容器管理：修改后请按需重建镜像并重启容器。
+- 推荐重启流程：`docker rm -f second_brain_opencode 2>/dev/null || true && docker build -t second_brain:opencode -f docker/Dockerfile.opencode . && docker run -d --name second_brain_opencode --restart unless-stopped -p 9080:9080 --env-file .env.docker -v "$PWD/data:/app/data" second_brain:opencode`
+- 调试场景需要直连 OpenCode/RAG 时，使用调试端口映射 `-p 9080:9080 -p 9090:9090 -p 9070:9070`。

@@ -127,8 +127,7 @@ T = TypeVar("T")
 def _sync_mcp_workspace() -> None:
     """在 MCP 工作目录下准备笔记目录。
 
-    本地开发通常由 start_services.sh 负责同步；容器环境下没有该脚本，
-    因此在首次调用解释器前做一次轻量同步，确保解释器能按相对路径
+    在首次调用解释器前做一次轻量同步，确保解释器能按相对路径
     访问 data/notes/my_markdowns。
     """
 

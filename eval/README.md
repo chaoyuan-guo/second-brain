@@ -36,12 +36,18 @@
 ### 运行完整评估（生成答案 + 评分）
 
 ```bash
-# 启动后端服务
-./start_services.sh start backend
+# 启动容器（评估需要直连 OpenCode，建议暴露 9090）
+docker rm -f second_brain_opencode 2>/dev/null || true
+docker build -t second_brain:opencode -f docker/Dockerfile.opencode .
+docker run -d --name second_brain_opencode --restart unless-stopped \
+  -p 9080:9080 -p 9090:9090 \
+  --env-file .env.docker \
+  -v "$PWD/data:/app/data" \
+  second_brain:opencode
 
 # 运行评估
 ./.venv/bin/python -u eval/scripts/run_eval_stream.py \
-  --base-url http://127.0.0.1:9000 \
+  --base-url http://127.0.0.1:9090 \
   --concurrency 10 \
   --report eval/reports/report.json \
   2>&1 | tee eval/reports/eval.log
@@ -52,7 +58,7 @@
 ```bash
 ./.venv/bin/python -u eval/scripts/run_eval_stream.py \
   --question-ids Q01,Q14 \
-  --base-url http://127.0.0.1:9000 \
+  --base-url http://127.0.0.1:9090 \
   --report eval/reports/report.json
 ```
 
