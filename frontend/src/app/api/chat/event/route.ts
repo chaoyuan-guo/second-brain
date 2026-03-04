@@ -8,10 +8,7 @@ import {
   createProcessAccumulator,
   updateToolCall,
   mergeSourceRefs,
-  computeProcessOverview,
   synthesizeFinalEvent,
-  getPhaseUserMessage,
-  getToolSemantic,
   type ToolCallRecord,
 } from '../../_lib/event-adapter';
 import type { EvidenceRef } from '../../../lib/chat-types';
@@ -246,7 +243,6 @@ export async function GET(request: Request): Promise<Response> {
 
   // 创建过程累加器
   const acc = createProcessAccumulator();
-  let sawStepFinish = false;
   let currentStepMessageId: string | undefined;
 
   const decoder = new TextDecoder();
@@ -327,50 +323,10 @@ export async function GET(request: Request): Promise<Response> {
       if (currentStepMessageId && partMessageId && partMessageId !== currentStepMessageId) {
         return false;
       }
-      sawStepFinish = true;
       return true;
     }
 
     return true;
-  };
-
-  /**
-   * 生成语义化中间事件
-   */
-  const generateSemanticEvent = (): string | null => {
-    const activeSemantics = new Set<string>();
-    acc.activeCalls.forEach((call) => {
-      activeSemantics.add(getToolSemantic(call.name));
-    });
-
-    // 简单阶段判定
-    let phase: 'retrieving' | 'validating' | 'synthesizing' | 'completed' = 'retrieving';
-    if (activeSemantics.has('retrieve')) {
-      phase = 'retrieving';
-    } else if (activeSemantics.has('validate')) {
-      phase = 'validating';
-    } else if (activeSemantics.has('synthesize_helper')) {
-      phase = 'synthesizing';
-    } else if (sawStepFinish && acc.activeCalls.size === 0) {
-      phase = 'synthesizing';
-    }
-
-    const userMessage = getPhaseUserMessage(phase);
-    const processOverview = computeProcessOverview(acc);
-
-    acc.eventVersion += 1;
-
-    const semanticEvent = {
-      event_kind: 'intermediate',
-      event_version: acc.eventVersion,
-      phase,
-      severity: 'info' as const,
-      impact: processOverview.impact,
-      user_message: userMessage,
-      processOverview,
-    };
-
-    return `event: semantic\ndata: ${JSON.stringify(semanticEvent)}\n\n`;
   };
 
   const observed = upstream.body.pipeThrough(

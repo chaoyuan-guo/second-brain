@@ -1,8 +1,5 @@
 import type {
-  ApiMessagePayload,
-  ChatMessage,
   ChatSession,
-  MessageSegment,
 } from './chat-types';
 
 export const createId = () =>
@@ -43,14 +40,6 @@ export const formatTimestamp = (timestamp?: number) => {
   }
 };
 
-export const summarizeText = (text: string, maxLength = 80) => {
-  const sanitized = text.replace(/\s+/g, ' ').trim();
-  if (!sanitized) {
-    return '';
-  }
-  return sanitized.length > maxLength ? `${sanitized.slice(0, maxLength)}…` : sanitized;
-};
-
 const getSessionTimestampValue = (session?: ChatSession) => {
   if (!session) {
     return undefined;
@@ -61,77 +50,4 @@ const getSessionTimestampValue = (session?: ChatSession) => {
 export const deriveSessionTimestamp = (session?: ChatSession) => {
   const value = getSessionTimestampValue(session);
   return value ? formatTimestamp(value) : '';
-};
-
-export const deriveSessionSubtitle = (session?: ChatSession) => {
-  if (!session) {
-    return '';
-  }
-  const latestUserContent = [...session.messages]
-    .reverse()
-    .find((message) => message.role === 'user' && message.content.trim())?.content;
-  const fallbackContent = session.messages[session.messages.length - 1]?.content ?? '';
-  return summarizeText(latestUserContent ?? fallbackContent, 72);
-};
-
-export const serializeMessagesForApi = (session: ChatSession): ApiMessagePayload[] =>
-  session.messages
-    .filter((message) => !message.isThinking && message.content.trim().length > 0)
-    .map((message) => {
-      const payload: ApiMessagePayload = {
-        role: message.role,
-        content: message.content,
-      };
-      if (message.tool_call_id) {
-        payload.tool_call_id = message.tool_call_id;
-      }
-      return payload;
-    });
-
-export const parseMessageSegments = (content: string): MessageSegment[] => {
-  if (!content) {
-    return [{ type: 'text', content: '' }];
-  }
-  const segments: MessageSegment[] = [];
-  const regex = /```(\w+)?\n?([\s\S]*?)```/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      segments.push({ type: 'text', content: content.slice(lastIndex, match.index) });
-    }
-    segments.push({
-      type: 'code',
-      language: match[1]?.trim() || 'code',
-      content: match[2]?.replace(/^\n/, '').replace(/\n$/, '') ?? '',
-    });
-    lastIndex = regex.lastIndex;
-  }
-
-  if (lastIndex < content.length) {
-    segments.push({ type: 'text', content: content.slice(lastIndex) });
-  }
-
-  return segments.length ? segments : [{ type: 'text', content }];
-};
-
-export const isStandaloneUrl = (text: string) => {
-  try {
-    const candidate = text.trim();
-    if (!candidate) return false;
-    const url = new URL(candidate);
-    return Boolean(url.hostname);
-  } catch {
-    return false;
-  }
-};
-
-export const formatLinkLabel = (href: string) => {
-  try {
-    const url = new URL(href);
-    return url.hostname.replace(/^www\./, '');
-  } catch {
-    return href;
-  }
 };

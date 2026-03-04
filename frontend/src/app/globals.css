@@ -815,49 +815,6 @@ button {
   border-color: rgba(79, 107, 255, 0.7);
 }
 
-.link-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: var(--surface-overlay);
-  box-shadow: none;
-  color: inherit;
-  text-decoration: none;
-}
-
-.link-card__icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 12px;
-  background: rgba(79, 107, 255, 0.12);
-  border: 1px solid rgba(79, 107, 255, 0.18);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent);
-}
-
-.link-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 0.9rem;
-}
-
-.link-card__title {
-  margin: 0;
-  font-weight: 600;
-  color: rgba(15, 23, 42, 0.9);
-}
-
-.link-card__url {
-  font-size: 0.78rem;
-  color: rgba(15, 23, 42, 0.55);
-}
-
 .sources-panel {
   margin-top: 8px;
   border-top: 1px solid rgba(15, 23, 42, 0.08);

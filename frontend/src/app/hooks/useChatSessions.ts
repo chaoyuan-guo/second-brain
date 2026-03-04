@@ -27,17 +27,13 @@ interface UseChatSessionsResult {
   setActiveSessionId: (id: string) => void;
   inputValue: string;
   setInputValue: (value: string) => void;
-  pendingSessions: Record<string, boolean>;
   hydrated: boolean;
   isActivePending: boolean;
-  isAnyPending: boolean;
   createNewSession: () => void;
   deleteSession: (sessionId: string) => void;
   renameSession: (sessionId: string, value: string) => void;
-  clearActiveSession: () => void;
   handleSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
   abortSessionRequest: (sessionId: string) => void;
-  refreshSessionTitle: () => Promise<void>;
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -98,7 +94,6 @@ export function useChatSessions(): UseChatSessionsResult {
   const activeSession =
     sessions.find((session) => session.id === activeSessionId) ?? sessions[0] ?? defaultSession;
   const isActivePending = Boolean(activeSession && pendingSessions[activeSession.id]);
-  const isAnyPending = Object.values(pendingSessions).some(Boolean);
 
   useEffect(() => {
     sessionsRef.current = sessions;
@@ -354,17 +349,6 @@ export function useChatSessions(): UseChatSessionsResult {
     [upsertSession],
   );
 
-  const clearActiveSession = useCallback(() => {
-    if (!activeSession) return;
-    abortSessionRequest(activeSession.id);
-    upsertSession(activeSession.id, (session) => ({
-      ...session,
-      messages: [],
-    }));
-  }, [abortSessionRequest, activeSession, upsertSession]);
-
-  const refreshSessionTitle = useCallback(async () => undefined, []);
-
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
@@ -561,14 +545,6 @@ export function useChatSessions(): UseChatSessionsResult {
         let completionState: CompletionState | undefined;
         let evidence: EvidenceItem[] | undefined;
 
-        // 语义化状态文案映射
-        const phaseStatusText: Record<RunPhase, string> = {
-          retrieving: '正在检索相关信息',
-          validating: '正在验证关键证据',
-          synthesizing: '正在生成最终结论',
-          completed: '',
-        };
-
         await parseSseStream(reader, (eventName, data) => {
           let parsedValue: unknown;
           try {
@@ -629,37 +605,6 @@ export function useChatSessions(): UseChatSessionsResult {
                 completionState,
                 evidence,
                 finalizedEventVersion,
-              });
-            }
-            return;
-          }
-
-          // 处理语义中间事件 (event: semantic)
-          if (eventName === 'semantic') {
-            const eventVersion = typeof parsed.event_version === 'number' ? parsed.event_version : 0;
-
-            // 若已终态，忽略中间事件
-            if (finalizedEventVersion !== undefined) {
-              return;
-            }
-
-            // 更新过程概览
-            const po = asRecord(parsed.processOverview);
-            if (po) {
-              processOverview = {
-                phase: (['retrieving', 'validating', 'synthesizing', 'completed'].includes(asString(po.phase) || '') ? po.phase : 'retrieving') as RunPhase,
-                durationMs: typeof po.durationMs === 'number' ? po.durationMs : 0,
-                warningCount: typeof po.warningCount === 'number' ? po.warningCount : 0,
-                blockingErrorCount: typeof po.blockingErrorCount === 'number' ? po.blockingErrorCount : 0,
-                impact: (['none', 'partial', 'blocking'].includes(asString(po.impact) || '') ? po.impact : 'none') as 'none' | 'partial' | 'blocking',
-              };
-
-              const phase = processOverview.phase;
-              const statusText = phaseStatusText[phase] || '';
-
-              updateAssistantState({
-                statusText,
-                processOverview,
               });
             }
             return;
@@ -962,16 +907,12 @@ export function useChatSessions(): UseChatSessionsResult {
     setActiveSessionId,
     inputValue,
     setInputValue,
-    pendingSessions,
     hydrated,
     isActivePending,
-    isAnyPending,
     createNewSession,
     deleteSession,
     renameSession,
-    clearActiveSession,
     handleSubmit,
     abortSessionRequest,
-    refreshSessionTitle,
   };
 }

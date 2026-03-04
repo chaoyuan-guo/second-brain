@@ -56,8 +56,6 @@ from .tools import (
 
 logger = app_logger
 
-_UNKNOWN_REPLACEMENTS: dict[str, str] = {}
-_SANITIZE_TAIL = 0
 MAX_TOOL_ARGUMENT_CHARS = 8000
 MAX_TOOL_ARGUMENT_VALUE_CHARS = 1200
 MAX_TOOL_ARGUMENT_ITEMS = 50
@@ -104,10 +102,6 @@ class _StreamSanitizer:
         tail = self._tail
         self._tail = ""
         return tail
-
-
-def _should_force_unknown(query: str, *, strict: bool, expected_sources: List[str]) -> bool:
-    return False
 
 
 def _needs_quote_context(query: str) -> bool:
@@ -280,18 +274,6 @@ async def _prefetch_expected_sources(
     for source, content in snippets:
         parts.append(f"\n【来源】{source}\n{content}")
     return "\n".join(parts).strip()
-
-
-def _collect_required_tokens(query: str) -> List[str]:
-    return []
-
-
-def _build_answer_hints(query: str) -> str | None:
-    return None
-
-
-def _append_missing_tokens(content: str, query: str) -> tuple[str, str]:
-    return content, ""
 
 
 def _format_tool_status_message(

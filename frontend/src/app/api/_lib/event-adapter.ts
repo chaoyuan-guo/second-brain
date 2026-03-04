@@ -341,37 +341,3 @@ export const synthesizeFinalEvent = (acc: ProcessAccumulator): FinalEventPayload
     evidence,
   };
 };
-
-// ============================================================================
-// 事件版本管理
-// ============================================================================
-
-/**
- * 检查事件是否应该被处理（防止乱序/重复）
- */
-export const shouldProcessEvent = (
-  currentVersion: number | undefined,
-  eventVersion: number
-): boolean => {
-  // 若无当前版本，接受任何事件
-  if (currentVersion === undefined) {
-    return true;
-  }
-  // 只接受更高版本的事件
-  return eventVersion > currentVersion;
-};
-
-// ============================================================================
-// 语义化文案
-// ============================================================================
-
-const PHASE_USER_MESSAGES: Record<RunPhase, string> = {
-  retrieving: '正在检索相关信息',
-  validating: '正在验证关键证据',
-  synthesizing: '正在生成最终结论',
-  completed: '已完成',
-};
-
-export const getPhaseUserMessage = (phase: RunPhase): string => {
-  return PHASE_USER_MESSAGES[phase] || '处理中';
-};

@@ -16,24 +16,6 @@ const IconSvg = ({ children }: { children: ReactNode }) => (
   </svg>
 );
 
-export const BotsIconMini = () => (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.8"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <rect x="5" y="8" width="14" height="10" rx="3" />
-    <circle cx="9" cy="13" r="1" />
-    <circle cx="15" cy="13" r="1" />
-  </svg>
-);
-
 export const PencilIcon = () => (
   <IconSvg>
     <path d="M12 20h9" />
@@ -69,26 +51,6 @@ export const SparklesIcon = () => (
     <path d="M12 3l1.2 3.8 3.8 1.2-3.8 1.2-1.2 3.8-1.2-3.8L7 8l3.8-1.2z" />
     <path d="M5 16l.7 2 .7-2 2-.7-2-.6-.7-2-.7 2-2 .6z" />
     <path d="M18 15l.6 1.4.6-1.4 1.4-.6-1.4-.6-.6-1.4-.6 1.4-1.4.6z" />
-  </IconSvg>
-);
-
-export const SunIcon = () => (
-  <IconSvg>
-    <circle cx="12" cy="12" r="4" />
-    <path d="M12 2v2" />
-    <path d="M12 20v2" />
-    <path d="m5 5 1.5 1.5" />
-    <path d="m17.5 17.5 1.5 1.5" />
-    <path d="M2 12h2" />
-    <path d="M20 12h2" />
-    <path d="m5 19 1.5-1.5" />
-    <path d="m17.5 6.5 1.5-1.5" />
-  </IconSvg>
-);
-
-export const MoonIcon = () => (
-  <IconSvg>
-    <path d="M21 14.5A8.38 8.38 0 0 1 12.5 6 8.5 8.5 0 1 0 21 14.5z" />
   </IconSvg>
 );
 
