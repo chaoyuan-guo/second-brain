@@ -1,16 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import {
-  type ChatMessage,
-  type DecisionSummary,
-  type ProcessOverview,
-  type CompletionState,
-  type EvidenceItem,
-} from '../../lib/chat-types';
+import { useState, useMemo } from 'react';
+import type { ChatMessage, CitationRef } from '../../lib/chat-types';
+import { FullResponseMarkdown } from './FullResponseMarkdown';
 import { ReferencesPanel } from './ReferencesPanel';
 import { HonestyBanner } from './HonestyBanner';
-import { FullResponseMarkdown } from './FullResponseMarkdown';
+import { InlineCitation } from './InlineCitation';
 
 // ============================================================================
 // 辅助函数
@@ -47,7 +42,7 @@ const hasValidStructuredData = (message: ChatMessage): boolean => {
  */
 const renderCitedContent = (
   content: string,
-  citationMap: Record<string, any>,
+  citationMap: Record<string, CitationRef>,
   onOpenPreview?: (path: string, title: string, ref?: any) => void
 ): React.ReactNode => {
   const parts: React.ReactNode[] = [];
@@ -63,31 +58,16 @@ const renderCitedContent = (
       parts.push(content.slice(lastIndex, match.index));
     }
     
-    const citationId = match[1];
-    const ref = citationMap[citationId];
-    const hasRef = !!ref;
-    const isWeak = ref?.retrievalScore !== undefined && ref.retrievalScore < 0.8;
+    const citationId = `c${match[1]}`; // 完整格式 "c01"
     
-    // 添加引用标记
+    // 使用 InlineCitation 组件
     parts.push(
-      <span
+      <InlineCitation
         key={`citation-${match.index}`}
-        className={`inline-citation ${hasRef ? 'has-ref' : ''} ${isWeak ? 'weak-match' : ''}`}
-        onClick={() => {
-          if (hasRef && onOpenPreview) {
-            onOpenPreview(
-              ref.sourcePath,
-              ref.sourceTitle || ref.sourcePath.split('/').pop() || '来源',
-              { char_offset: ref.charOffsetStart, snippet: ref.snippet }
-            );
-          }
-        }}
-        title={ref?.sourceTitle || ref?.sourcePath || '未知来源'}
-      >
-        <span className="citation-bracket">[</span>
-        <span className="citation-id">c{citationId}</span>
-        <span className="citation-bracket">]</span>
-      </span>
+        citationId={citationId}
+        citationMap={citationMap}
+        onOpenPreview={onOpenPreview}
+      />
     );
     
     lastIndex = match.index + match[0].length;
@@ -197,6 +177,25 @@ export function AnswerPanel({
   const answerContent = directAnswer || decisionSummary?.conclusion || message.content.split('\n')[0];
   const analysisContent = fullAnalysis || message.content;
 
+  // 构建引用列表（优先使用 references，降级使用 sourceRefs）
+  const displayReferences = useMemo(() => {
+    if (references && references.length > 0) {
+      return references;
+    }
+    // 降级：从 sourceRefs 构建文件级引用
+    if (message.sourceRefs && message.sourceRefs.length > 0) {
+      return message.sourceRefs.map((ref, idx) => ({
+        id: `fallback-${idx}`,
+        sourcePath: ref.path,
+        sourceTitle: ref.heading || ref.path.split('/').pop(),
+        heading: ref.heading,
+        snippet: ref.snippet,
+        charOffsetStart: ref.char_offset,
+      }));
+    }
+    return null;
+  }, [references, message.sourceRefs]);
+
   return (
     <div className="answer-panel evidence-traceable">
       {/* 1. 诚实性提示横幅（当证据不足时） */}
@@ -212,13 +211,38 @@ export function AnswerPanel({
         </div>
       </section>
 
-      {/* 3. 来自你的笔记（References Panel） */}
-      {references && references.length > 0 && (
+      {/* 3. 来自你的笔记（References Panel）- 支持 sourceRefs 降级 */}
+      {displayReferences && displayReferences.length > 0 && (
         <section className="answer-section references-section">
-          <ReferencesPanel 
-            references={references} 
-            onOpenPreview={onOpenPreview}
-          />
+          {references && references.length > 0 ? (
+            <ReferencesPanel 
+              references={references} 
+              onOpenPreview={onOpenPreview}
+            />
+          ) : (
+            <div className="fallback-references">
+              <h3 className="fallback-title">相关文件来源</h3>
+              <ul className="fallback-list">
+                {displayReferences.map((ref, idx) => (
+                  <li key={idx} className="fallback-item">
+                    <button
+                      className="fallback-link"
+                      onClick={() => onOpenPreview?.(
+                        ref.sourcePath,
+                        ref.sourceTitle || ref.sourcePath.split('/').pop() || '来源',
+                        { char_offset: ref.charOffsetStart, snippet: ref.snippet }
+                      )}
+                    >
+                      {ref.sourceTitle || ref.sourcePath.split('/').pop()}
+                    </button>
+                    {ref.snippet && (
+                      <p className="fallback-snippet">{ref.snippet.slice(0, 120)}...</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
       )}
 

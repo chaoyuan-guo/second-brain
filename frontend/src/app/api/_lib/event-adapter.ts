@@ -330,12 +330,13 @@ export const extractCitations = (content: string): CitationRef[] => {
   const citations: CitationRef[] = [];
   const seen = new Set<string>();
 
-  // 匹配 [cxx] 格式，x 为数字
+  // 匹配 [cxx] 格式，x 为数字，提取完整 ID（如 "c01"）
   const regex = /\[c(\d{2,3})\]/g;
   let match;
 
   while ((match = regex.exec(content)) !== null) {
-    const id = match[1];
+    const numericPart = match[1];
+    const id = `c${numericPart}`; // 保持完整格式 "c01"
     if (!seen.has(id)) {
       seen.add(id);
       citations.push({
@@ -448,7 +449,15 @@ export const generateProcessSummary = (
       case 'retrieve':
         if (call.name === 'query_my_notes') {
           const query = (call.arguments?.query as string) || '相关笔记';
-          const resultCount = Array.isArray(call.result) ? call.result.length : 0;
+          // 支持 result 为对象（含 results 数组）或数组两种格式
+          let resultCount = 0;
+          if (call.result) {
+            if (Array.isArray(call.result)) {
+              resultCount = call.result.length;
+            } else if (typeof call.result === 'object' && Array.isArray((call.result as any).results)) {
+              resultCount = (call.result as any).results.length;
+            }
+          }
           summary = `搜索笔记：找到 ${resultCount} 条相关记录`;
           detail = `查询："${query}"`;
         } else if (call.name === 'web_search') {
@@ -504,14 +513,14 @@ export const computeHonestySignals = (
   hasErrorCalls: boolean,
   errorCount: number
 ): HonestySignals => {
+  // 强匹配：retrievalScore >= 0.8 的引用（分数越高匹配越好）
+  const strongMatches = citations.filter(
+    (c) => c.retrievalScore !== undefined && c.retrievalScore >= 0.8
+  );
+
   // 弱匹配：retrievalScore < 0.8 的引用
   const weakMatches = citations.filter(
     (c) => c.retrievalScore !== undefined && c.retrievalScore < 0.8
-  );
-
-  // 强匹配：retrievalScore >= 0.8 的引用
-  const strongMatches = citations.filter(
-    (c) => c.retrievalScore !== undefined && c.retrievalScore >= 0.8
   );
 
   // 无分数的引用（无法验证）

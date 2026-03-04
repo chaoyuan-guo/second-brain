@@ -17,6 +17,8 @@ import {
   type CompletionState,
   type EvidenceItem,
   type RunPhase,
+  // 证据与透明性新增类型
+  type HonestySignals,
 } from '../lib/chat-types';
 import { createEmptySession, createId, deriveTitle } from '../lib/chat-helpers';
 
@@ -595,6 +597,25 @@ export function useChatSessions(): UseChatSessionsResult {
               completionState = cs;
               evidence = ev as EvidenceItem[];
 
+              // 提取新增字段（证据与透明性）
+              const directAnswer = asString(parsed.directAnswer);
+              const fullAnalysis = asString(parsed.fullAnalysis);
+              const references = Array.isArray(parsed.references) ? parsed.references : undefined;
+              const processSummary = Array.isArray(parsed.processSummary) ? parsed.processSummary : undefined;
+              const honestySignals = parsed.honestySignals && typeof parsed.honestySignals === 'object' 
+                ? parsed.honestySignals as HonestySignals 
+                : undefined;
+
+              // 构建 citationMap
+              const citationMap: Record<string, any> = {};
+              if (references && Array.isArray(references)) {
+                references.forEach((ref: any) => {
+                  if (ref && typeof ref.id === 'string') {
+                    citationMap[ref.id] = ref;
+                  }
+                });
+              }
+
               // 更新状态
               updateAssistantState({
                 isThinking: false,
@@ -605,6 +626,12 @@ export function useChatSessions(): UseChatSessionsResult {
                 completionState,
                 evidence,
                 finalizedEventVersion,
+                directAnswer,
+                fullAnalysis,
+                references,
+                citationMap,
+                processSummary,
+                honestySignals,
               });
             }
             return;
