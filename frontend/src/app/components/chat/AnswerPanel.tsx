@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   type ChatMessage,
   type DecisionSummary,
@@ -8,11 +8,13 @@ import {
   type CompletionState,
   type EvidenceItem,
 } from '../../lib/chat-types';
-import { ConclusionCard } from './ConclusionCard';
-import { ActionChecklist } from './ActionChecklist';
-import { RiskConfidenceCard } from './RiskConfidenceCard';
-import { EvidencePanel } from './EvidencePanel';
+import { ReferencesPanel } from './ReferencesPanel';
+import { HonestyBanner } from './HonestyBanner';
 import { FullResponseMarkdown } from './FullResponseMarkdown';
+
+// ============================================================================
+// 辅助函数
+// ============================================================================
 
 /**
  * 判断是否具备有效结构化数据
@@ -39,6 +41,70 @@ const hasValidStructuredData = (message: ChatMessage): boolean => {
   return true;
 };
 
+/**
+ * 渲染带行内引用的内容
+ * 解析 [cxx] 标记并替换为 InlineCitation 组件
+ */
+const renderCitedContent = (
+  content: string,
+  citationMap: Record<string, any>,
+  onOpenPreview?: (path: string, title: string, ref?: any) => void
+): React.ReactNode => {
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  
+  // 匹配 [cxx] 格式
+  const regex = /\[c(\d{2,3})\]/g;
+  let match;
+  
+  while ((match = regex.exec(content)) !== null) {
+    // 添加匹配前的文本
+    if (match.index > lastIndex) {
+      parts.push(content.slice(lastIndex, match.index));
+    }
+    
+    const citationId = match[1];
+    const ref = citationMap[citationId];
+    const hasRef = !!ref;
+    const isWeak = ref?.retrievalScore !== undefined && ref.retrievalScore < 0.8;
+    
+    // 添加引用标记
+    parts.push(
+      <span
+        key={`citation-${match.index}`}
+        className={`inline-citation ${hasRef ? 'has-ref' : ''} ${isWeak ? 'weak-match' : ''}`}
+        onClick={() => {
+          if (hasRef && onOpenPreview) {
+            onOpenPreview(
+              ref.sourcePath,
+              ref.sourceTitle || ref.sourcePath.split('/').pop() || '来源',
+              { char_offset: ref.charOffsetStart, snippet: ref.snippet }
+            );
+          }
+        }}
+        title={ref?.sourceTitle || ref?.sourcePath || '未知来源'}
+      >
+        <span className="citation-bracket">[</span>
+        <span className="citation-id">c{citationId}</span>
+        <span className="citation-bracket">]</span>
+      </span>
+    );
+    
+    lastIndex = match.index + match[0].length;
+  }
+  
+  // 添加剩余文本
+  if (lastIndex < content.length) {
+    parts.push(content.slice(lastIndex));
+  }
+  
+  return parts;
+};
+
+// ============================================================================
+// 组件 Props
+// ============================================================================
+
 interface AnswerPanelProps {
   message: ChatMessage;
   copiedKey: string | null;
@@ -46,9 +112,19 @@ interface AnswerPanelProps {
   onOpenPreview?: (path: string, title: string, ref?: { char_offset?: number; snippet?: string }) => void;
 }
 
+// ============================================================================
+// AnswerPanel 组件
+// ============================================================================
+
 /**
- * AnswerPanel - 主答案面板
- * 遵循 Answer-first 原则，默认展示结论与行动，细节按需展开
+ * AnswerPanel - 三段式答案面板
+ * 
+ * 布局结构：
+ * 1. 直接回答（Direct Answer）- 最优先展示
+ * 2. 来自你的笔记（References Panel）- 展示引用来源
+ * 3. 完整分析（Full Analysis）- 可折叠的详细分析
+ * 
+ * 诚实性原则：当证据不足时，显式展示 HonestyBanner
  */
 export function AnswerPanel({
   message,
@@ -56,6 +132,22 @@ export function AnswerPanel({
   onCopyCode,
   onOpenPreview,
 }: AnswerPanelProps) {
+  const [isAnalysisExpanded, setIsAnalysisExpanded] = useState(false);
+  
+  // 构建引用映射表
+  const citationMap = useMemo(() => {
+    const map: Record<string, any> = {};
+    if (message.citationMap) {
+      return message.citationMap;
+    }
+    if (message.references) {
+      message.references.forEach(ref => {
+        map[ref.id] = ref;
+      });
+    }
+    return map;
+  }, [message.citationMap, message.references]);
+  
   const hasStructured = useMemo(() => hasValidStructuredData(message), [message]);
 
   // 降级渲染：缺失结构化字段时，展示原始回答正文和降级提示
@@ -68,19 +160,23 @@ export function AnswerPanel({
           </svg>
           <span>结构化数据暂不可用，以下为原始回答</span>
         </div>
-        <FullResponseMarkdown
-          content={message.content}
-          messageId={message.id}
-          copiedKey={copiedKey}
-          onCopyCode={onCopyCode}
-        />
+        <div className="direct-answer">
+          {renderCitedContent(message.content, citationMap, onOpenPreview)}
+        </div>
       </div>
     );
   }
 
-  const { decisionSummary, processOverview, completionState, evidence } = message;
+  const { 
+    decisionSummary, 
+    completionState, 
+    directAnswer, 
+    fullAnalysis,
+    references,
+    honestySignals 
+  } = message;
 
-  // 根据完成状态渲染不同的布局
+  // 失败状态渲染
   if (completionState === 'failed') {
     return (
       <div className="answer-panel failed">
@@ -90,46 +186,79 @@ export function AnswerPanel({
             {decisionSummary?.failureReason || '请重试或缩小问题范围'}
           </p>
         </div>
-        {/* 即使失败也展示完整内容 */}
-        <FullResponseMarkdown
-          content={message.content}
-          messageId={message.id}
-          copiedKey={copiedKey}
-          onCopyCode={onCopyCode}
-        />
+        <div className="direct-answer">
+          {renderCitedContent(message.content, citationMap, onOpenPreview)}
+        </div>
       </div>
     );
   }
 
+  // 使用直接回答或从完整内容中提取
+  const answerContent = directAnswer || decisionSummary?.conclusion || message.content.split('\n')[0];
+  const analysisContent = fullAnalysis || message.content;
+
   return (
-    <div className="answer-panel">
-      {/* 1. 一句话结论 */}
-      <ConclusionCard conclusion={decisionSummary!.conclusion} />
-
-      {/* 2. 下一步行动 */}
-      {decisionSummary!.actions.length > 0 && (
-        <ActionChecklist actions={decisionSummary!.actions} />
+    <div className="answer-panel evidence-traceable">
+      {/* 1. 诚实性提示横幅（当证据不足时） */}
+      {honestySignals && !honestySignals.hasSufficientEvidence && (
+        <HonestyBanner signals={honestySignals} />
       )}
 
-      {/* 3. 风险与置信度 */}
-      <RiskConfidenceCard
-        confidence={decisionSummary!.confidence}
-        risks={decisionSummary!.risks}
-        assumptions={decisionSummary!.assumptions}
-      />
+      {/* 2. 直接回答（Direct Answer）- 最优先展示 */}
+      <section className="answer-section direct-answer-section">
+        <h2 className="section-title">回答</h2>
+        <div className="direct-answer-content">
+          {renderCitedContent(answerContent, citationMap, onOpenPreview)}
+        </div>
+      </section>
 
-      {/* 4. 关键证据 */}
-      {evidence!.length > 0 && (
-        <EvidencePanel evidence={evidence!} onOpenPreview={onOpenPreview} />
+      {/* 3. 来自你的笔记（References Panel） */}
+      {references && references.length > 0 && (
+        <section className="answer-section references-section">
+          <ReferencesPanel 
+            references={references} 
+            onOpenPreview={onOpenPreview}
+          />
+        </section>
       )}
 
-      {/* 5. 完整展开内容 */}
-      <FullResponseMarkdown
-        content={message.content}
-        messageId={message.id}
-        copiedKey={copiedKey}
-        onCopyCode={onCopyCode}
-      />
+      {/* 4. 完整分析（Full Analysis）- 可折叠 */}
+      <section className="answer-section analysis-section">
+        <button
+          className={`analysis-toggle ${isAnalysisExpanded ? 'expanded' : ''}`}
+          onClick={() => setIsAnalysisExpanded(!isAnalysisExpanded)}
+        >
+          <span className="toggle-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d={isAnalysisExpanded ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
+            </svg>
+          </span>
+          <span className="toggle-label">
+            {isAnalysisExpanded ? '收起完整分析' : '展开完整分析'}
+          </span>
+          {analysisContent.length > 500 && (
+            <span className="toggle-hint">（详细推理过程）</span>
+          )}
+        </button>
+        
+        {isAnalysisExpanded && (
+          <div className="full-analysis-content">
+            <FullResponseMarkdown
+              content={analysisContent}
+              messageId={message.id}
+              copiedKey={copiedKey}
+              onCopyCode={onCopyCode}
+            />
+          </div>
+        )}
+      </section>
+
+      {/* 5. 旧版兼容：证据面板（如果存在 legacy evidence 数据） */}
+      {message.evidence && message.evidence.length > 0 && !references && (
+        <section className="answer-section legacy-evidence">
+          <div className="legacy-notice">以下是旧版证据展示</div>
+        </section>
+      )}
     </div>
   );
 }

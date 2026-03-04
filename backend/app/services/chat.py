@@ -202,6 +202,96 @@ def _normalize_source_path(path: str) -> str:
     return f"data/notes/my_markdowns/{normalized}"
 
 
+class CitationRegistry:
+    """引用 ID 注册表，用于将检索/读取片段映射为稳定的 citation_id。"""
+
+    def __init__(self) -> None:
+        self._entries: List[Dict[str, Any]] = []
+        self._id_counter: int = 0
+
+    def register_from_query(
+        self,
+        source_path: str,
+        heading: str,
+        char_offset: Optional[int],
+        snippet: str,
+        score: Optional[float],
+    ) -> str:
+        key = (source_path, heading, char_offset)
+        for entry in self._entries:
+            if (entry.get("source_path"), entry.get("heading"), entry.get("char_offset")) == key:
+                return entry["citation_id"]
+
+        self._id_counter += 1
+        citation_id = f"c{self._id_counter:02d}"
+        self._entries.append({
+            "citation_id": citation_id,
+            "source_path": source_path,
+            "heading": heading,
+            "char_offset": char_offset,
+            "snippet": snippet,
+            "score": score,
+        })
+        return citation_id
+
+    def register_from_read(
+        self,
+        source_file: str,
+        offset: int,
+        snippet: str,
+    ) -> str:
+        key = (source_file, offset)
+        for entry in self._entries:
+            if (entry.get("source_path"), entry.get("char_offset")) == key:
+                return entry["citation_id"]
+
+        self._id_counter += 1
+        citation_id = f"c{self._id_counter:02d}"
+        self._entries.append({
+            "citation_id": citation_id,
+            "source_path": source_file,
+            "heading": "",
+            "char_offset": offset,
+            "snippet": snippet,
+            "score": None,
+        })
+        return citation_id
+
+    def get_all_entries(self) -> List[Dict[str, Any]]:
+        return list(self._entries)
+
+    def get_citation_map(self) -> Dict[str, Dict[str, Any]]:
+        return {entry["citation_id"]: entry for entry in self._entries}
+
+    def format_for_prompt(self) -> str:
+        if not self._entries:
+            return ""
+        lines = ["【可用引用 ID 清单】以下证据片段可在回答中引用："]
+        for entry in self._entries:
+            cid = entry["citation_id"]
+            source = entry["source_path"]
+            heading = entry.get("heading", "")
+            snippet = (entry.get("snippet") or "")[:100]
+            score = entry.get("score")
+            score_hint = f"（相关度: {score:.2f}）" if score is not None else ""
+            if heading:
+                lines.append(f"[{cid}] {source}#{heading}{score_hint}: {snippet}…")
+            else:
+                lines.append(f"[{cid}] {source}{score_hint}: {snippet}…")
+        return "\n".join(lines)
+
+    def get_best_score(self) -> Optional[float]:
+        scores: List[float] = []
+        for e in self._entries:
+            s = e.get("score")
+            if s is not None and isinstance(s, (int, float)):
+                scores.append(float(s))
+        return min(scores) if scores else None
+
+    def get_hit_count(self) -> int:
+        return len(self._entries)
+
+
 def _match_expected_sources(used: List[str], expected: List[str]) -> List[str]:
     if not used or not expected:
         return []
@@ -1250,6 +1340,8 @@ async def run_chat_conversation(
         str(item) for item in (eval_context.get("expected_sources") or []) if str(item)
     ]
     eval_mode = bool(strict_eval or question_id or expected_sources)
+    citation_registry = CitationRegistry()
+    citation_hint_injected = False
 
     last_user = messages[-1].get("content") if messages else ""
     last_user_prefix = ""
@@ -1357,6 +1449,41 @@ async def run_chat_conversation(
                 },
             )
         # === 注入结束 ===
+
+        # === Citation Hint 注入 ===
+        citation_entries = citation_registry.get_all_entries()
+        if citation_entries and not citation_hint_injected:
+            citation_list = citation_registry.format_for_prompt()
+            best_score = citation_registry.get_best_score()
+            hit_count = citation_registry.get_hit_count()
+            honesty_hint = ""
+            if hit_count == 0:
+                honesty_hint = '\n\n注意：检索未命中任何相关笔记，请明确告知用户「笔记中没有这方面的记录」，禁止使用通用知识回答。'
+            elif best_score is not None and best_score > 0.8:
+                honesty_hint = '\n\n注意：检索结果相关性较低（score > 0.8），请在回答开头声明「检索到的相关内容有限，以下回答可能不完整」，并说明局限性。'
+            elif hit_count < 3:
+                honesty_hint = '\n\n注意：有效检索结果不足 3 条，请在回答中说明依据有限。'
+
+            citation_hint = (
+                f'{citation_list}\n\n'
+                f'引用规则：\n'
+                f'1. 每个关键事实句后必须附上对应的引用标记，格式为 [cxx]（如 [c01]、[c02]）\n'
+                f'2. 只能引用上述清单中存在的 citation_id，禁止编造引用 ID\n'
+                f'3. 若上述清单为空或不足以支撑回答，必须先声明「笔记中没有这方面的记录」或「检索结果有限」，再补充说明\n'
+                f'4. 无可靠引用时，可在陈述前加 [基于笔记推断]，并说明推断依据与局限性{honesty_hint}'
+            )
+            messages.append({"role": "system", "content": citation_hint})
+            citation_hint_injected = True
+            logger.info(
+                "Citation hint injected",
+                extra={
+                    "trace_id": trace_id,
+                    "citation_count": len(citation_entries),
+                    "best_score": best_score,
+                    "turn": turn + 1,
+                },
+            )
+        # === Citation 注入结束 ===
 
         assistant_message = await _maybe_await(
             _request_completion(
@@ -1547,6 +1674,7 @@ async def run_chat_conversation(
                     turn=turn,
                     status=status,
                 )
+                citation_ids_for_tool: List[str] = []
                 if isinstance(result, dict):
                     for item in result.get("results") or []:
                         source_path = item.get("source_path")
@@ -1562,12 +1690,23 @@ async def run_chat_conversation(
                             jump_offset = item.get("char_offset")
                             if jump_offset is None:
                                 jump_offset = item.get("heading_char_offset")
+                            score = item.get("score")
+                            citation_id = citation_registry.register_from_query(
+                                source_path=normalized,
+                                heading=heading,
+                                char_offset=jump_offset,
+                                snippet=snippet,
+                                score=score if isinstance(score, (int, float)) else None,
+                            )
+                            citation_ids_for_tool.append(citation_id)
                             used_source_refs.append(
                                 {
                                     "path": normalized,
                                     "heading": heading,
                                     "char_offset": jump_offset,
                                     "snippet": snippet,
+                                    "score": score,
+                                    "citation_id": citation_id,
                                 }
                             )
                 messages.append(
@@ -1811,7 +1950,22 @@ async def run_chat_conversation(
                     normalized = _normalize_source_path(source_file)
                     used_sources.append(normalized)
                     read_files.append(normalized)
-                    used_source_refs.append({"path": normalized, "heading": ""})
+                    content_text = ""
+                    if isinstance(result, dict):
+                        content_text = str(result.get("content", ""))[:200]
+                    read_offset = result.get("offset", 0) if isinstance(result, dict) else 0
+                    citation_id = citation_registry.register_from_read(
+                        source_file=normalized,
+                        offset=int(read_offset) if read_offset else 0,
+                        snippet=content_text,
+                    )
+                    used_source_refs.append({
+                        "path": normalized,
+                        "heading": "",
+                        "char_offset": read_offset,
+                        "snippet": content_text,
+                        "citation_id": citation_id,
+                    })
                 if event_callback:
                     try:
                         stage = "end" if not _is_tool_error_output(tool_output) else "error"

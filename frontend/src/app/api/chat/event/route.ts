@@ -52,12 +52,16 @@ const extractSourceRefs = (metadata: unknown): EvidenceRef[] => {
     const heading = asString(entry?.heading)?.trim();
     const snippet = asString(entry?.snippet);
     const charOffset = asNumber(entry?.char_offset);
+    const score = asNumber(entry?.score);
+    const citationId = asString(entry?.citation_id);
 
     refs.push({
       sourcePath: path,
       heading,
       snippet,
       charOffsetStart: charOffset,
+      retrievalScore: score,
+      citationId,
     });
   });
 

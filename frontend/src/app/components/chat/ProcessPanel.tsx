@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import type { ChatMessage, ProcessOverview, ThinkingStep } from '../../lib/chat-types';
+import type { ChatMessage, ProcessOverview, ThinkingStep, ProcessStepSummary } from '../../lib/chat-types';
 import { ProcessOverviewBar } from './ProcessOverviewBar';
 import { ProcessGroupList } from './ProcessGroupList';
 import { ProcessDebugDrawer } from './ProcessDebugDrawer';
@@ -10,7 +10,12 @@ import { ProcessDebugDrawer } from './ProcessDebugDrawer';
  * 判断是否具备有效的过程数据
  */
 const hasValidProcessData = (message: ChatMessage): boolean => {
-  const { processOverview, thinkingSteps } = message;
+  const { processOverview, thinkingSteps, processSummary } = message;
+
+  // 优先使用语义化的 processSummary
+  if (Array.isArray(processSummary) && processSummary.length > 0) {
+    return true;
+  }
 
   // 需要有 processOverview 或 thinkingSteps
   if (processOverview && typeof processOverview === 'object' && typeof processOverview.phase === 'string') {
@@ -31,6 +36,8 @@ interface ProcessPanelProps {
 /**
  * ProcessPanel - 过程面板
  * 默认折叠为摘要条，展开后显示语义分组与调试信息
+ * 
+ * 新增：支持语义化的 processSummary 展示
  */
 export function ProcessPanel({ message }: ProcessPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -42,7 +49,7 @@ export function ProcessPanel({ message }: ProcessPanelProps) {
     return null;
   }
 
-  const { processOverview, thinkingSteps } = message;
+  const { processOverview, thinkingSteps, processSummary } = message;
 
   // 从 thinkingSteps 中提取工具调用
   const toolCalls = useMemo(() => {
@@ -62,8 +69,13 @@ export function ProcessPanel({ message }: ProcessPanelProps) {
         onToggle={() => setIsExpanded(!isExpanded)}
       />
 
-      {/* 展开后的过程分组列表 */}
-      {isExpanded && (
+      {/* 展开后的语义化过程摘要 */}
+      {isExpanded && processSummary && processSummary.length > 0 && (
+        <SemanticProcessSummary steps={processSummary} />
+      )}
+
+      {/* 展开后的过程分组列表（旧版兼容） */}
+      {isExpanded && (!processSummary || processSummary.length === 0) && (
         <ProcessGroupList
           thinkingSteps={thinkingSteps}
           onOpenDebug={() => setIsDebugOpen(true)}
@@ -77,6 +89,67 @@ export function ProcessPanel({ message }: ProcessPanelProps) {
           onClose={() => setIsDebugOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+// ============================================================================
+// 语义化过程摘要组件
+// ============================================================================
+
+interface SemanticProcessSummaryProps {
+  steps: ProcessStepSummary[];
+}
+
+const phaseIcons: Record<string, string> = {
+  retrieving: '🔍',
+  validating: '✓',
+  synthesizing: '💡',
+  completed: '✓',
+};
+
+const phaseLabels: Record<string, string> = {
+  retrieving: '检索',
+  validating: '验证',
+  synthesizing: '合成',
+  completed: '完成',
+};
+
+/**
+ * SemanticProcessSummary - 语义化过程摘要
+ * 展示用户友好的过程步骤描述
+ */
+function SemanticProcessSummary({ steps }: SemanticProcessSummaryProps) {
+  return (
+    <div className="semantic-process-summary">
+      <div className="process-timeline">
+        {steps.map((step, index) => {
+          const phase = step.phase || 'synthesizing';
+          const icon = phaseIcons[phase] || '•';
+          const phaseLabel = phaseLabels[phase] || phase;
+          
+          return (
+            <div key={step.stepNumber} className={`timeline-item status-${step.status || 'completed'}`}>
+              <div className="timeline-marker">
+                <span className="step-number">{step.stepNumber}</span>
+              </div>
+              <div className="timeline-content">
+                <div className="step-header">
+                  <span className="step-icon">{icon}</span>
+                  <span className="step-phase">{phaseLabel}</span>
+                  <span className="step-summary">{step.summary}</span>
+                </div>
+                {step.detail && (
+                  <div className="step-detail">{step.detail}</div>
+                )}
+                {step.durationMs && step.durationMs > 100 && (
+                  <div className="step-duration">{Math.round(step.durationMs / 100) / 10}s</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

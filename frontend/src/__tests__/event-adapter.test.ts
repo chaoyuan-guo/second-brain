@@ -1,0 +1,256 @@
+import { describe, expect, it } from 'vitest';
+import {
+  extractCitations,
+  enrichCitationsWithEvidence,
+  splitDirectAnswer,
+  generateProcessSummary,
+  computeHonestySignals,
+  type ToolCallRecord,
+} from '../app/api/_lib/event-adapter';
+import type { CitationRef, EvidenceRef } from '../app/lib/chat-types';
+
+// ============================================================================
+// extractCitations 测试
+// ============================================================================
+
+describe('extractCitations', () => {
+  it('should extract [cxx] citations from content', () => {
+    const content = '这是回答 [c01] 包含引用 [c02] 多个引用 [c12]';
+    const citations = extractCitations(content);
+    
+    expect(citations).toHaveLength(3);
+    expect(citations[0].id).toBe('01');
+    expect(citations[1].id).toBe('02');
+    expect(citations[2].id).toBe('12');
+  });
+
+  it('should handle duplicate citations (deduplicate)', () => {
+    const content = '重复引用 [c01] 再次出现 [c01] 和 [c01]';
+    const citations = extractCitations(content);
+    
+    expect(citations).toHaveLength(1);
+    expect(citations[0].id).toBe('01');
+  });
+
+  it('should return empty array for content without citations', () => {
+    const content = '这是没有引用的纯文本回答';
+    const citations = extractCitations(content);
+    
+    expect(citations).toHaveLength(0);
+  });
+
+  it('should handle edge case citation IDs', () => {
+    const content = '边界测试 [c00] [c99] [c001]';
+    const citations = extractCitations(content);
+    
+    // 只匹配 2-3 位数字
+    expect(citations).toHaveLength(3);
+    expect(citations.map(c => c.id)).toContain('00');
+    expect(citations.map(c => c.id)).toContain('99');
+  });
+});
+
+// ============================================================================
+// enrichCitationsWithEvidence 测试
+// ============================================================================
+
+describe('enrichCitationsWithEvidence', () => {
+  it('should enrich citations with evidence info', () => {
+    const citations: CitationRef[] = [
+      { id: '01', sourcePath: '', retrievalScore: undefined, snippet: undefined },
+      { id: '02', sourcePath: '', retrievalScore: undefined, snippet: undefined },
+    ];
+    
+    const sourceRefMap = new Map<string, EvidenceRef>([
+      ['path1|heading|0|snippet', {
+        sourcePath: '/notes/doc1.md',
+        sourceTitle: '文档1',
+        heading: '章节1',
+        charOffsetStart: 0,
+        snippet: '内容片段1',
+        citationId: '01',
+        retrievalScore: 0.85,
+      }],
+    ]);
+
+    const enriched = enrichCitationsWithEvidence(citations, sourceRefMap);
+    
+    expect(enriched[0].sourcePath).toBe('/notes/doc1.md');
+    expect(enriched[0].retrievalScore).toBe(0.85);
+    expect(enriched[0].snippet).toBe('内容片段1');
+    expect(enriched[1].sourcePath).toBe(''); // 未找到匹配
+  });
+
+  it('should handle empty sourceRefMap', () => {
+    const citations: CitationRef[] = [
+      { id: '01', sourcePath: '', retrievalScore: undefined, snippet: undefined },
+    ];
+    
+    const enriched = enrichCitationsWithEvidence(citations, new Map());
+    
+    expect(enriched[0].sourcePath).toBe('');
+  });
+});
+
+// ============================================================================
+// splitDirectAnswer 测试
+// ============================================================================
+
+describe('splitDirectAnswer', () => {
+  it('should split content by separator', () => {
+    const content = '这是直接回答\n---\n这是详细分析';
+    const { directAnswer, fullAnalysis } = splitDirectAnswer(content);
+    
+    expect(directAnswer).toBe('这是直接回答');
+    expect(fullAnalysis).toBe('这是详细分析');
+  });
+
+  it('should split by "完整分析" marker', () => {
+    const content = '这是直接回答。完整分析：这是详细分析内容';
+    const { directAnswer, fullAnalysis } = splitDirectAnswer(content);
+    
+    expect(directAnswer).toBe('这是直接回答。');
+    expect(fullAnalysis).toContain('完整分析');
+  });
+
+  it('should default to first 2-3 sentences', () => {
+    const content = '第一句。第二句。第三句。第四句。第五句。';
+    const { directAnswer, fullAnalysis } = splitDirectAnswer(content);
+    
+    expect(directAnswer.split('。').length).toBeGreaterThanOrEqual(2);
+    expect(fullAnalysis.length).toBeGreaterThan(0);
+  });
+
+  it('should handle short content', () => {
+    const content = '只有一句话';
+    const { directAnswer, fullAnalysis } = splitDirectAnswer(content);
+    
+    expect(directAnswer).toBe('只有一句话');
+    expect(fullAnalysis).toBe('');
+  });
+});
+
+// ============================================================================
+// generateProcessSummary 测试
+// ============================================================================
+
+describe('generateProcessSummary', () => {
+  it('should generate semantic summaries for tool calls', () => {
+    const completedCalls: ToolCallRecord[] = [
+      {
+        id: '1',
+        name: 'query_my_notes',
+        status: 'completed',
+        arguments: { query: '搜索关键词' },
+        result: [{ path: 'test.md' }],
+        startedAt: 1000,
+        completedAt: 2000,
+      },
+    ];
+
+    const summaries = generateProcessSummary(completedCalls, []);
+    
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0].summary).toContain('搜索笔记');
+    expect(summaries[0].phase).toBe('retrieving');
+    expect(summaries[0].durationMs).toBe(1000);
+  });
+
+  it('should handle error calls', () => {
+    const errorCalls: ToolCallRecord[] = [
+      {
+        id: '1',
+        name: 'web_search',
+        status: 'error',
+        error: '网络错误',
+        startedAt: 1000,
+        completedAt: 1500,
+      },
+    ];
+
+    const summaries = generateProcessSummary([], errorCalls);
+    
+    expect(summaries[0].summary).toContain('失败');
+    expect(summaries[0].detail).toBe('网络错误');
+  });
+
+  it('should sort calls by start time', () => {
+    const calls: ToolCallRecord[] = [
+      { id: '2', name: 'read_note_file', status: 'completed', startedAt: 2000, completedAt: 2500 },
+      { id: '1', name: 'query_my_notes', status: 'completed', startedAt: 1000, completedAt: 1500 },
+    ];
+
+    const summaries = generateProcessSummary(calls, []);
+    
+    expect(summaries[0].stepNumber).toBe(1);
+    expect(summaries[1].stepNumber).toBe(2);
+  });
+});
+
+// ============================================================================
+// computeHonestySignals 测试
+// ============================================================================
+
+describe('computeHonestySignals', () => {
+  it('should identify strong evidence quality', () => {
+    const citations: CitationRef[] = [
+      { id: '01', sourcePath: '/a.md', retrievalScore: 0.9 },
+      { id: '02', sourcePath: '/b.md', retrievalScore: 0.85 },
+      { id: '03', sourcePath: '/c.md', retrievalScore: 0.88 },
+    ];
+
+    const signals = computeHonestySignals(citations, false, 0);
+    
+    expect(signals.evidenceQuality).toBe('strong');
+    expect(signals.hasSufficientEvidence).toBe(true);
+    expect(signals.honestyWarnings).toHaveLength(0);
+  });
+
+  it('should identify weak evidence quality', () => {
+    const citations: CitationRef[] = [
+      { id: '01', sourcePath: '/a.md', retrievalScore: 0.5 },
+      { id: '02', sourcePath: '/b.md', retrievalScore: 0.6 },
+    ];
+
+    const signals = computeHonestySignals(citations, false, 0);
+    
+    expect(signals.evidenceQuality).toBe('weak');
+    expect(signals.hasSufficientEvidence).toBe(false);
+    expect(signals.honestyWarnings.length).toBeGreaterThan(0);
+    expect(signals.limitationNote).toBeDefined();
+  });
+
+  it('should identify partial evidence quality', () => {
+    const citations: CitationRef[] = [
+      { id: '01', sourcePath: '/a.md', retrievalScore: 0.85 },
+      { id: '02', sourcePath: '/b.md', retrievalScore: 0.6 },
+    ];
+
+    const signals = computeHonestySignals(citations, false, 0);
+    
+    expect(signals.evidenceQuality).toBe('partial');
+    expect(signals.weakMatches).toContain('02');
+  });
+
+  it('should handle error calls', () => {
+    const citations: CitationRef[] = [
+      { id: '01', sourcePath: '/a.md', retrievalScore: 0.9 },
+    ];
+
+    const signals = computeHonestySignals(citations, true, 2);
+    
+    expect(signals.honestyWarnings.some(w => w.includes('工具执行失败'))).toBe(true);
+  });
+
+  it('should handle unscored citations', () => {
+    const citations: CitationRef[] = [
+      { id: '01', sourcePath: '/a.md' },
+      { id: '02', sourcePath: '/b.md' },
+    ];
+
+    const signals = computeHonestySignals(citations, false, 0);
+    
+    expect(signals.evidenceQuality).toBe('weak');
+    expect(signals.unscoredMatches).toEqual(['01', '02']);
+  });
+});

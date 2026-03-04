@@ -1,6 +1,71 @@
 export type ChatRole = 'user' | 'assistant';
 
 // ============================================================================
+// 证据可追溯性与过程透明度新增类型（2026-03-04）
+// ============================================================================
+
+/** 引用引用类型 */
+export interface CitationRef {
+  id: string;
+  sourcePath: string;
+  sourceTitle?: string;
+  heading?: string;
+  charOffsetStart?: number;
+  charOffsetEnd?: number;
+  snippet?: string;
+  retrievalScore?: number;
+  weakMatch?: boolean;
+}
+
+/** 过程步骤语义摘要 */
+export interface ProcessStepSummary {
+  /** 步骤序号 */
+  stepNumber: number;
+  /** 运行阶段 */
+  phase: 'retrieving' | 'validating' | 'synthesizing' | 'completed';
+  /** 步骤摘要（用户友好的描述） */
+  summary: string;
+  /** 详细说明 */
+  detail?: string;
+  /** 工具名称 */
+  toolName?: string;
+  /** 执行耗时（毫秒） */
+  durationMs?: number;
+  /** 步骤 ID（兼容性） */
+  stepId?: string;
+  /** 语义类型（兼容性） */
+  semanticType?: 'retrieve' | 'read' | 'web' | 'execute' | 'skill' | 'other';
+  /** 输入摘要（兼容性） */
+  inputSummary?: string;
+  /** 结果摘要（兼容性） */
+  resultSummary?: string;
+  /** 状态（兼容性） */
+  status?: 'completed' | 'error' | 'running';
+}
+
+/** 诚实性信号 */
+export interface HonestySignals {
+  /** 证据质量等级 */
+  evidenceQuality: 'strong' | 'partial' | 'weak' | 'none';
+  /** 弱匹配引用 ID 列表（分数 < 0.8） */
+  weakMatches: string[];
+  /** 无分数引用 ID 列表 */
+  unscoredMatches: string[];
+  /** 诚实性警告信息 */
+  honestyWarnings: string[];
+  /** 局限性说明（当证据不足时） */
+  limitationNote?: string;
+  /** 是否有足够证据（强匹配 >= 2 或 强匹配 >=1 + 弱匹配 >=1） */
+  hasSufficientEvidence: boolean;
+  /** 是否有直接证据 */
+  hasDirectEvidence?: boolean;
+  /** 检索命中数 */
+  retrievalHitCount?: number;
+  /** 最佳分数 */
+  bestScore?: number;
+}
+
+// ============================================================================
 // Answer-first 重构新增类型（2026-03-02）
 // ============================================================================
 
@@ -21,6 +86,8 @@ export interface EvidenceRef {
   charOffsetStart?: number;
   charOffsetEnd?: number;
   snippet?: string;
+  citationId?: string;      // 新增：引用标记 ID
+  retrievalScore?: number;  // 新增：检索相关性分数
 }
 
 /** 证据项：断言-来源映射 */
@@ -95,22 +162,19 @@ export interface ChatMessage {
   timestamp?: number;
   sources?: string[];
   sourceRefs?: SourceRef[];
-  // 新增：保存完整的思考步骤
   thinkingSteps?: ThinkingStep[];
-  currentStepId?: string;  // 当前正在执行的步骤
-  // ============================================================================
-  // Answer-first 重构新增字段（2026-03-02）
-  // ============================================================================
-  /** 决策摘要（结论、行动、置信度等） */
+  currentStepId?: string;
   decisionSummary?: DecisionSummary;
-  /** 过程概览（阶段、耗时、异常数等） */
   processOverview?: ProcessOverview;
-  /** 完成状态 */
   completionState?: CompletionState;
-  /** 证据与引用 */
   evidence?: EvidenceItem[];
-  /** 终态事件版本号，用于防止乱序/重复 */
   finalizedEventVersion?: number;
+  directAnswer?: string;
+  fullAnalysis?: string;
+  references?: CitationRef[];
+  citationMap?: Record<string, CitationRef>;
+  processSummary?: ProcessStepSummary[];
+  honestySignals?: HonestySignals;
 }
 
 export type ApiRole = 'system' | 'user' | 'assistant' | 'tool' | 'developer';
