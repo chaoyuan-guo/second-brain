@@ -46,7 +46,7 @@ RUN pip install --no-cache-dir -r requirements.txt -i https://mirrors.aliyun.com
 
 COPY backend ./backend
 COPY data ./data
-COPY .opencode ./.opencode
+COPY docker/opencode-config ./.opencode
 COPY docker/opencode/AGENTS.md ./AGENTS.md
 COPY docker/opencode/entrypoint.sh ./docker/opencode/entrypoint.sh
 COPY docker/opencode/selfcheck.sh ./docker/opencode/selfcheck.sh
