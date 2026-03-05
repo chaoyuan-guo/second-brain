@@ -13,6 +13,7 @@ interface HonestyBannerProps {
  */
 export function HonestyBanner({ signals }: HonestyBannerProps) {
   const [isDismissed, setIsDismissed] = useState(false);
+  const reasonCodes = Array.isArray(signals.reasonCodes) ? signals.reasonCodes : [];
 
   if (isDismissed) {
     return (
@@ -45,6 +46,16 @@ export function HonestyBanner({ signals }: HonestyBannerProps) {
   const getMainMessage = (): string => {
     if (signals.limitationNote) {
       return signals.limitationNote;
+    }
+
+    if (reasonCodes.includes('no_hit')) {
+      return '未检索到可直接支持答案的记录，请将结论视为待验证假设。';
+    }
+    if (reasonCodes.includes('weak_match')) {
+      return '已命中的引用相关性偏弱，建议先核对来源再采用结论。';
+    }
+    if (reasonCodes.includes('insufficient_hits')) {
+      return '目前命中的有效证据数量不足，结论置信度受限。';
     }
 
     switch (signals.evidenceQuality) {
@@ -102,7 +113,7 @@ export function HonestyBanner({ signals }: HonestyBannerProps) {
             <div className="info-label">弱相关引用：</div>
             <div className="citation-tags">
               {signals.weakMatches.slice(0, 5).map(id => (
-                <span key={id} className="citation-tag weak">[c{id}]</span>
+                <span key={id} className="citation-tag weak">[c{id.startsWith('c') ? id.slice(1) : id}]</span>
               ))}
               {signals.weakMatches.length > 5 && (
                 <span className="more-tag">+{signals.weakMatches.length - 5}</span>

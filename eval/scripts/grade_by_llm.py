@@ -18,6 +18,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -26,6 +27,10 @@ DEFAULT_API_BASE_URL = "https://td06.openai.azure.com/openai/v1"
 DEFAULT_CHAT_MODEL = "gpt-52"
 PASS_THRESHOLD = 0.6
 DIMENSIONS = ["personalization", "precision", "honesty", "traceability"]
+INLINE_CITATION_RE = re.compile(r"\[c(\d{2,3})\]")
+HONESTY_CUE_RE = re.compile(
+    r"(没有这方面的记录|未找到|无法确认|不确定|证据不足|相关性较低|局限性|建议核实|谨慎采纳|可能影响答案完整性)"
+)
 
 JUDGE_SYSTEM_PROMPT = """\
 你是一位严格的评估专家，负责评判一个基于个人笔记的 RAG 系统的回答质量。
@@ -222,6 +227,89 @@ def check_retrieval_correctness(
     return result
 
 
+def _normalize_citation_id(value: Any) -> str:
+    text = str(value or "").strip()
+    if text.startswith("c"):
+        text = text[1:]
+    return text
+
+
+def _extract_source_ref_citation_ids(tool_trace: Optional[Dict[str, Any]]) -> List[str]:
+    if not tool_trace:
+        return []
+    events = tool_trace if isinstance(tool_trace, list) else tool_trace.get("events", [])
+    if not isinstance(events, list):
+        return []
+    collected: List[str] = []
+    for event in events:
+        refs = event.get("source_refs", [])
+        if not isinstance(refs, list):
+            continue
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            cid = _normalize_citation_id(ref.get("citation_id"))
+            if cid and cid not in collected:
+                collected.append(cid)
+    return collected
+
+
+def _extract_source_ref_scores(tool_trace: Optional[Dict[str, Any]]) -> List[float]:
+    if not tool_trace:
+        return []
+    events = tool_trace if isinstance(tool_trace, list) else tool_trace.get("events", [])
+    if not isinstance(events, list):
+        return []
+    scores: List[float] = []
+    for event in events:
+        refs = event.get("source_refs", [])
+        if not isinstance(refs, list):
+            continue
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            score = ref.get("score")
+            if isinstance(score, (int, float)):
+                scores.append(float(score))
+    return scores
+
+
+def compute_traceability_metrics(
+    answer: str,
+    question: Dict[str, Any],
+    tool_trace: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    cited_ids = [_normalize_citation_id(m.group(1)) for m in INLINE_CITATION_RE.finditer(answer or "")]
+    total_citations = len(cited_ids)
+    unique_cited_ids = sorted(set(cited_ids))
+
+    trace_ids = set(_extract_source_ref_citation_ids(tool_trace))
+    valid_citation_count = sum(1 for cid in cited_ids if cid in trace_ids)
+    citation_accuracy = (valid_citation_count / total_citations) if total_citations > 0 else 0.0
+
+    expected_sources = question.get("expected_sources", [])
+    coverage_eligible = bool(expected_sources)
+    has_inline_citation = total_citations > 0
+    inline_citation_coverage = 1.0 if (coverage_eligible and has_inline_citation) else 0.0
+
+    scores = _extract_source_ref_scores(tool_trace)
+    strong_hits = sum(1 for s in scores if s < 0.8)
+    should_trigger_honesty = len(scores) == 0 or strong_hits == 0 or strong_hits < 2
+    did_trigger_honesty = bool(HONESTY_CUE_RE.search(answer or ""))
+
+    return {
+        "inline_citation_coverage": round(inline_citation_coverage, 4),
+        "coverage_eligible": coverage_eligible,
+        "citation_accuracy": round(citation_accuracy, 4),
+        "total_citations": total_citations,
+        "unique_cited_ids": unique_cited_ids,
+        "valid_citation_count": valid_citation_count,
+        "traceable_citation_ids": sorted(trace_ids),
+        "should_trigger_honesty": should_trigger_honesty,
+        "did_trigger_honesty": did_trigger_honesty,
+    }
+
+
 class LLMJudge:
     """LLM-based answer evaluator."""
 
@@ -300,6 +388,7 @@ class LLMJudge:
             question.get("expected_sources", []),
             tool_trace,
         )
+        traceability_metrics = compute_traceability_metrics(answer, question, tool_trace)
 
         result = {
             "id": qid,
@@ -308,6 +397,7 @@ class LLMJudge:
             "scores": {d: scores[d] for d in DIMENSIONS},
             "reasoning": scores.get("reasoning", ""),
             "retrieval_check": retrieval_check,
+            "traceability_metrics": traceability_metrics,
         }
         if scores.get("parse_error"):
             result["parse_error"] = True
@@ -397,6 +487,26 @@ class LLMJudge:
                 "avg_score": round(cat_avg, 3),
             }
 
+        metric_cases = [r.get("traceability_metrics", {}) for r in results]
+        coverage_cases = [m for m in metric_cases if m.get("coverage_eligible")]
+        coverage = (
+            sum(float(m.get("inline_citation_coverage", 0.0)) for m in coverage_cases) / len(coverage_cases)
+            if coverage_cases
+            else 0.0
+        )
+
+        total_citations = sum(int(m.get("total_citations", 0)) for m in metric_cases)
+        total_valid_citations = sum(int(m.get("valid_citation_count", 0)) for m in metric_cases)
+        citation_accuracy = (total_valid_citations / total_citations) if total_citations else 0.0
+
+        predicted_positive = [m for m in metric_cases if m.get("did_trigger_honesty")]
+        true_positive = sum(
+            1 for m in predicted_positive if m.get("should_trigger_honesty")
+        )
+        honesty_trigger_precision = (
+            true_positive / len(predicted_positive) if predicted_positive else 0.0
+        )
+
         return {
             "meta": {
                 "testset_name": meta.get("name", "unknown"),
@@ -410,6 +520,11 @@ class LLMJudge:
                 "pass_rate": round(passed / total, 3) if total else 0.0,
                 "avg_score": round(avg_score, 3),
                 "dimension_averages": dim_averages,
+                "metrics": {
+                    "inline_citation_coverage": round(coverage, 4),
+                    "citation_accuracy": round(citation_accuracy, 4),
+                    "honesty_trigger_precision": round(honesty_trigger_precision, 4),
+                },
             },
             "category_stats": category_stats,
             "results": results,

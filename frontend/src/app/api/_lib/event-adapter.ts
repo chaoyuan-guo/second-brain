@@ -446,6 +446,8 @@ export const generateProcessSummary = (
     // 根据工具语义生成摘要
     let summary = '';
     let detail = '';
+    let inputSummary = '';
+    let resultSummary = '';
 
     switch (semantic) {
       case 'retrieve':
@@ -461,34 +463,55 @@ export const generateProcessSummary = (
             }
           }
           summary = `搜索笔记：找到 ${resultCount} 条相关记录`;
-          detail = `查询："${query}"`;
+          inputSummary = `查询 "${query}"`;
+          resultSummary = `命中 ${resultCount} 条`;
+          detail = `输入：${inputSummary}；结果：${resultSummary}`;
         } else if (call.name === 'web_search') {
           const query = (call.arguments?.query as string) || '';
           summary = `网络搜索：查找"${query}"`;
+          inputSummary = query ? `搜索词 "${query}"` : '无输入';
+          resultSummary = call.status === 'error' ? '搜索失败' : '已返回结果';
+          detail = `输入：${inputSummary}；结果：${resultSummary}`;
         } else if (call.name === 'read_note_file') {
           const path = (call.arguments?.path as string) || '文件';
           summary = `阅读笔记：${path.split('/').pop() || path}`;
+          inputSummary = `读取 ${path}`;
+          resultSummary = call.status === 'error' ? '读取失败' : '读取成功';
+          detail = `输入：${inputSummary}；结果：${resultSummary}`;
         } else {
           summary = `检索信息：${call.name}`;
+          inputSummary = '执行检索';
+          resultSummary = call.status === 'error' ? '执行失败' : '执行完成';
+          detail = `输入：${inputSummary}；结果：${resultSummary}`;
         }
         break;
       
       case 'validate':
         summary = `验证推理：${call.name}`;
+        inputSummary = '执行验证';
+        resultSummary = call.status === 'error' ? '验证失败' : '验证完成';
+        detail = `输入：${inputSummary}；结果：${resultSummary}`;
         break;
       
       case 'synthesize_helper':
         summary = `辅助分析：${call.name}`;
+        inputSummary = '执行辅助分析';
+        resultSummary = call.status === 'error' ? '执行失败' : '执行完成';
+        detail = `输入：${inputSummary}；结果：${resultSummary}`;
         break;
       
       default:
         summary = `执行操作：${call.name}`;
+        inputSummary = '执行操作';
+        resultSummary = call.status === 'error' ? '执行失败' : '执行完成';
+        detail = `输入：${inputSummary}；结果：${resultSummary}`;
     }
 
     // 处理错误状态
     if (call.status === 'error') {
       summary = `${summary}（失败）`;
-      detail = call.error || '执行出错';
+      const errorText = call.error || '执行出错';
+      detail = detail ? `${detail}；错误：${errorText}` : errorText;
     }
 
     summaries.push({
@@ -497,6 +520,11 @@ export const generateProcessSummary = (
       summary,
       detail,
       toolName: call.name,
+      stepId: call.id,
+      semanticType: semantic,
+      inputSummary,
+      resultSummary,
+      status: call.status === 'error' ? 'error' : 'completed',
       durationMs: call.completedAt && call.startedAt 
         ? call.completedAt - call.startedAt 
         : undefined,
@@ -542,6 +570,17 @@ export const computeHonestySignals = (
     evidenceQuality = 'weak';
   }
 
+  const hasSufficientEvidence = strongMatches.length >= 2;
+
+  const reasonCodes: Array<'no_hit' | 'weak_match' | 'insufficient_hits'> = [];
+  if (citations.length === 0) {
+    reasonCodes.push('no_hit');
+  } else if (strongMatches.length === 0) {
+    reasonCodes.push('weak_match');
+  } else if (!hasSufficientEvidence) {
+    reasonCodes.push('insufficient_hits');
+  }
+
   // 诚实性提示
   const honestyWarnings: string[] = [];
   
@@ -565,23 +604,30 @@ export const computeHonestySignals = (
 
   // 局限性说明
   let limitationNote: string | undefined;
-  if (evidenceQuality === 'weak' || evidenceQuality === 'none') {
-    limitationNote = '基于有限的检索结果生成，建议您：1) 检查引用来源；2) 补充更多相关笔记；3) 直接验证关键信息。';
+  if (reasonCodes.includes('no_hit')) {
+    limitationNote = '笔记中没有检索到直接相关记录，回答仅能基于通用推理。';
+  } else if (reasonCodes.includes('weak_match')) {
+    limitationNote = '检索结果相关性偏弱，请优先核对原文后再采纳结论。';
+  } else if (reasonCodes.includes('insufficient_hits')) {
+    limitationNote = '已命中部分证据，但数量不足以形成高置信结论。';
   } else if (weakMatches.length > strongMatches.length) {
     limitationNote = '主要引用来源相关性较低，请谨慎采纳。';
   }
 
-  // 是否有足够证据
-  const hasSufficientEvidence = strongMatches.length >= 2 || 
-    (strongMatches.length >= 1 && weakMatches.length >= 1);
-
   return {
+    reasonCodes,
     evidenceQuality,
     weakMatches: weakMatches.map((c) => c.id),
     unscoredMatches: unscoredMatches.map((c) => c.id),
     honestyWarnings,
     limitationNote,
     hasSufficientEvidence,
+    hasDirectEvidence: strongMatches.length > 0,
+    retrievalHitCount: citations.length,
+    bestScore: citations
+      .map((c) => c.retrievalScore)
+      .filter((v): v is number => typeof v === 'number')
+      .sort((a, b) => a - b)[0],
   };
 };
 
@@ -642,4 +688,3 @@ export const synthesizeFinalEvent = (acc: ProcessAccumulator): FinalEventPayload
     honestySignals: honestySignals.hasSufficientEvidence ? undefined : honestySignals,
   };
 };
-

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CitationRef } from '../../lib/chat-types';
 
 interface ReferencesPanelProps {
@@ -14,6 +14,7 @@ interface ReferencesPanelProps {
  */
 export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<'relevance' | 'order'>('relevance');
 
   if (!references || references.length === 0) {
@@ -29,17 +30,47 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
     );
   }
 
-  // 排序引用
-  const sortedRefs = [...references].sort((a, b) => {
-    if (sortBy === 'relevance') {
-      // 按分数降序，无分数的排在最后
-      const scoreA = a.retrievalScore ?? -1;
-      const scoreB = b.retrievalScore ?? -1;
-      return scoreB - scoreA;
-    }
-    // 按引用 ID 顺序
-    return parseInt(a.id) - parseInt(b.id);
-  });
+  const normalizeId = (id: string) => (id.startsWith('c') ? id.slice(1) : id);
+  const citationOrder = (id: string) => Number.parseInt(normalizeId(id), 10);
+
+  const sortedRefs = useMemo(() => {
+    return [...references].sort((a, b) => {
+      if (sortBy === 'relevance') {
+        const aHasScore = typeof a.retrievalScore === 'number';
+        const bHasScore = typeof b.retrievalScore === 'number';
+        if (aHasScore && bHasScore) {
+          // L2 距离：分数越小越相关
+          const diff = (a.retrievalScore as number) - (b.retrievalScore as number);
+          return diff !== 0 ? diff : citationOrder(a.id) - citationOrder(b.id);
+        }
+        if (aHasScore !== bHasScore) {
+          return aHasScore ? -1 : 1;
+        }
+      }
+      return citationOrder(a.id) - citationOrder(b.id);
+    });
+  }, [references, sortBy]);
+
+  const groupedRefs = useMemo(() => {
+    const groups = new Map<string, CitationRef[]>();
+    sortedRefs.forEach((ref) => {
+      const key = ref.sourcePath || '__unknown__';
+      const list = groups.get(key) || [];
+      list.push(ref);
+      groups.set(key, list);
+    });
+    return Array.from(groups.entries());
+  }, [sortedRefs]);
+
+  useEffect(() => {
+    const initial = new Set<string>();
+    groupedRefs.forEach(([sourcePath], index) => {
+      if (index > 0) {
+        initial.add(sourcePath);
+      }
+    });
+    setCollapsedGroups(initial);
+  }, [groupedRefs.length]);
 
   const toggleExpand = (id: string) => {
     const newSet = new Set(expandedIds);
@@ -49,6 +80,16 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
       newSet.add(id);
     }
     setExpandedIds(newSet);
+  };
+
+  const toggleGroup = (sourcePath: string) => {
+    const next = new Set(collapsedGroups);
+    if (next.has(sourcePath)) {
+      next.delete(sourcePath);
+    } else {
+      next.add(sourcePath);
+    }
+    setCollapsedGroups(next);
   };
 
   const handleOpenSource = (ref: CitationRef) => {
@@ -62,8 +103,8 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
   };
 
   // 统计信息
-  const strongMatches = references.filter(r => r.retrievalScore !== undefined && r.retrievalScore >= 0.8).length;
-  const weakMatches = references.filter(r => r.retrievalScore !== undefined && r.retrievalScore < 0.8).length;
+  const strongMatches = references.filter(r => r.retrievalScore !== undefined && r.retrievalScore < 0.8).length;
+  const weakMatches = references.filter(r => r.retrievalScore !== undefined && r.retrievalScore >= 0.8).length;
   const unscored = references.filter(r => r.retrievalScore === undefined).length;
 
   return (
@@ -106,28 +147,21 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
       </div>
 
       <div className="references-list">
-        {sortedRefs.map((ref, index) => {
-          const isExpanded = expandedIds.has(ref.id);
-          const isWeak = ref.retrievalScore !== undefined && ref.retrievalScore < 0.8;
-          const hasScore = ref.retrievalScore !== undefined;
+        {groupedRefs.map(([sourcePath, refs]) => {
+          const groupCollapsed = collapsedGroups.has(sourcePath);
+          const groupTitle = refs[0].sourceTitle || sourcePath.split('/').pop() || '未知来源';
 
           return (
-            <div
-              key={ref.id}
-              className={`reference-item ${isWeak ? 'weak' : ''} ${isExpanded ? 'expanded' : ''}`}
-            >
-              <div className="ref-header" onClick={() => toggleExpand(ref.id)}>
-                <span className="ref-index">[c{ref.id}]</span>
-                <span className="ref-title">
-                  {ref.sourceTitle || ref.sourcePath.split('/').pop() || '未知来源'}
-                </span>
-                {hasScore && (
-                  <span className={`ref-score ${isWeak ? 'weak' : 'strong'}`}>
-                    {Math.round(ref.retrievalScore! * 100)}%
-                  </span>
-                )}
+            <div key={sourcePath} className="ref-source-group">
+              <button
+                type="button"
+                className="ref-group-header"
+                onClick={() => toggleGroup(sourcePath)}
+              >
+                <span className="ref-group-title">{groupTitle}</span>
+                <span className="ref-group-meta">{refs.length} 条引用</span>
                 <svg
-                  className="expand-icon"
+                  className={`expand-icon ${groupCollapsed ? '' : 'expanded'}`}
                   width="16"
                   height="16"
                   viewBox="0 0 24 24"
@@ -135,34 +169,70 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
                   stroke="currentColor"
                   strokeWidth="2"
                 >
-                  <path d={isExpanded ? "M18 15l-6-6-6 6" : "M6 9l6 6 6-6"} />
+                  <path d="M6 9l6 6 6-6" />
                 </svg>
-              </div>
+              </button>
 
-              {isExpanded && (
-                <div className="ref-details">
-                  {ref.heading && (
-                    <div className="ref-heading">章节：{ref.heading}</div>
-                  )}
-                  {ref.snippet && (
-                    <div className="ref-snippet">
-                      <div className="snippet-label">内容片段：</div>
-                      <blockquote>{ref.snippet}</blockquote>
-                    </div>
-                  )}
-                  <div className="ref-path">路径：{ref.sourcePath}</div>
-                  <button
-                    className="open-source-btn"
-                    onClick={() => handleOpenSource(ref)}
+              {!groupCollapsed && refs.map((ref) => {
+                const isExpanded = expandedIds.has(ref.id);
+                const isWeak = ref.retrievalScore !== undefined && ref.retrievalScore >= 0.8;
+                const hasScore = ref.retrievalScore !== undefined;
+
+                return (
+                  <div
+                    key={`${sourcePath}-${ref.id}`}
+                    className={`reference-item ${isWeak ? 'weak' : ''} ${isExpanded ? 'expanded' : ''}`}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                    查看原文
-                  </button>
-                </div>
-              )}
+                    <div className="ref-header" onClick={() => toggleExpand(ref.id)}>
+                      <span className="ref-index">[c{normalizeId(ref.id)}]</span>
+                      <span className="ref-title">
+                        {ref.heading || ref.sourceTitle || ref.sourcePath.split('/').pop() || '未知来源'}
+                      </span>
+                      {hasScore && (
+                        <span className={`ref-score ${isWeak ? 'weak' : 'strong'}`}>
+                          {Math.round(ref.retrievalScore! * 100)}%
+                        </span>
+                      )}
+                      <svg
+                        className="expand-icon"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <path d={isExpanded ? "M18 15l-6-6-6 6" : "M6 9l6 6 6-6"} />
+                      </svg>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="ref-details">
+                        {ref.heading && (
+                          <div className="ref-heading">章节：{ref.heading}</div>
+                        )}
+                        {ref.snippet && (
+                          <div className="ref-snippet">
+                            <div className="snippet-label">内容片段：</div>
+                            <blockquote>{ref.snippet}</blockquote>
+                          </div>
+                        )}
+                        <div className="ref-path">路径：{ref.sourcePath}</div>
+                        <button
+                          className="open-source-btn"
+                          onClick={() => handleOpenSource(ref)}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          查看原文
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           );
         })}

@@ -58,7 +58,7 @@ const renderCitedContent = (
       parts.push(content.slice(lastIndex, match.index));
     }
     
-    const citationId = `c${match[1]}`; // 完整格式 "c01"
+    const citationId = match[1]; // 统一使用数字格式 "01"
     
     // 使用 InlineCitation 组件
     parts.push(
@@ -116,13 +116,22 @@ export function AnswerPanel({
   
   // 构建引用映射表
   const citationMap = useMemo(() => {
-    const map: Record<string, any> = {};
+    const map: Record<string, CitationRef> = {};
     if (message.citationMap) {
-      return message.citationMap;
+      Object.entries(message.citationMap).forEach(([id, ref]) => {
+        map[id] = ref;
+        const normalized = id.startsWith('c') ? id.slice(1) : id;
+        map[normalized] = ref;
+        map[`c${normalized}`] = ref;
+      });
+      return map;
     }
     if (message.references) {
       message.references.forEach(ref => {
         map[ref.id] = ref;
+        const normalized = ref.id.startsWith('c') ? ref.id.slice(1) : ref.id;
+        map[normalized] = ref;
+        map[`c${normalized}`] = ref;
       });
     }
     return map;
@@ -185,7 +194,7 @@ export function AnswerPanel({
     // 降级：从 sourceRefs 构建文件级引用
     if (message.sourceRefs && message.sourceRefs.length > 0) {
       return message.sourceRefs.map((ref, idx) => ({
-        id: `fallback-${idx}`,
+        id: String(idx + 1).padStart(2, '0'),
         sourcePath: ref.path,
         sourceTitle: ref.heading || ref.path.split('/').pop(),
         heading: ref.heading,

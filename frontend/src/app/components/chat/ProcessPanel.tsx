@@ -71,7 +71,16 @@ export function ProcessPanel({ message }: ProcessPanelProps) {
 
       {/* 展开后的语义化过程摘要 */}
       {isExpanded && processSummary && processSummary.length > 0 && (
-        <SemanticProcessSummary steps={processSummary} />
+        <>
+          <SemanticProcessSummary steps={processSummary} />
+          <button
+            type="button"
+            className="debug-toggle-btn"
+            onClick={() => setIsDebugOpen(true)}
+          >
+            查看调试详情
+          </button>
+        </>
       )}
 
       {/* 展开后的过程分组列表（旧版兼容） */}

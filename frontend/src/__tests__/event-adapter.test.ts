@@ -154,6 +154,9 @@ describe('generateProcessSummary', () => {
     expect(summaries[0].summary).toContain('搜索笔记');
     expect(summaries[0].phase).toBe('retrieving');
     expect(summaries[0].durationMs).toBe(1000);
+    expect(summaries[0].detail).toContain('输入：');
+    expect(summaries[0].detail).toContain('结果：');
+    expect(summaries[0].status).toBe('completed');
   });
 
   it('should handle error calls', () => {
@@ -171,7 +174,7 @@ describe('generateProcessSummary', () => {
     const summaries = generateProcessSummary([], errorCalls);
     
     expect(summaries[0].summary).toContain('失败');
-    expect(summaries[0].detail).toBe('网络错误');
+    expect(summaries[0].detail).toContain('网络错误');
   });
 
   it('should sort calls by start time', () => {
@@ -205,6 +208,7 @@ describe('computeHonestySignals', () => {
     expect(signals.evidenceQuality).toBe('strong');
     expect(signals.hasSufficientEvidence).toBe(true);
     expect(signals.honestyWarnings).toHaveLength(0);
+    expect(signals.reasonCodes).toEqual([]);
   });
 
   it('should identify weak evidence quality', () => {
@@ -220,6 +224,7 @@ describe('computeHonestySignals', () => {
     expect(signals.hasSufficientEvidence).toBe(false);
     expect(signals.honestyWarnings.length).toBeGreaterThan(0);
     expect(signals.limitationNote).toBeDefined();
+    expect(signals.reasonCodes).toContain('weak_match');
   });
 
   it('should identify partial evidence quality', () => {
@@ -233,6 +238,7 @@ describe('computeHonestySignals', () => {
     
     expect(signals.evidenceQuality).toBe('partial');
     expect(signals.weakMatches).toContain('01'); // 0.85 >= 0.8 是弱匹配
+    expect(signals.reasonCodes).toContain('insufficient_hits');
   });
 
   it('should handle error calls', () => {
@@ -255,5 +261,12 @@ describe('computeHonestySignals', () => {
     
     expect(signals.evidenceQuality).toBe('weak');
     expect(signals.unscoredMatches).toEqual(['01', '02']);
+    expect(signals.reasonCodes).toContain('weak_match');
+  });
+
+  it('should emit no_hit reason when there are no citations', () => {
+    const signals = computeHonestySignals([], false, 0);
+    expect(signals.reasonCodes).toEqual(['no_hit']);
+    expect(signals.hasSufficientEvidence).toBe(false);
   });
 });

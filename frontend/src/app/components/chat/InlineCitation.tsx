@@ -15,8 +15,9 @@ interface InlineCitationProps {
  */
 export function InlineCitation({ citationId, citationMap, onOpenPreview }: InlineCitationProps) {
   const [isHovered, setIsHovered] = useState(false);
-  
-  const ref = citationMap[citationId];
+
+  const normalizedId = citationId.startsWith('c') ? citationId.slice(1) : citationId;
+  const ref = citationMap[citationId] || citationMap[normalizedId] || citationMap[`c${normalizedId}`];
   const hasRef = !!ref;
   
   // 弱匹配样式（分数 < 0.8）
@@ -40,7 +41,7 @@ export function InlineCitation({ citationId, citationMap, onOpenPreview }: Inlin
       onClick={handleClick}
     >
       <span className="citation-bracket">[</span>
-      <span className="citation-id">c{citationId}</span>
+      <span className="citation-id">c{normalizedId}</span>
       <span className="citation-bracket">]</span>
       
       {isHovered && hasRef && (

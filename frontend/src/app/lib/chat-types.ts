@@ -34,7 +34,7 @@ export interface ProcessStepSummary {
   /** 步骤 ID（兼容性） */
   stepId?: string;
   /** 语义类型（兼容性） */
-  semanticType?: 'retrieve' | 'read' | 'web' | 'execute' | 'skill' | 'other';
+  semanticType?: 'retrieve' | 'validate' | 'synthesize_helper' | 'read' | 'web' | 'execute' | 'skill' | 'other';
   /** 输入摘要（兼容性） */
   inputSummary?: string;
   /** 结果摘要（兼容性） */
@@ -45,6 +45,8 @@ export interface ProcessStepSummary {
 
 /** 诚实性信号 */
 export interface HonestySignals {
+  /** 触发原因码 */
+  reasonCodes: Array<'no_hit' | 'weak_match' | 'insufficient_hits'>;
   /** 证据质量等级 */
   evidenceQuality: 'strong' | 'partial' | 'weak' | 'none';
   /** 弱匹配引用 ID 列表（分数 < 0.8） */

@@ -100,6 +100,11 @@ docker run -d --name second_brain_opencode --restart unless-stopped \
       "precision": 3.8,
       "honesty": 4.5,
       "traceability": 3.6
+    },
+    "metrics": {
+      "inline_citation_coverage": 0.78,
+      "citation_accuracy": 0.92,
+      "honesty_trigger_precision": 0.85
     }
   },
   "category_stats": {
