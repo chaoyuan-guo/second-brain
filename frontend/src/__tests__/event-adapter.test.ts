@@ -193,10 +193,11 @@ describe('generateProcessSummary', () => {
 
 describe('computeHonestySignals', () => {
   it('should identify strong evidence quality', () => {
+    // L2 距离越小越相似，< 0.8 为强匹配
     const citations: CitationRef[] = [
-      { id: '01', sourcePath: '/a.md', retrievalScore: 0.9 },
-      { id: '02', sourcePath: '/b.md', retrievalScore: 0.85 },
-      { id: '03', sourcePath: '/c.md', retrievalScore: 0.88 },
+      { id: '01', sourcePath: '/a.md', retrievalScore: 0.5 },
+      { id: '02', sourcePath: '/b.md', retrievalScore: 0.6 },
+      { id: '03', sourcePath: '/c.md', retrievalScore: 0.7 },
     ];
 
     const signals = computeHonestySignals(citations, false, 0);
@@ -207,9 +208,10 @@ describe('computeHonestySignals', () => {
   });
 
   it('should identify weak evidence quality', () => {
+    // L2 距离 >= 0.8 为弱匹配（相关性低）
     const citations: CitationRef[] = [
-      { id: '01', sourcePath: '/a.md', retrievalScore: 0.5 },
-      { id: '02', sourcePath: '/b.md', retrievalScore: 0.6 },
+      { id: '01', sourcePath: '/a.md', retrievalScore: 0.9 },
+      { id: '02', sourcePath: '/b.md', retrievalScore: 0.85 },
     ];
 
     const signals = computeHonestySignals(citations, false, 0);
@@ -221,6 +223,7 @@ describe('computeHonestySignals', () => {
   });
 
   it('should identify partial evidence quality', () => {
+    // 混合：0.6 < 0.8 为强匹配，0.85 >= 0.8 为弱匹配
     const citations: CitationRef[] = [
       { id: '01', sourcePath: '/a.md', retrievalScore: 0.85 },
       { id: '02', sourcePath: '/b.md', retrievalScore: 0.6 },
@@ -229,12 +232,12 @@ describe('computeHonestySignals', () => {
     const signals = computeHonestySignals(citations, false, 0);
     
     expect(signals.evidenceQuality).toBe('partial');
-    expect(signals.weakMatches).toContain('02');
+    expect(signals.weakMatches).toContain('01'); // 0.85 >= 0.8 是弱匹配
   });
 
   it('should handle error calls', () => {
     const citations: CitationRef[] = [
-      { id: '01', sourcePath: '/a.md', retrievalScore: 0.9 },
+      { id: '01', sourcePath: '/a.md', retrievalScore: 0.5 },
     ];
 
     const signals = computeHonestySignals(citations, true, 2);

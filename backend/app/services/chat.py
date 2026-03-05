@@ -1342,6 +1342,7 @@ async def run_chat_conversation(
     eval_mode = bool(strict_eval or question_id or expected_sources)
     citation_registry = CitationRegistry()
     citation_hint_injected = False
+    query_notes_called = False
 
     last_user = messages[-1].get("content") if messages else ""
     last_user_prefix = ""
@@ -1452,37 +1453,50 @@ async def run_chat_conversation(
 
         # === Citation Hint 注入 ===
         citation_entries = citation_registry.get_all_entries()
-        if citation_entries and not citation_hint_injected:
-            citation_list = citation_registry.format_for_prompt()
-            best_score = citation_registry.get_best_score()
-            hit_count = citation_registry.get_hit_count()
-            honesty_hint = ""
-            if hit_count == 0:
-                honesty_hint = '\n\n注意：检索未命中任何相关笔记，请明确告知用户「笔记中没有这方面的记录」，禁止使用通用知识回答。'
-            elif best_score is not None and best_score > 0.8:
-                honesty_hint = '\n\n注意：检索结果相关性较低（score > 0.8），请在回答开头声明「检索到的相关内容有限，以下回答可能不完整」，并说明局限性。'
-            elif hit_count < 3:
-                honesty_hint = '\n\n注意：有效检索结果不足 3 条，请在回答中说明依据有限。'
+        if query_notes_called and not citation_hint_injected:
+            if not citation_entries:
+                no_hit_hint = (
+                    "【检索结果】已查询笔记库，但未找到任何相关内容。\n\n"
+                    "回答要求：\n"
+                    "1. 必须在回答开头明确告知用户「笔记中没有这方面的记录」\n"
+                    "2. 禁止使用通用知识或外部信息回答\n"
+                    "3. 可以建议用户尝试其他关键词或说明笔记中可能缺少哪些方面的内容"
+                )
+                messages.append({"role": "system", "content": no_hit_hint})
+                citation_hint_injected = True
+                logger.info(
+                    "No-hit citation hint injected",
+                    extra={"trace_id": trace_id, "turn": turn + 1},
+                )
+            else:
+                citation_list = citation_registry.format_for_prompt()
+                best_score = citation_registry.get_best_score()
+                hit_count = citation_registry.get_hit_count()
+                honesty_hint = ""
+                if best_score is not None and best_score > 0.8:
+                    honesty_hint = '\n\n注意：检索结果相关性较低（score > 0.8），请在回答开头声明「检索到的相关内容有限，以下回答可能不完整」，并说明局限性。'
+                elif hit_count < 3:
+                    honesty_hint = '\n\n注意：有效检索结果不足 3 条，请在回答中说明依据有限。'
 
-            citation_hint = (
-                f'{citation_list}\n\n'
-                f'引用规则：\n'
-                f'1. 每个关键事实句后必须附上对应的引用标记，格式为 [cxx]（如 [c01]、[c02]）\n'
-                f'2. 只能引用上述清单中存在的 citation_id，禁止编造引用 ID\n'
-                f'3. 若上述清单为空或不足以支撑回答，必须先声明「笔记中没有这方面的记录」或「检索结果有限」，再补充说明\n'
-                f'4. 无可靠引用时，可在陈述前加 [基于笔记推断]，并说明推断依据与局限性{honesty_hint}'
-            )
-            messages.append({"role": "system", "content": citation_hint})
-            citation_hint_injected = True
-            logger.info(
-                "Citation hint injected",
-                extra={
-                    "trace_id": trace_id,
-                    "citation_count": len(citation_entries),
-                    "best_score": best_score,
-                    "turn": turn + 1,
-                },
-            )
+                citation_hint = (
+                    f'{citation_list}\n\n'
+                    f'引用规则：\n'
+                    f'1. 每个关键事实句后必须附上对应的引用标记，格式为 [cxx]（如 [c01]、[c02]）\n'
+                    f'2. 只能引用上述清单中存在的 citation_id，禁止编造引用 ID\n'
+                    f'3. 若上述清单为空或不足以支撑回答，必须先声明「笔记中没有这方面的记录」或「检索结果有限」，再补充说明\n'
+                    f'4. 无可靠引用时，可在陈述前加 [基于笔记推断]，并说明推断依据与局限性{honesty_hint}'
+                )
+                messages.append({"role": "system", "content": citation_hint})
+                citation_hint_injected = True
+                logger.info(
+                    "Citation hint injected",
+                    extra={
+                        "trace_id": trace_id,
+                        "citation_count": len(citation_entries),
+                        "best_score": best_score,
+                        "turn": turn + 1,
+                    },
+                )
         # === Citation 注入结束 ===
 
         assistant_message = await _maybe_await(
@@ -1633,6 +1647,7 @@ async def run_chat_conversation(
             post_tool_messages: List[dict[str, Any]] = []
 
             if tool_name == "query_my_notes":
+                query_notes_called = True
                 try:
                     result = await _call_sync(
                         query_my_notes,

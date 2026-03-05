@@ -330,13 +330,12 @@ export const extractCitations = (content: string): CitationRef[] => {
   const citations: CitationRef[] = [];
   const seen = new Set<string>();
 
-  // 匹配 [cxx] 格式，x 为数字，提取完整 ID（如 "c01"）
+  // 匹配 [cxx] 格式，x 为数字，仅提取数字部分
   const regex = /\[c(\d{2,3})\]/g;
   let match;
 
   while ((match = regex.exec(content)) !== null) {
-    const numericPart = match[1];
-    const id = `c${numericPart}`; // 保持完整格式 "c01"
+    const id = match[1]; // 只保留数字部分，如 "01"
     if (!seen.has(id)) {
       seen.add(id);
       citations.push({
@@ -359,9 +358,12 @@ export const enrichCitationsWithEvidence = (
   sourceRefMap: Map<string, EvidenceRef>
 ): CitationRef[] => {
   return citations.map((citation) => {
-    // 查找匹配的 source ref（通过 citationId 匹配）
+    // 查找匹配的 source ref（兼容 "c01" 和 "01" 两种 citationId 格式）
+    const citationIdWithPrefix = citation.id.startsWith('c') ? citation.id : `c${citation.id}`;
+    const citationIdWithoutPrefix = citation.id.startsWith('c') ? citation.id.slice(1) : citation.id;
+    
     for (const [, ref] of sourceRefMap) {
-      if (ref.citationId === citation.id) {
+      if (ref.citationId === citationIdWithPrefix || ref.citationId === citationIdWithoutPrefix || ref.citationId === citation.id) {
         return {
           ...citation,
           sourcePath: ref.sourcePath,
@@ -395,7 +397,7 @@ export const splitDirectAnswer = (content: string): { directAnswer: string; full
   const analysisMarkers = ['完整分析', '详细分析', '详细说明', '展开说明', '详细过程'];
   for (const marker of analysisMarkers) {
     const markerIndex = content.indexOf(marker);
-    if (markerIndex > 100) { // 确保直接回答有一定长度
+    if (markerIndex > 0) { // 只要找到标记就可以分割
       const directAnswer = content.slice(0, markerIndex).trim();
       const fullAnalysis = content.slice(markerIndex).trim();
       return { directAnswer, fullAnalysis };
@@ -403,22 +405,22 @@ export const splitDirectAnswer = (content: string): { directAnswer: string; full
   }
 
   // 默认策略：按句子分割，前 2-3 句为直接回答
-  const sentences = content.split(/(?<=[.!?。！？])\s+/);
+  const sentences = content.split(/(?<=[.!?。！？])\s*/);
   if (sentences.length <= 2) {
     return { directAnswer: content.trim(), fullAnalysis: '' };
   }
 
   // 取前 2-3 句（确保直接回答在合理长度内）
   let directAnswerSentences = 2;
-  let directAnswer = sentences.slice(0, directAnswerSentences).join(' ');
+  let directAnswer = sentences.slice(0, directAnswerSentences).join('');
   
   // 如果太短，增加一句
   if (directAnswer.length < 80 && sentences.length > 2) {
     directAnswerSentences = 3;
-    directAnswer = sentences.slice(0, directAnswerSentences).join(' ');
+    directAnswer = sentences.slice(0, directAnswerSentences).join('');
   }
 
-  const fullAnalysis = sentences.slice(directAnswerSentences).join(' ');
+  const fullAnalysis = sentences.slice(directAnswerSentences).join('');
   
   return { directAnswer: directAnswer.trim(), fullAnalysis: fullAnalysis.trim() };
 };
@@ -513,14 +515,14 @@ export const computeHonestySignals = (
   hasErrorCalls: boolean,
   errorCount: number
 ): HonestySignals => {
-  // 强匹配：retrievalScore >= 0.8 的引用（分数越高匹配越好）
+  // 强匹配：retrievalScore < 0.8 的引用（L2 距离越小越相似）
   const strongMatches = citations.filter(
-    (c) => c.retrievalScore !== undefined && c.retrievalScore >= 0.8
+    (c) => c.retrievalScore !== undefined && c.retrievalScore < 0.8
   );
 
-  // 弱匹配：retrievalScore < 0.8 的引用
+  // 弱匹配：retrievalScore >= 0.8 的引用（距离大，相关性低）
   const weakMatches = citations.filter(
-    (c) => c.retrievalScore !== undefined && c.retrievalScore < 0.8
+    (c) => c.retrievalScore !== undefined && c.retrievalScore >= 0.8
   );
 
   // 无分数的引用（无法验证）
@@ -528,11 +530,15 @@ export const computeHonestySignals = (
 
   // 证据质量：基于强匹配比例
   let evidenceQuality: 'strong' | 'partial' | 'weak' | 'none' = 'none';
-  if (strongMatches.length >= 3) {
+  if (citations.length === 0) {
+    evidenceQuality = 'none';
+  } else if (strongMatches.length >= 3) {
     evidenceQuality = 'strong';
-  } else if (strongMatches.length >= 1 || weakMatches.length >= 2) {
+  } else if (strongMatches.length >= 1) {
+    // 有强匹配但不足 3 个
     evidenceQuality = 'partial';
   } else if (weakMatches.length >= 1 || unscoredMatches.length >= 1) {
+    // 无强匹配，只有弱匹配或无分数
     evidenceQuality = 'weak';
   }
 
@@ -541,7 +547,7 @@ export const computeHonestySignals = (
   
   if (weakMatches.length > 0) {
     honestyWarnings.push(
-      `${weakMatches.length} 条引用来自相关性较低的检索结果（分数<0.8），建议进一步核实`
+      `${weakMatches.length} 条引用来自相关性较低的检索结果（距离>=0.8），建议进一步核实`
     );
   }
   
