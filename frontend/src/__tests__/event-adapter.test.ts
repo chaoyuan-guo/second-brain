@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  synthesizeFinalEvent,
   extractCitations,
   enrichCitationsWithEvidence,
   splitDirectAnswer,
@@ -214,6 +215,24 @@ describe('generateProcessSummary', () => {
     expect(summaries[0].stepNumber).toBe(1);
     expect(summaries[1].stepNumber).toBe(2);
   });
+
+  it('should summarize generic read tool as file reading', () => {
+    const calls: ToolCallRecord[] = [
+      {
+        id: '1',
+        name: 'read',
+        status: 'completed',
+        arguments: { filePath: '/notes/dp_notes.md', offset: 120 },
+        startedAt: 1000,
+        completedAt: 1800,
+      },
+    ];
+
+    const summaries = generateProcessSummary(calls, []);
+
+    expect(summaries[0].summary).toContain('读取文件');
+    expect(summaries[0].summary).toContain('dp_notes.md');
+  });
 });
 
 // ============================================================================
@@ -294,5 +313,38 @@ describe('computeHonestySignals', () => {
     const signals = computeHonestySignals([], false, 0);
     expect(signals.reasonCodes).toEqual(['no_hit']);
     expect(signals.hasSufficientEvidence).toBe(false);
+  });
+});
+
+// ============================================================================
+// synthesizeFinalEvent 测试
+// ============================================================================
+
+describe('synthesizeFinalEvent', () => {
+  it('should derive fallback references from read calls when inline citations are missing', () => {
+    const finalEvent = synthesizeFinalEvent({
+      startTime: Date.now() - 1200,
+      activeCalls: new Map(),
+      completedCalls: [
+        {
+          id: 'read-1',
+          name: 'read',
+          status: 'completed',
+          arguments: { filePath: '/notes/dp_notes.md', offset: 42 },
+          result: { content: '动态规划的核心是定义状态并写出状态转移方程。' },
+          startedAt: 1000,
+          completedAt: 1800,
+        },
+      ],
+      errorCalls: [],
+      assistantContent: '动态规划的核心是先定义状态，再设计状态转移。',
+      eventVersion: 0,
+      sourceRefMap: new Map(),
+    });
+
+    expect(finalEvent.references).toHaveLength(1);
+    expect(finalEvent.references?.[0].sourcePath).toBe('/notes/dp_notes.md');
+    expect(finalEvent.references?.[0].charOffsetStart).toBe(42);
+    expect(finalEvent.honestySignals?.reasonCodes).not.toContain('no_hit');
   });
 });

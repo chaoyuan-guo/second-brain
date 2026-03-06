@@ -16,6 +16,7 @@ import type {
   HonestySignals,
 } from '../../lib/chat-types';
 import {
+  deriveSourceTitle,
   inferSourceDateLabel,
   isWeakRetrievalScore,
   normalizeCitationId,
@@ -63,6 +64,7 @@ const TOOL_SEMANTIC_MAP: Record<string, ToolSemantic> = {
   web_search: 'retrieve',
   read_page: 'retrieve',
   read_note_file: 'retrieve',
+  read: 'retrieve',
   grep: 'retrieve',
   glob: 'retrieve',
   run_code_interpreter: 'validate',
@@ -130,6 +132,124 @@ const summarizeInterpreterResult = (result: unknown): string => {
     return `退出码 ${status}`;
   }
   return '已完成验证';
+};
+
+const getStringValue = (
+  record: Record<string, unknown> | undefined,
+  keys: string[],
+): string | undefined => {
+  if (!record) {
+    return undefined;
+  }
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+};
+
+const getNumberValue = (
+  record: Record<string, unknown> | undefined,
+  keys: string[],
+): number | undefined => {
+  if (!record) {
+    return undefined;
+  }
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'number' && !Number.isNaN(value)) {
+      return value;
+    }
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isNaN(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+};
+
+const extractSnippetPreview = (result: unknown): string | undefined => {
+  if (typeof result === 'string') {
+    const normalized = result.replace(/\s+/g, ' ').trim();
+    return normalized ? normalized.slice(0, 220) : undefined;
+  }
+
+  if (!result || typeof result !== 'object') {
+    return undefined;
+  }
+
+  const record = result as Record<string, unknown>;
+  const raw = getStringValue(record, ['content', 'text', 'snippet', 'output']);
+  if (!raw) {
+    return undefined;
+  }
+
+  const normalized = raw.replace(/\s+/g, ' ').trim();
+  return normalized ? normalized.slice(0, 220) : undefined;
+};
+
+const extractPathFromCall = (call: ToolCallRecord): string | undefined => {
+  const fromArgs = getStringValue(call.arguments, [
+    'path',
+    'filePath',
+    'file_path',
+    'sourcePath',
+    'source_path',
+  ]);
+  if (fromArgs) {
+    return fromArgs;
+  }
+
+  if (!call.result || typeof call.result !== 'object') {
+    return undefined;
+  }
+
+  const record = call.result as Record<string, unknown>;
+  return getStringValue(record, [
+    'path',
+    'filePath',
+    'file_path',
+    'sourcePath',
+    'source_path',
+  ]);
+};
+
+const deriveReferencesFromCalls = (calls: ToolCallRecord[]): CitationRef[] => {
+  const refs: CitationRef[] = [];
+  const seen = new Set<string>();
+
+  calls.forEach((call) => {
+    if (call.name !== 'read' && call.name !== 'read_note_file') {
+      return;
+    }
+
+    const sourcePath = extractPathFromCall(call);
+    if (!sourcePath) {
+      return;
+    }
+
+    const charOffsetStart = getNumberValue(call.arguments, ['offset', 'char_offset', 'charOffset']);
+    const dedupeKey = `${sourcePath}#${charOffsetStart ?? ''}`;
+    if (seen.has(dedupeKey)) {
+      return;
+    }
+    seen.add(dedupeKey);
+
+    refs.push({
+      id: String(refs.length + 1).padStart(2, '0'),
+      sourcePath,
+      sourceTitle: deriveSourceTitle(sourcePath),
+      sourceDateLabel: inferSourceDateLabel(sourcePath),
+      charOffsetStart,
+      snippet: extractSnippetPreview(call.result),
+    });
+  });
+
+  return refs;
 };
 
 /**
@@ -524,8 +644,8 @@ export const generateProcessSummary = (
           inputSummary = query ? `搜索词 "${query}"` : '无输入';
           resultSummary = call.status === 'error' ? '搜索失败' : '已返回结果';
           detail = `输入：${inputSummary}；结果：${resultSummary}`;
-        } else if (call.name === 'read_note_file') {
-          const path = (call.arguments?.path as string) || '文件';
+        } else if (call.name === 'read_note_file' || call.name === 'read') {
+          const path = extractPathFromCall(call) || '文件';
           const offsetValue = call.arguments?.offset;
           const offset = typeof offsetValue === 'number'
             ? offsetValue
@@ -537,6 +657,18 @@ export const generateProcessSummary = (
             : `读取文件 ${path.split('/').pop() || path}`;
           inputSummary = `读取 ${path}`;
           resultSummary = call.status === 'error' ? '读取失败' : '已载入原文片段';
+          detail = `输入：${inputSummary}；结果：${resultSummary}`;
+        } else if (call.name === 'grep') {
+          const pattern = (call.arguments?.pattern as string) || (call.arguments?.query as string) || '关键词';
+          summary = `搜索文件内容 "${pattern}" -> 命中 ${getResultCount(call.result)} 条`;
+          inputSummary = `搜索词 "${pattern}"`;
+          resultSummary = call.status === 'error' ? '搜索失败' : `命中 ${getResultCount(call.result)} 条`;
+          detail = `输入：${inputSummary}；结果：${resultSummary}`;
+        } else if (call.name === 'glob') {
+          const pattern = (call.arguments?.pattern as string) || (call.arguments?.query as string) || '文件模式';
+          summary = `定位候选文件 "${pattern}" -> 命中 ${getResultCount(call.result)} 条`;
+          inputSummary = `文件模式 "${pattern}"`;
+          resultSummary = call.status === 'error' ? '枚举失败' : `命中 ${getResultCount(call.result)} 条`;
           detail = `输入：${inputSummary}；结果：${resultSummary}`;
         } else {
           summary = `检索信息：${call.name}`;
@@ -720,6 +852,8 @@ export const synthesizeFinalEvent = (acc: ProcessAccumulator): FinalEventPayload
 
   // 丰富引用信息（关联 sourceRefMap 中的证据详情）
   const enrichedCitations = enrichCitationsWithEvidence(citations, acc.sourceRefMap);
+  const fallbackReferences = deriveReferencesFromCalls(acc.completedCalls);
+  const references = enrichedCitations.length > 0 ? enrichedCitations : fallbackReferences;
 
   // 拆分直接回答和完整分析
   const { directAnswer, fullAnalysis } = splitDirectAnswer(acc.assistantContent);
@@ -729,7 +863,7 @@ export const synthesizeFinalEvent = (acc: ProcessAccumulator): FinalEventPayload
 
   // 计算诚实性信号
   const honestySignals = computeHonestySignals(
-    enrichedCitations,
+    references,
     acc.errorCalls.length > 0,
     acc.errorCalls.length
   );
@@ -747,7 +881,7 @@ export const synthesizeFinalEvent = (acc: ProcessAccumulator): FinalEventPayload
     // 新增字段
     directAnswer: directAnswer || undefined,
     fullAnalysis: fullAnalysis || undefined,
-    references: enrichedCitations.length > 0 ? enrichedCitations : undefined,
+    references: references.length > 0 ? references : undefined,
     processSummary: processSummary.length > 0 ? processSummary : undefined,
     honestySignals: honestySignals.hasSufficientEvidence ? undefined : honestySignals,
   };

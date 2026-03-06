@@ -46,6 +46,7 @@ type ToolStatus = 'pending' | 'running' | 'completed' | 'error';
 const LEGACY_STORAGE_KEY = 'second_brain_sessions_v1';
 const DEFAULT_OPENCODE_SESSION_PATH =
   process.env.NEXT_PUBLIC_OPENCODE_SESSION_PATH?.trim() || '/app';
+const FINAL_EVENT_ABORT_DELAY_MS = 3500;
 
 const asRecord = (value: unknown): JsonRecord | undefined =>
   value && typeof value === 'object' ? (value as JsonRecord) : undefined;
@@ -496,7 +497,6 @@ export function useChatSessions(): UseChatSessionsResult {
       let timeoutTimer: number | undefined;
       let autoCompletedAbort = false;
       let timeoutAbort = false;
-      let sawStepFinish = false;
       let sawStepStart = false;
       let currentStepMessageId: string | undefined;
       let assistantContent = '';
@@ -504,6 +504,11 @@ export function useChatSessions(): UseChatSessionsResult {
       const sourceRefMap = new Map<string, SourceRef>();
       const toolStatusByCall = new Map<string, ToolStatus>();
       const normalizedUserInput = content.trim();
+      let finalizedEventVersion: number | undefined;
+      let decisionSummary: DecisionSummary | undefined;
+      let processOverview: ProcessOverview | undefined;
+      let completionState: CompletionState | undefined;
+      let evidence: EvidenceItem[] | undefined;
 
       // 步骤管理
       const steps: ThinkingStep[] = [];
@@ -561,16 +566,7 @@ export function useChatSessions(): UseChatSessionsResult {
         completionTimer = window.setTimeout(() => {
           autoCompletedAbort = true;
           controller.abort();
-        }, 1800);
-      };
-
-      const maybeScheduleCompletion = () => {
-        const normalizedAssistant = assistantContent.trim();
-        const hasMeaningfulContent =
-          normalizedAssistant.length > 0 && normalizedAssistant !== normalizedUserInput;
-        if (sawStepFinish && activeToolCount() === 0 && hasMeaningfulContent) {
-          scheduleCompletionAbort();
-        }
+        }, FINAL_EVENT_ABORT_DELAY_MS);
       };
 
       const updateAssistantState = (overrides: Partial<ChatMessage>) => {
@@ -640,13 +636,6 @@ export function useChatSessions(): UseChatSessionsResult {
 
         const reader = streamResponse.body.getReader();
 
-        // Answer-first: 结构化数据存储
-	        let finalizedEventVersion: number | undefined;
-	        let decisionSummary: DecisionSummary | undefined;
-	        let processOverview: ProcessOverview | undefined;
-	        let completionState: CompletionState | undefined;
-	        let evidence: EvidenceItem[] | undefined;
-
         await parseSseStream(reader, (eventName, data) => {
           let parsedValue: unknown;
           try {
@@ -704,6 +693,7 @@ export function useChatSessions(): UseChatSessionsResult {
 	              ...(processSummary ? { processSummary } : {}),
 	              ...(honestySignals ? { honestySignals } : {}),
 	            });
+              scheduleCompletionAbort();
 	            return;
 	          }
 
@@ -712,6 +702,9 @@ export function useChatSessions(): UseChatSessionsResult {
           if (eventType !== 'message.part.updated') {
             return;
           }
+
+          clearCompletionTimer();
+          autoCompletedAbort = false;
 
           const properties = asRecord(parsed.properties);
           const part = asRecord(properties?.part ?? parsed.part);
@@ -747,7 +740,6 @@ export function useChatSessions(): UseChatSessionsResult {
               assistantContent = partText;
             }
 
-            clearCompletionTimer();
             updateAssistantState({
               content: assistantContent,
               isThinking: true,
@@ -773,7 +765,6 @@ export function useChatSessions(): UseChatSessionsResult {
             let toolStep = steps.find(s => s.tool?.id === callId);
 
             if (status === 'pending' || status === 'running') {
-              clearCompletionTimer();
               updateAssistantState({
                 isThinking: true,
                 statusText: `正在调用工具：${toolName}`,
@@ -814,7 +805,6 @@ export function useChatSessions(): UseChatSessionsResult {
                 statusText: activeToolCount() > 0 ? '等待其他工具完成...' : '',
                 sourceRefs: buildSourceRefs(),
               });
-              maybeScheduleCompletion();
 
               // 更新工具步骤为完成状态
               if (toolStep) {
@@ -836,7 +826,6 @@ export function useChatSessions(): UseChatSessionsResult {
                 isThinking: true,
                 statusText: `${toolName} 失败：${message}`,
               });
-              maybeScheduleCompletion();
 
               // 更新工具步骤为错误状态
               if (toolStep) {
@@ -858,7 +847,6 @@ export function useChatSessions(): UseChatSessionsResult {
             if (partMessageId) {
               currentStepMessageId = partMessageId;
             }
-            clearCompletionTimer();
             updateAssistantState({
               isThinking: true,
               statusText: assistantContent.trim() ? '' : '正在思考...',
@@ -879,8 +867,6 @@ export function useChatSessions(): UseChatSessionsResult {
             if (currentStepMessageId && partMessageId && partMessageId !== currentStepMessageId) {
               return;
             }
-            sawStepFinish = true;
-            maybeScheduleCompletion();
           }
         });
 
@@ -935,15 +921,18 @@ export function useChatSessions(): UseChatSessionsResult {
 	              finalText && finalText !== normalizedUserInput
 	                ? finalText
 	                : '本次请求未产出可展示的最终回复，请重试或缩小问题范围。';
-	            const fallbackAnswer = splitFallbackAnswer(safeFinalText);
-	            updateAssistantState({
+	            const finalState: Partial<ChatMessage> = {
 	              content: safeFinalText,
 	              isThinking: false,
 	              statusText: '',
 	              sourceRefs: buildSourceRefs(),
-	              directAnswer: fallbackAnswer.directAnswer || safeFinalText,
-	              fullAnalysis: fallbackAnswer.fullAnalysis || safeFinalText,
-	            });
+	            };
+              if (finalizedEventVersion === undefined) {
+	              const fallbackAnswer = splitFallbackAnswer(safeFinalText);
+                finalState.directAnswer = fallbackAnswer.directAnswer || safeFinalText;
+                finalState.fullAnalysis = fallbackAnswer.fullAnalysis || safeFinalText;
+              }
+	            updateAssistantState(finalState);
 	            return;
 	          }
 

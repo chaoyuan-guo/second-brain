@@ -84,6 +84,38 @@ const renderCitedContent = (
   return parts;
 };
 
+const extractContentFallbackReferences = (message: ChatMessage): CitationRef[] | null => {
+  const contentPool = [message.directAnswer, message.fullAnalysis, message.content]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join('\n');
+  if (!contentPool) {
+    return null;
+  }
+
+  const pathPattern = /((?:[\w.\-\u4e00-\u9fa5]+\/)+[\w.\-\u4e00-\u9fa5]+\.md)(?::(\d+))?/g;
+  const refs: CitationRef[] = [];
+  const seen = new Set<string>();
+  let match: RegExpExecArray | null;
+
+  while ((match = pathPattern.exec(contentPool)) !== null) {
+    const sourcePath = match[1];
+    if (seen.has(sourcePath)) {
+      continue;
+    }
+    seen.add(sourcePath);
+
+    refs.push({
+      id: String(refs.length + 1).padStart(2, '0'),
+      sourcePath,
+      sourceTitle: deriveSourceTitle(sourcePath),
+      sourceDateLabel: inferSourceDateLabel(sourcePath),
+      snippet: match[2] ? `回答正文引用了该文件的第 ${match[2]} 行附近内容。` : '回答正文引用了该文件中的内容。',
+    });
+  }
+
+  return refs.length > 0 ? refs : null;
+};
+
 const buildFallbackReferences = (message: ChatMessage): CitationRef[] | null => {
   if (message.references && message.references.length > 0) {
     return message.references;
@@ -99,7 +131,27 @@ const buildFallbackReferences = (message: ChatMessage): CitationRef[] | null => 
       charOffsetStart: ref.char_offset,
     }));
   }
-  return null;
+  return extractContentFallbackReferences(message);
+};
+
+const normalizeHonestySignals = (
+  signals: ChatMessage['honestySignals'],
+  references: CitationRef[] | null,
+): ChatMessage['honestySignals'] => {
+  if (!signals || !references || references.length === 0 || !signals.reasonCodes.includes('no_hit')) {
+    return signals;
+  }
+
+  const nextReasonCodes = signals.reasonCodes.filter((code) => code !== 'no_hit');
+  return {
+    ...signals,
+    reasonCodes: nextReasonCodes.length > 0 ? nextReasonCodes : ['weak_match'],
+    evidenceQuality: signals.evidenceQuality === 'none' ? 'weak' : signals.evidenceQuality,
+    limitationNote: '回答正文已显式引用相关笔记文件，但上游事件未返回精确检索分数，请优先核对原文。',
+    hasDirectEvidence: true,
+    retrievalHitCount: Math.max(signals.retrievalHitCount ?? 0, references.length),
+    unscoredMatches: Array.from(new Set([...signals.unscoredMatches, ...references.map((ref) => ref.id)])),
+  };
 };
 
 // ============================================================================
@@ -163,13 +215,17 @@ export function AnswerPanel({
     [message],
   );
   const displayReferences = useMemo(() => buildFallbackReferences(message), [message]);
+  const effectiveHonestySignals = useMemo(
+    () => normalizeHonestySignals(message.honestySignals, displayReferences),
+    [displayReferences, message.honestySignals],
+  );
 
   // 降级渲染：缺失结构化字段时，展示原始回答正文和降级提示
   if (!hasStructured) {
     return (
       <div className="answer-panel degraded">
-        {message.honestySignals && !message.honestySignals.hasSufficientEvidence && (
-          <HonestyBanner signals={message.honestySignals} />
+        {effectiveHonestySignals && !effectiveHonestySignals.hasSufficientEvidence && (
+          <HonestyBanner signals={effectiveHonestySignals} />
         )}
         <div className="degraded-notice">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -202,7 +258,6 @@ export function AnswerPanel({
     completionState,
     directAnswer,
     fullAnalysis,
-    honestySignals,
   } = message;
 
   // 失败状态渲染
@@ -229,8 +284,8 @@ export function AnswerPanel({
   return (
     <div className="answer-panel evidence-traceable">
       {/* 1. 诚实性提示横幅（当证据不足时） */}
-      {honestySignals && !honestySignals.hasSufficientEvidence && (
-        <HonestyBanner signals={honestySignals} />
+      {effectiveHonestySignals && !effectiveHonestySignals.hasSufficientEvidence && (
+        <HonestyBanner signals={effectiveHonestySignals} />
       )}
 
       {/* 2. 直接回答（Direct Answer）- 最优先展示 */}

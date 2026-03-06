@@ -56,4 +56,37 @@ describe('AnswerPanel', () => {
     expect(screen.getByText('第一条')).toBeInTheDocument();
     expect(screen.queryByText('**完整回答**')).not.toBeInTheDocument();
   });
+
+  it('derives file-level references from content paths and suppresses contradictory no_hit wording', () => {
+    render(
+      <AnswerPanel
+        message={createMessage({
+          content:
+            '完整分析内容\n\ndata/notes/my_markdowns/动态规划.md:645\n' +
+            'data/notes/my_markdowns/爬楼梯动态规划思路解析.md:49',
+          directAnswer: '动态规划的核心思想是先定义状态，再写状态转移。',
+          fullAnalysis:
+            'data/notes/my_markdowns/动态规划.md:645\n' +
+            'data/notes/my_markdowns/爬楼梯动态规划思路解析.md:49',
+          honestySignals: {
+            reasonCodes: ['no_hit'],
+            evidenceQuality: 'none',
+            weakMatches: [],
+            unscoredMatches: [],
+            honestyWarnings: [],
+            limitationNote: '笔记中没有检索到直接相关记录，回答只能基于有限线索推断。',
+            hasSufficientEvidence: false,
+          },
+        })}
+        copiedKey={null}
+        onCopyCode={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('引用来源')).toBeInTheDocument();
+    expect(screen.getAllByText('动态规划.md').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('爬楼梯动态规划思路解析.md').length).toBeGreaterThan(0);
+    expect(screen.queryByText('笔记中没有检索到直接相关记录，回答只能基于有限线索推断。')).not.toBeInTheDocument();
+    expect(screen.getByText('回答正文已显式引用相关笔记文件，但上游事件未返回精确检索分数，请优先核对原文。')).toBeInTheDocument();
+  });
 });

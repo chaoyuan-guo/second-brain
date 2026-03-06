@@ -250,6 +250,7 @@ export async function GET(request: Request): Promise<Response> {
   // 创建过程累加器
   const acc = createProcessAccumulator();
   let currentStepMessageId: string | undefined;
+  let sawStepStart = false;
 
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -299,6 +300,14 @@ export async function GET(request: Request): Promise<Response> {
 
     // 处理不同 partType
     if (partType === 'text') {
+      if (!sawStepStart) {
+        return false;
+      }
+
+      if (currentStepMessageId && partMessageId && partMessageId !== currentStepMessageId) {
+        return false;
+      }
+
       const delta = asString(properties?.delta ?? parsed.properties?.delta);
       const partText = asString(part.text);
       if (delta && delta.length > 0) {
@@ -339,6 +348,7 @@ export async function GET(request: Request): Promise<Response> {
     }
 
     if (partType === 'step-start') {
+      sawStepStart = true;
       if (partMessageId) {
         currentStepMessageId = partMessageId;
       }
