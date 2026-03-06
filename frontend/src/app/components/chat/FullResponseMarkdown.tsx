@@ -13,6 +13,7 @@ interface FullResponseMarkdownProps {
   onCopyCode: (value: string, key: string) => void;
   citationMap?: Record<string, CitationRef>;
   onOpenPreview?: (path: string, title: string, ref?: { char_offset?: number; snippet?: string }) => void;
+  title?: string | null;
 }
 
 const CITE_RE = /\[c(\d{2,3})\]/g;
@@ -89,6 +90,7 @@ export function FullResponseMarkdown({
   onCopyCode,
   citationMap = {},
   onOpenPreview,
+  title = '完整分析',
 }: FullResponseMarkdownProps) {
   let codeBlockIndex = 0;
 
@@ -98,7 +100,7 @@ export function FullResponseMarkdown({
 
   return (
     <div className="full-response">
-      <h4 className="full-response-title">完整分析</h4>
+      {title ? <h4 className="full-response-title">{title}</h4> : null}
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

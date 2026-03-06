@@ -12,29 +12,31 @@ import { deriveSourceTitle, inferSourceDateLabel } from '../../lib/citation-util
 // 辅助函数
 // ============================================================================
 
-/**
- * 判断是否具备有效结构化数据
- * - null/undefined/错误类型视为缺失
- * - 空数组/空字符串是合法值
- */
-const hasValidStructuredData = (message: ChatMessage): boolean => {
+const hasLegacyStructuredData = (message: ChatMessage): boolean => {
   const { decisionSummary, processOverview, completionState, evidence } = message;
-
-  // 检查 decisionSummary
   if (!decisionSummary || typeof decisionSummary !== 'object') return false;
   if (typeof decisionSummary.conclusion !== 'string') return false;
-
-  // 检查 processOverview
   if (!processOverview || typeof processOverview !== 'object') return false;
   if (typeof processOverview.phase !== 'string') return false;
-
-  // 检查 completionState
   if (!completionState || typeof completionState !== 'string') return false;
-
-  // 检查 evidence（可以是空数组，但必须是数组）
   if (!Array.isArray(evidence)) return false;
-
   return true;
+};
+
+const hasAnswerFirstPayload = (message: ChatMessage): boolean => {
+  if (typeof message.directAnswer === 'string' && message.directAnswer.trim().length > 0) {
+    return true;
+  }
+  if (typeof message.fullAnalysis === 'string' && message.fullAnalysis.trim().length > 0) {
+    return true;
+  }
+  if (Array.isArray(message.references) && message.references.length > 0) {
+    return true;
+  }
+  if (message.honestySignals) {
+    return true;
+  }
+  return false;
 };
 
 /**
@@ -156,7 +158,10 @@ export function AnswerPanel({
     return map;
   }, [message.citationMap, message.references]);
   
-  const hasStructured = useMemo(() => hasValidStructuredData(message), [message]);
+  const hasStructured = useMemo(
+    () => hasAnswerFirstPayload(message) || hasLegacyStructuredData(message),
+    [message],
+  );
   const displayReferences = useMemo(() => buildFallbackReferences(message), [message]);
 
   // 降级渲染：缺失结构化字段时，展示原始回答正文和降级提示
@@ -172,8 +177,16 @@ export function AnswerPanel({
           </svg>
           <span>结构化数据暂不可用，以下为原始回答</span>
         </div>
-        <div className="direct-answer">
-          {renderCitedContent(message.content, citationMap, onOpenPreview)}
+        <div className="full-analysis-content degraded-content">
+          <FullResponseMarkdown
+            content={message.content}
+            messageId={message.id}
+            copiedKey={copiedKey}
+            onCopyCode={onCopyCode}
+            citationMap={citationMap}
+            onOpenPreview={onOpenPreview}
+            title="完整回答"
+          />
         </div>
         {displayReferences && displayReferences.length > 0 && (
           <section className="answer-section references-section">
@@ -184,12 +197,12 @@ export function AnswerPanel({
     );
   }
 
-  const { 
-    decisionSummary, 
-    completionState, 
-    directAnswer, 
+  const {
+    decisionSummary,
+    completionState,
+    directAnswer,
     fullAnalysis,
-    honestySignals 
+    honestySignals,
   } = message;
 
   // 失败状态渲染
@@ -224,7 +237,15 @@ export function AnswerPanel({
       <section className="answer-section direct-answer-section">
         <h2 className="section-title">回答</h2>
         <div className="direct-answer-content">
-          {renderCitedContent(answerContent, citationMap, onOpenPreview)}
+          <FullResponseMarkdown
+            content={answerContent}
+            messageId={`${message.id}-direct-answer`}
+            copiedKey={copiedKey}
+            onCopyCode={onCopyCode}
+            citationMap={citationMap}
+            onOpenPreview={onOpenPreview}
+            title={null}
+          />
         </div>
       </section>
 

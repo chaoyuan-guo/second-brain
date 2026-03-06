@@ -255,8 +255,28 @@ export async function GET(request: Request): Promise<Response> {
   const encoder = new TextEncoder();
   let buffer = '';
 
+  const emitFinalEvent = (
+    controller: TransformStreamDefaultController<Uint8Array>,
+    trigger: 'step_finish' | 'flush',
+  ): void => {
+    const finalEvent = synthesizeFinalEvent(acc);
+    const finalPayload = `event: final\ndata: ${JSON.stringify(finalEvent)}\n\n`;
+    controller.enqueue(encoder.encode(finalPayload));
+
+    logProxy('info', {
+      route: '/api/chat/event',
+      requestId,
+      traceId,
+      phase: 'final_event',
+      trigger,
+      completionState: finalEvent.completionState,
+      eventVersion: finalEvent.event_version,
+      durationMs: Date.now() - start,
+    });
+  };
+
   /**
-   * 处理单个事件并返回是否需要发送给客户端
+   * 处理单个事件并返回是否应立即合成 final 事件
    */
   const processEvent = (eventName: string, data: string): boolean => {
     // 日志摘要
@@ -264,7 +284,7 @@ export async function GET(request: Request): Promise<Response> {
 
     const parsed = parseOpenCodeEvent(data);
     if (!parsed) {
-      return true; // 非 message.part.updated 事件，直接透传
+      return false;
     }
 
     const { part, properties } = parsed;
@@ -286,7 +306,7 @@ export async function GET(request: Request): Promise<Response> {
       } else if (partText !== undefined && partText.length > 0) {
         acc.assistantContent = partText;
       }
-      return true;
+      return false;
     }
 
     if (partType === 'tool') {
@@ -315,24 +335,24 @@ export async function GET(request: Request): Promise<Response> {
           }
         }
       }
-      return true;
+      return false;
     }
 
     if (partType === 'step-start') {
       if (partMessageId) {
         currentStepMessageId = partMessageId;
       }
-      return true;
+      return false;
     }
 
     if (partType === 'step-finish') {
       if (currentStepMessageId && partMessageId && partMessageId !== currentStepMessageId) {
         return false;
       }
-      return true;
+      return acc.activeCalls.size === 0 && acc.assistantContent.trim().length > 0;
     }
 
-    return true;
+    return false;
   };
 
   const observed = upstream.body.pipeThrough(
@@ -361,7 +381,10 @@ export async function GET(request: Request): Promise<Response> {
 
           if (line.startsWith('data:')) {
             const data = line.slice(5).trimStart();
-            processEvent('message', data);
+            const shouldEmitFinal = processEvent('message', data);
+            if (shouldEmitFinal) {
+              emitFinalEvent(controller, 'step_finish');
+            }
           }
 
           newlineIndex = buffer.indexOf('\n');
@@ -372,23 +395,13 @@ export async function GET(request: Request): Promise<Response> {
         const tail = buffer.trim();
         if (tail.startsWith('data:')) {
           const data = tail.slice(5).trimStart();
-          processEvent('message', data);
+          const shouldEmitFinal = processEvent('message', data);
+          if (shouldEmitFinal) {
+            emitFinalEvent(controller, 'step_finish');
+          }
         }
 
-        // 合成终态事件
-        const finalEvent = synthesizeFinalEvent(acc);
-        const finalPayload = `event: final\ndata: ${JSON.stringify(finalEvent)}\n\n`;
-        controller.enqueue(encoder.encode(finalPayload));
-
-        logProxy('info', {
-          route: '/api/chat/event',
-          requestId,
-          traceId,
-          phase: 'final_event',
-          completionState: finalEvent.completionState,
-          eventVersion: finalEvent.event_version,
-          durationMs: Date.now() - start,
-        });
+        emitFinalEvent(controller, 'flush');
       },
     }),
   );

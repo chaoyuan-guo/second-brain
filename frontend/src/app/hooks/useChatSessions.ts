@@ -17,6 +17,8 @@ import {
   type CompletionState,
   type EvidenceItem,
   type RunPhase,
+  type CitationRef,
+  type ProcessStepSummary,
   // 证据与透明性新增类型
   type HonestySignals,
 } from '../lib/chat-types';
@@ -50,6 +52,104 @@ const asRecord = (value: unknown): JsonRecord | undefined =>
 
 const asString = (value: unknown): string | undefined =>
   typeof value === 'string' ? value : undefined;
+
+const parseDecisionSummary = (value: unknown): DecisionSummary | undefined => {
+  const record = asRecord(value);
+  const conclusion = asString(record?.conclusion);
+  if (conclusion === undefined) {
+    return undefined;
+  }
+
+  return {
+    conclusion,
+    actions: Array.isArray(record?.actions)
+      ? record.actions.filter((item): item is string => typeof item === 'string')
+      : [],
+    confidence: (['high', 'medium', 'low', 'unknown'].includes(asString(record?.confidence) || '')
+      ? record?.confidence
+      : 'unknown') as DecisionSummary['confidence'],
+    assumptions: Array.isArray(record?.assumptions)
+      ? record.assumptions.filter((item): item is string => typeof item === 'string')
+      : [],
+    risks: Array.isArray(record?.risks)
+      ? record.risks.filter((item): item is string => typeof item === 'string')
+      : [],
+    failureReason: asString(record?.failureReason),
+  };
+};
+
+const parseProcessOverview = (value: unknown): ProcessOverview | undefined => {
+  const record = asRecord(value);
+  const phase = asString(record?.phase);
+  if (!phase || !['retrieving', 'validating', 'synthesizing', 'completed'].includes(phase)) {
+    return undefined;
+  }
+
+  return {
+    phase: phase as RunPhase,
+    durationMs: typeof record?.durationMs === 'number' ? record.durationMs : 0,
+    warningCount: typeof record?.warningCount === 'number' ? record.warningCount : 0,
+    blockingErrorCount: typeof record?.blockingErrorCount === 'number' ? record.blockingErrorCount : 0,
+    impact: (['none', 'partial', 'blocking'].includes(asString(record?.impact) || '')
+      ? record?.impact
+      : 'none') as ProcessOverview['impact'],
+  };
+};
+
+const parseCompletionState = (value: unknown): CompletionState | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  return ['completed', 'partial_completed', 'failed'].includes(value)
+    ? (value as CompletionState)
+    : undefined;
+};
+
+const parseReferences = (value: unknown): CitationRef[] | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.filter((item): item is CitationRef => {
+    const record = asRecord(item);
+    return Boolean(record && typeof record.id === 'string' && typeof record.sourcePath === 'string');
+  });
+};
+
+const parseProcessSummary = (value: unknown): ProcessStepSummary[] | undefined =>
+  Array.isArray(value) ? (value as ProcessStepSummary[]) : undefined;
+
+const buildCitationMap = (references?: CitationRef[]): Record<string, CitationRef> => {
+  const citationMap: Record<string, CitationRef> = {};
+  references?.forEach((ref) => {
+    citationMap[ref.id] = ref;
+  });
+  return citationMap;
+};
+
+const splitFallbackAnswer = (content: string): { directAnswer: string; fullAnalysis: string } => {
+  const normalized = content.trim();
+  if (!normalized) {
+    return { directAnswer: '', fullAnalysis: '' };
+  }
+
+  const separatorMatch = normalized.match(/\n---\s*\n/);
+  if (separatorMatch) {
+    return {
+      directAnswer: normalized.slice(0, separatorMatch.index).trim(),
+      fullAnalysis: normalized.slice(separatorMatch.index! + separatorMatch[0].length).trim(),
+    };
+  }
+
+  const paragraphs = normalized.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean);
+  if (paragraphs.length <= 1) {
+    return { directAnswer: normalized, fullAnalysis: normalized };
+  }
+
+  return {
+    directAnswer: paragraphs[0],
+    fullAnalysis: normalized,
+  };
+};
 
 const buildTraceId = (sessionId: string): string => {
   const suffix = createId().slice(0, 8);
@@ -541,11 +641,11 @@ export function useChatSessions(): UseChatSessionsResult {
         const reader = streamResponse.body.getReader();
 
         // Answer-first: 结构化数据存储
-        let finalizedEventVersion: number | undefined;
-        let decisionSummary: DecisionSummary | undefined;
-        let processOverview: ProcessOverview | undefined;
-        let completionState: CompletionState | undefined;
-        let evidence: EvidenceItem[] | undefined;
+	        let finalizedEventVersion: number | undefined;
+	        let decisionSummary: DecisionSummary | undefined;
+	        let processOverview: ProcessOverview | undefined;
+	        let completionState: CompletionState | undefined;
+	        let evidence: EvidenceItem[] | undefined;
 
         await parseSseStream(reader, (eventName, data) => {
           let parsedValue: unknown;
@@ -568,74 +668,44 @@ export function useChatSessions(): UseChatSessionsResult {
               return;
             }
 
-            finalizedEventVersion = eventVersion;
+	            finalizedEventVersion = eventVersion;
 
-            // 提取结构化字段
-            const ds = asRecord(parsed.decisionSummary);
-            const po = asRecord(parsed.processOverview);
-            const cs = asString(parsed.completionState) as CompletionState | undefined;
-            const ev = parsed.evidence;
+	            const parsedDecisionSummary = parseDecisionSummary(parsed.decisionSummary);
+	            const parsedProcessOverview = parseProcessOverview(parsed.processOverview);
+	            const parsedCompletionState = parseCompletionState(parsed.completionState);
+	            const parsedEvidence = Array.isArray(parsed.evidence)
+	              ? (parsed.evidence as EvidenceItem[])
+	              : undefined;
+	            const directAnswer = asString(parsed.directAnswer);
+	            const fullAnalysis = asString(parsed.fullAnalysis);
+	            const references = parseReferences(parsed.references);
+	            const processSummary = parseProcessSummary(parsed.processSummary);
+	            const honestySignals = parsed.honestySignals && typeof parsed.honestySignals === 'object'
+	              ? (parsed.honestySignals as HonestySignals)
+	              : undefined;
 
-            if (ds && po && cs && Array.isArray(ev)) {
-              decisionSummary = {
-                conclusion: asString(ds.conclusion) || '',
-                actions: Array.isArray(ds.actions) ? ds.actions.filter((a): a is string => typeof a === 'string') : [],
-                confidence: (['high', 'medium', 'low', 'unknown'].includes(asString(ds.confidence) || '') ? ds.confidence : 'unknown') as 'high' | 'medium' | 'low' | 'unknown',
-                assumptions: Array.isArray(ds.assumptions) ? ds.assumptions.filter((a): a is string => typeof a === 'string') : [],
-                risks: Array.isArray(ds.risks) ? ds.risks.filter((a): a is string => typeof a === 'string') : [],
-                failureReason: asString(ds.failureReason),
-              };
+	            decisionSummary = parsedDecisionSummary ?? decisionSummary;
+	            processOverview = parsedProcessOverview ?? processOverview;
+	            completionState = parsedCompletionState ?? completionState;
+	            evidence = parsedEvidence ?? evidence;
 
-              processOverview = {
-                phase: (['retrieving', 'validating', 'synthesizing', 'completed'].includes(asString(po.phase) || '') ? po.phase : 'retrieving') as RunPhase,
-                durationMs: typeof po.durationMs === 'number' ? po.durationMs : 0,
-                warningCount: typeof po.warningCount === 'number' ? po.warningCount : 0,
-                blockingErrorCount: typeof po.blockingErrorCount === 'number' ? po.blockingErrorCount : 0,
-                impact: (['none', 'partial', 'blocking'].includes(asString(po.impact) || '') ? po.impact : 'none') as 'none' | 'partial' | 'blocking',
-              };
-
-              completionState = cs;
-              evidence = ev as EvidenceItem[];
-
-              // 提取新增字段（证据与透明性）
-              const directAnswer = asString(parsed.directAnswer);
-              const fullAnalysis = asString(parsed.fullAnalysis);
-              const references = Array.isArray(parsed.references) ? parsed.references : undefined;
-              const processSummary = Array.isArray(parsed.processSummary) ? parsed.processSummary : undefined;
-              const honestySignals = parsed.honestySignals && typeof parsed.honestySignals === 'object' 
-                ? parsed.honestySignals as HonestySignals 
-                : undefined;
-
-              // 构建 citationMap
-              const citationMap: Record<string, any> = {};
-              if (references && Array.isArray(references)) {
-                references.forEach((ref: any) => {
-                  if (ref && typeof ref.id === 'string') {
-                    citationMap[ref.id] = ref;
-                  }
-                });
-              }
-
-              // 更新状态
-              updateAssistantState({
-                isThinking: false,
-                statusText: '',
-                sourceRefs: buildSourceRefs(),
-                decisionSummary,
-                processOverview,
-                completionState,
-                evidence,
-                finalizedEventVersion,
-                directAnswer,
-                fullAnalysis,
-                references,
-                citationMap,
-                processSummary,
-                honestySignals,
-              });
-            }
-            return;
-          }
+	            updateAssistantState({
+	              isThinking: false,
+	              statusText: '',
+	              sourceRefs: buildSourceRefs(),
+	              finalizedEventVersion,
+	              ...(parsedDecisionSummary ? { decisionSummary: parsedDecisionSummary } : {}),
+	              ...(parsedProcessOverview ? { processOverview: parsedProcessOverview } : {}),
+	              ...(parsedCompletionState ? { completionState: parsedCompletionState } : {}),
+	              ...(parsedEvidence ? { evidence: parsedEvidence } : {}),
+	              ...(directAnswer ? { directAnswer } : {}),
+	              ...(fullAnalysis ? { fullAnalysis } : {}),
+	              ...(references ? { references, citationMap: buildCitationMap(references) } : {}),
+	              ...(processSummary ? { processSummary } : {}),
+	              ...(honestySignals ? { honestySignals } : {}),
+	            });
+	            return;
+	          }
 
           // 处理 OpenCode 原始事件 (message.part.updated)
           const eventType = asString(parsed.type) ?? eventName;
@@ -823,15 +893,21 @@ export function useChatSessions(): UseChatSessionsResult {
             : '本次请求未产出可展示的最终回复，请重试或缩小问题范围。';
 
         // 如果没有收到 final 事件，使用降级状态
-        const finalUpdate: Partial<ChatMessage> = {
-          content: safeFinalText,
-          isThinking: false,
-          statusText: '',
-          sourceRefs: buildSourceRefs(),
-        };
+	        const finalUpdate: Partial<ChatMessage> = {
+	          content: safeFinalText,
+	          isThinking: false,
+	          statusText: '',
+	          sourceRefs: buildSourceRefs(),
+	        };
 
-        // 仅在未收到终态事件时才设置默认值
-        if (decisionSummary === undefined) {
+	        const fallbackAnswer = splitFallbackAnswer(safeFinalText);
+	        if (finalizedEventVersion === undefined) {
+	          finalUpdate.directAnswer = fallbackAnswer.directAnswer || safeFinalText;
+	          finalUpdate.fullAnalysis = fallbackAnswer.fullAnalysis || safeFinalText;
+	        }
+
+	        // 仅在未收到终态事件时才设置默认值
+	        if (decisionSummary === undefined) {
           finalUpdate.decisionSummary = {
             conclusion: safeFinalText.slice(0, 200),
             actions: [],
@@ -853,20 +929,23 @@ export function useChatSessions(): UseChatSessionsResult {
         updateAssistantState(finalUpdate);
       } catch (error) {
         if ((error as DOMException)?.name === 'AbortError') {
-          if (autoCompletedAbort) {
-            const finalText = assistantContent.trim();
-            const safeFinalText =
-              finalText && finalText !== normalizedUserInput
-                ? finalText
-                : '本次请求未产出可展示的最终回复，请重试或缩小问题范围。';
-            updateAssistantState({
-              content: safeFinalText,
-              isThinking: false,
-              statusText: '',
-              sourceRefs: buildSourceRefs(),
-            });
-            return;
-          }
+	          if (autoCompletedAbort) {
+	            const finalText = assistantContent.trim();
+	            const safeFinalText =
+	              finalText && finalText !== normalizedUserInput
+	                ? finalText
+	                : '本次请求未产出可展示的最终回复，请重试或缩小问题范围。';
+	            const fallbackAnswer = splitFallbackAnswer(safeFinalText);
+	            updateAssistantState({
+	              content: safeFinalText,
+	              isThinking: false,
+	              statusText: '',
+	              sourceRefs: buildSourceRefs(),
+	              directAnswer: fallbackAnswer.directAnswer || safeFinalText,
+	              fullAnalysis: fallbackAnswer.fullAnalysis || safeFinalText,
+	            });
+	            return;
+	          }
 
           if (timeoutAbort) {
             const normalizedAssistant = assistantContent.trim();
