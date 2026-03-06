@@ -76,9 +76,30 @@ describe('enrichCitationsWithEvidence', () => {
     const enriched = enrichCitationsWithEvidence(citations, sourceRefMap);
     
     expect(enriched[0].sourcePath).toBe('/notes/doc1.md');
+    expect(enriched[0].sourceTitle).toBe('文档1');
+    expect(enriched[0].sourceDateLabel).toBeUndefined();
     expect(enriched[0].retrievalScore).toBe(0.85);
+    expect(enriched[0].weakMatch).toBe(true);
     expect(enriched[0].snippet).toBe('内容片段1');
     expect(enriched[1].sourcePath).toBe(''); // 未找到匹配
+  });
+
+  it('should infer source date label from path when possible', () => {
+    const citations: CitationRef[] = [
+      { id: '01', sourcePath: '', retrievalScore: undefined, snippet: undefined },
+    ];
+
+    const sourceRefMap = new Map<string, EvidenceRef>([
+      ['path1|heading|0|snippet', {
+        sourcePath: '/notes/2024-09-15-review.md',
+        charOffsetStart: 0,
+        snippet: '内容片段1',
+        citationId: '01',
+      }],
+    ]);
+
+    const enriched = enrichCitationsWithEvidence(citations, sourceRefMap);
+    expect(enriched[0].sourceDateLabel).toBe('2024-09-15');
   });
 
   it('should handle empty sourceRefMap', () => {
@@ -142,7 +163,11 @@ describe('generateProcessSummary', () => {
         name: 'query_my_notes',
         status: 'completed',
         arguments: { query: '搜索关键词' },
-        result: [{ path: 'test.md' }],
+        result: { results: [{ source_path: 'test.md' }, { source_path: 'other.md' }] },
+        sourceRefs: [
+          { sourcePath: 'test.md', citationId: '01' },
+          { sourcePath: 'other.md', citationId: '02' },
+        ],
         startedAt: 1000,
         completedAt: 2000,
       },
@@ -151,7 +176,8 @@ describe('generateProcessSummary', () => {
     const summaries = generateProcessSummary(completedCalls, []);
     
     expect(summaries).toHaveLength(1);
-    expect(summaries[0].summary).toContain('搜索笔记');
+    expect(summaries[0].summary).toContain('检索笔记');
+    expect(summaries[0].summary).toContain('2 个文件');
     expect(summaries[0].phase).toBe('retrieving');
     expect(summaries[0].durationMs).toBe(1000);
     expect(summaries[0].detail).toContain('输入：');

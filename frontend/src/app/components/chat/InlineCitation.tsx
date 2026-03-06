@@ -2,6 +2,13 @@
 
 import { useState } from 'react';
 import type { CitationRef } from '../../lib/chat-types';
+import {
+  deriveSourceTitle,
+  formatRetrievalDistance,
+  getCitationSuperscript,
+  isWeakRetrievalScore,
+  normalizeCitationId,
+} from '../../lib/citation-utils';
 
 interface InlineCitationProps {
   citationId: string;
@@ -16,18 +23,19 @@ interface InlineCitationProps {
 export function InlineCitation({ citationId, citationMap, onOpenPreview }: InlineCitationProps) {
   const [isHovered, setIsHovered] = useState(false);
 
-  const normalizedId = citationId.startsWith('c') ? citationId.slice(1) : citationId;
+  const normalizedId = normalizeCitationId(citationId);
   const ref = citationMap[citationId] || citationMap[normalizedId] || citationMap[`c${normalizedId}`];
   const hasRef = !!ref;
-  
-  // 弱匹配样式（分数 < 0.8）
-  const isWeakMatch = ref?.retrievalScore !== undefined && ref.retrievalScore < 0.8;
+  const isWeakMatch = isWeakRetrievalScore(ref?.retrievalScore);
+  const sourceTitle = ref ? deriveSourceTitle(ref.sourcePath, ref.sourceTitle, ref.heading) : '';
+  const sourceMeta = [ref?.sourceDateLabel, isWeakMatch ? '弱匹配' : undefined].filter(Boolean).join(' · ');
+  const distanceLabel = formatRetrievalDistance(ref?.retrievalScore);
   
   const handleClick = () => {
     if (hasRef && onOpenPreview) {
       onOpenPreview(
         ref.sourcePath,
-        ref.sourceTitle || ref.sourcePath.split('/').pop() || '来源',
+        sourceTitle || '来源',
         { char_offset: ref.charOffsetStart, snippet: ref.snippet }
       );
     }
@@ -39,21 +47,31 @@ export function InlineCitation({ citationId, citationMap, onOpenPreview }: Inlin
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={handleClick}
+      role={hasRef ? 'button' : undefined}
+      tabIndex={hasRef ? 0 : undefined}
+      aria-label={hasRef ? `查看引用 ${normalizedId}` : undefined}
+      onKeyDown={(event) => {
+        if (hasRef && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          handleClick();
+        }
+      }}
     >
-      <span className="citation-bracket">[</span>
-      <span className="citation-id">c{normalizedId}</span>
-      <span className="citation-bracket">]</span>
+      <sup className="citation-sup">{getCitationSuperscript(normalizedId)}</sup>
       
       {isHovered && hasRef && (
         <div className="citation-tooltip">
           <div className="tooltip-header">
-            <span className="tooltip-title">{ref.sourceTitle || ref.sourcePath.split('/').pop()}</span>
-            {ref.retrievalScore !== undefined && (
+            <span className="tooltip-title">{sourceTitle}</span>
+            {distanceLabel && (
               <span className={`tooltip-score ${isWeakMatch ? 'weak' : 'strong'}`}>
-                {Math.round(ref.retrievalScore * 100)}%
+                {distanceLabel}
               </span>
             )}
           </div>
+          {sourceMeta && (
+            <div className="tooltip-meta">{sourceMeta}</div>
+          )}
           {ref.heading && (
             <div className="tooltip-heading">{ref.heading}</div>
           )}

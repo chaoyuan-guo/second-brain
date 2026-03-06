@@ -9,6 +9,7 @@ export interface CitationRef {
   id: string;
   sourcePath: string;
   sourceTitle?: string;
+  sourceDateLabel?: string;
   heading?: string;
   charOffsetStart?: number;
   charOffsetEnd?: number;
@@ -84,6 +85,7 @@ export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'unknown';
 export interface EvidenceRef {
   sourcePath: string;
   sourceTitle?: string;
+  sourceDateLabel?: string;
   heading?: string;
   charOffsetStart?: number;
   charOffsetEnd?: number;

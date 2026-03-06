@@ -2,6 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { CitationRef } from '../../lib/chat-types';
+import {
+  deriveSourceTitle,
+  formatRetrievalDistance,
+  getCitationSuperscript,
+  isWeakRetrievalScore,
+  normalizeCitationId,
+} from '../../lib/citation-utils';
 
 interface ReferencesPanelProps {
   references: CitationRef[];
@@ -30,8 +37,7 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
     );
   }
 
-  const normalizeId = (id: string) => (id.startsWith('c') ? id.slice(1) : id);
-  const citationOrder = (id: string) => Number.parseInt(normalizeId(id), 10);
+  const citationOrder = (id: string) => Number.parseInt(normalizeCitationId(id), 10);
 
   const sortedRefs = useMemo(() => {
     return [...references].sort((a, b) => {
@@ -96,7 +102,7 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
     if (onOpenPreview) {
       onOpenPreview(
         ref.sourcePath,
-        ref.sourceTitle || ref.sourcePath.split('/').pop() || '来源',
+        deriveSourceTitle(ref.sourcePath, ref.sourceTitle, ref.heading),
         { char_offset: ref.charOffsetStart, snippet: ref.snippet }
       );
     }
@@ -149,7 +155,8 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
       <div className="references-list">
         {groupedRefs.map(([sourcePath, refs]) => {
           const groupCollapsed = collapsedGroups.has(sourcePath);
-          const groupTitle = refs[0].sourceTitle || sourcePath.split('/').pop() || '未知来源';
+          const groupTitle = deriveSourceTitle(sourcePath, refs[0].sourceTitle, refs[0].heading);
+          const groupMeta = [refs[0].sourceDateLabel, `${refs.length} 条引用`].filter(Boolean).join(' · ');
 
           return (
             <div key={sourcePath} className="ref-source-group">
@@ -159,7 +166,7 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
                 onClick={() => toggleGroup(sourcePath)}
               >
                 <span className="ref-group-title">{groupTitle}</span>
-                <span className="ref-group-meta">{refs.length} 条引用</span>
+                <span className="ref-group-meta">{groupMeta}</span>
                 <svg
                   className={`expand-icon ${groupCollapsed ? '' : 'expanded'}`}
                   width="16"
@@ -175,8 +182,10 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
 
               {!groupCollapsed && refs.map((ref) => {
                 const isExpanded = expandedIds.has(ref.id);
-                const isWeak = ref.retrievalScore !== undefined && ref.retrievalScore >= 0.8;
+                const isWeak = isWeakRetrievalScore(ref.retrievalScore);
                 const hasScore = ref.retrievalScore !== undefined;
+                const distanceLabel = formatRetrievalDistance(ref.retrievalScore);
+                const itemTitle = deriveSourceTitle(ref.sourcePath, ref.sourceTitle, ref.heading);
 
                 return (
                   <div
@@ -184,13 +193,19 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
                     className={`reference-item ${isWeak ? 'weak' : ''} ${isExpanded ? 'expanded' : ''}`}
                   >
                     <div className="ref-header" onClick={() => toggleExpand(ref.id)}>
-                      <span className="ref-index">[c{normalizeId(ref.id)}]</span>
+                      <span className="ref-index">{getCitationSuperscript(ref.id)}</span>
                       <span className="ref-title">
-                        {ref.heading || ref.sourceTitle || ref.sourcePath.split('/').pop() || '未知来源'}
+                        {itemTitle}
                       </span>
+                      {ref.sourceDateLabel && (
+                        <span className="ref-date">{ref.sourceDateLabel}</span>
+                      )}
+                      {isWeak && (
+                        <span className="ref-weak-badge">弱匹配</span>
+                      )}
                       {hasScore && (
                         <span className={`ref-score ${isWeak ? 'weak' : 'strong'}`}>
-                          {Math.round(ref.retrievalScore! * 100)}%
+                          {distanceLabel}
                         </span>
                       )}
                       <svg

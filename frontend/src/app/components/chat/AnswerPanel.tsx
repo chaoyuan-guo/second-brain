@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import type { ChatMessage, CitationRef } from '../../lib/chat-types';
 import { FullResponseMarkdown } from './FullResponseMarkdown';
 import { ReferencesPanel } from './ReferencesPanel';
 import { HonestyBanner } from './HonestyBanner';
 import { InlineCitation } from './InlineCitation';
+import { deriveSourceTitle, inferSourceDateLabel } from '../../lib/citation-utils';
 
 // ============================================================================
 // 辅助函数
@@ -44,8 +45,8 @@ const renderCitedContent = (
   content: string,
   citationMap: Record<string, CitationRef>,
   onOpenPreview?: (path: string, title: string, ref?: any) => void
-): React.ReactNode => {
-  const parts: React.ReactNode[] = [];
+): ReactNode => {
+  const parts: ReactNode[] = [];
   let lastIndex = 0;
   
   // 匹配 [cxx] 格式
@@ -79,6 +80,24 @@ const renderCitedContent = (
   }
   
   return parts;
+};
+
+const buildFallbackReferences = (message: ChatMessage): CitationRef[] | null => {
+  if (message.references && message.references.length > 0) {
+    return message.references;
+  }
+  if (message.sourceRefs && message.sourceRefs.length > 0) {
+    return message.sourceRefs.map((ref, idx) => ({
+      id: String(idx + 1).padStart(2, '0'),
+      sourcePath: ref.path,
+      sourceTitle: deriveSourceTitle(ref.path, undefined, ref.heading),
+      sourceDateLabel: inferSourceDateLabel(ref.path, ref.heading),
+      heading: ref.heading,
+      snippet: ref.snippet,
+      charOffsetStart: ref.char_offset,
+    }));
+  }
+  return null;
 };
 
 // ============================================================================
@@ -138,11 +157,15 @@ export function AnswerPanel({
   }, [message.citationMap, message.references]);
   
   const hasStructured = useMemo(() => hasValidStructuredData(message), [message]);
+  const displayReferences = useMemo(() => buildFallbackReferences(message), [message]);
 
   // 降级渲染：缺失结构化字段时，展示原始回答正文和降级提示
   if (!hasStructured) {
     return (
       <div className="answer-panel degraded">
+        {message.honestySignals && !message.honestySignals.hasSufficientEvidence && (
+          <HonestyBanner signals={message.honestySignals} />
+        )}
         <div className="degraded-notice">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -152,6 +175,11 @@ export function AnswerPanel({
         <div className="direct-answer">
           {renderCitedContent(message.content, citationMap, onOpenPreview)}
         </div>
+        {displayReferences && displayReferences.length > 0 && (
+          <section className="answer-section references-section">
+            <ReferencesPanel references={displayReferences} onOpenPreview={onOpenPreview} />
+          </section>
+        )}
       </div>
     );
   }
@@ -161,7 +189,6 @@ export function AnswerPanel({
     completionState, 
     directAnswer, 
     fullAnalysis,
-    references,
     honestySignals 
   } = message;
 
@@ -186,25 +213,6 @@ export function AnswerPanel({
   const answerContent = directAnswer || decisionSummary?.conclusion || message.content.split('\n')[0];
   const analysisContent = fullAnalysis || message.content;
 
-  // 构建引用列表（优先使用 references，降级使用 sourceRefs）
-  const displayReferences = useMemo(() => {
-    if (references && references.length > 0) {
-      return references;
-    }
-    // 降级：从 sourceRefs 构建文件级引用
-    if (message.sourceRefs && message.sourceRefs.length > 0) {
-      return message.sourceRefs.map((ref, idx) => ({
-        id: String(idx + 1).padStart(2, '0'),
-        sourcePath: ref.path,
-        sourceTitle: ref.heading || ref.path.split('/').pop(),
-        heading: ref.heading,
-        snippet: ref.snippet,
-        charOffsetStart: ref.char_offset,
-      }));
-    }
-    return null;
-  }, [references, message.sourceRefs]);
-
   return (
     <div className="answer-panel evidence-traceable">
       {/* 1. 诚实性提示横幅（当证据不足时） */}
@@ -223,35 +231,10 @@ export function AnswerPanel({
       {/* 3. 来自你的笔记（References Panel）- 支持 sourceRefs 降级 */}
       {displayReferences && displayReferences.length > 0 && (
         <section className="answer-section references-section">
-          {references && references.length > 0 ? (
-            <ReferencesPanel 
-              references={references} 
-              onOpenPreview={onOpenPreview}
-            />
-          ) : (
-            <div className="fallback-references">
-              <h3 className="fallback-title">相关文件来源</h3>
-              <ul className="fallback-list">
-                {displayReferences.map((ref, idx) => (
-                  <li key={idx} className="fallback-item">
-                    <button
-                      className="fallback-link"
-                      onClick={() => onOpenPreview?.(
-                        ref.sourcePath,
-                        ref.sourceTitle || ref.sourcePath.split('/').pop() || '来源',
-                        { char_offset: ref.charOffsetStart, snippet: ref.snippet }
-                      )}
-                    >
-                      {ref.sourceTitle || ref.sourcePath.split('/').pop()}
-                    </button>
-                    {ref.snippet && (
-                      <p className="fallback-snippet">{ref.snippet.slice(0, 120)}...</p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <ReferencesPanel 
+            references={displayReferences} 
+            onOpenPreview={onOpenPreview}
+          />
         </section>
       )}
 
@@ -281,13 +264,15 @@ export function AnswerPanel({
               messageId={message.id}
               copiedKey={copiedKey}
               onCopyCode={onCopyCode}
+              citationMap={citationMap}
+              onOpenPreview={onOpenPreview}
             />
           </div>
         )}
       </section>
 
       {/* 5. 旧版兼容：证据面板（如果存在 legacy evidence 数据） */}
-      {message.evidence && message.evidence.length > 0 && !references && (
+      {message.evidence && message.evidence.length > 0 && !message.references?.length && (
         <section className="answer-section legacy-evidence">
           <div className="legacy-notice">以下是旧版证据展示</div>
         </section>

@@ -15,6 +15,11 @@ import type {
   ProcessStepSummary,
   HonestySignals,
 } from '../../lib/chat-types';
+import {
+  inferSourceDateLabel,
+  isWeakRetrievalScore,
+  normalizeCitationId,
+} from '../../lib/citation-utils';
 
 // ============================================================================
 // 类型定义
@@ -79,6 +84,52 @@ const SEMANTIC_TO_PHASE: Record<ToolSemantic, RunPhase | null> = {
   validate: 'validating',
   synthesize_helper: 'synthesizing',
   other: null,
+};
+
+const getResultCount = (result: unknown): number => {
+  if (Array.isArray(result)) {
+    return result.length;
+  }
+  if (result && typeof result === 'object' && Array.isArray((result as { results?: unknown[] }).results)) {
+    return (result as { results: unknown[] }).results.length;
+  }
+  return 0;
+};
+
+const getUniqueFileCount = (call: ToolCallRecord): number => {
+  if (call.sourceRefs && call.sourceRefs.length > 0) {
+    return new Set(call.sourceRefs.map((ref) => ref.sourcePath).filter(Boolean)).size;
+  }
+  if (call.result && typeof call.result === 'object' && Array.isArray((call.result as { results?: Array<{ source_path?: string }> }).results)) {
+    const files = (call.result as { results: Array<{ source_path?: string }> }).results
+      .map((item) => item?.source_path)
+      .filter((value): value is string => Boolean(value));
+    return new Set(files).size;
+  }
+  return 0;
+};
+
+const summarizeInterpreterResult = (result: unknown): string => {
+  if (!result || typeof result !== 'object') {
+    return '已完成验证';
+  }
+
+  const record = result as Record<string, unknown>;
+  const status = typeof record.status === 'number' ? record.status : undefined;
+  const stdout = typeof record.stdout === 'string' ? record.stdout.trim() : '';
+  const stderr = typeof record.stderr === 'string' ? record.stderr.trim() : '';
+  const content = stdout || stderr;
+
+  if (content) {
+    return content.split('\n')[0].slice(0, 72);
+  }
+  if (status === 0) {
+    return '验证通过';
+  }
+  if (typeof status === 'number') {
+    return `退出码 ${status}`;
+  }
+  return '已完成验证';
 };
 
 /**
@@ -335,7 +386,7 @@ export const extractCitations = (content: string): CitationRef[] => {
   let match;
 
   while ((match = regex.exec(content)) !== null) {
-    const id = match[1]; // 只保留数字部分，如 "01"
+    const id = normalizeCitationId(match[1]);
     if (!seen.has(id)) {
       seen.add(id);
       citations.push({
@@ -367,8 +418,12 @@ export const enrichCitationsWithEvidence = (
         return {
           ...citation,
           sourcePath: ref.sourcePath,
+          sourceTitle: ref.sourceTitle,
+          sourceDateLabel: ref.sourceDateLabel ?? inferSourceDateLabel(ref.sourcePath, ref.sourceTitle, ref.heading),
+          heading: ref.heading,
           snippet: ref.snippet,
           retrievalScore: ref.retrievalScore,
+          weakMatch: isWeakRetrievalScore(ref.retrievalScore),
         };
       }
     }
@@ -453,30 +508,35 @@ export const generateProcessSummary = (
       case 'retrieve':
         if (call.name === 'query_my_notes') {
           const query = (call.arguments?.query as string) || '相关笔记';
-          // 支持 result 为对象（含 results 数组）或数组两种格式
-          let resultCount = 0;
-          if (call.result) {
-            if (Array.isArray(call.result)) {
-              resultCount = call.result.length;
-            } else if (typeof call.result === 'object' && Array.isArray((call.result as any).results)) {
-              resultCount = (call.result as any).results.length;
-            }
-          }
-          summary = `搜索笔记：找到 ${resultCount} 条相关记录`;
-          inputSummary = `查询 "${query}"`;
-          resultSummary = `命中 ${resultCount} 条`;
+          const resultCount = getResultCount(call.result);
+          const fileCount = getUniqueFileCount(call);
+          summary = fileCount > 0
+            ? `检索笔记 "${query}" -> 命中 ${resultCount} 条，来自 ${fileCount} 个文件`
+            : `检索笔记 "${query}" -> 命中 ${resultCount} 条`;
+          inputSummary = `检索词 "${query}"`;
+          resultSummary = fileCount > 0
+            ? `命中 ${resultCount} 条，涉及 ${fileCount} 个文件`
+            : `命中 ${resultCount} 条`;
           detail = `输入：${inputSummary}；结果：${resultSummary}`;
         } else if (call.name === 'web_search') {
           const query = (call.arguments?.query as string) || '';
-          summary = `网络搜索：查找"${query}"`;
+          summary = query ? `联网搜索 "${query}"` : '联网搜索';
           inputSummary = query ? `搜索词 "${query}"` : '无输入';
           resultSummary = call.status === 'error' ? '搜索失败' : '已返回结果';
           detail = `输入：${inputSummary}；结果：${resultSummary}`;
         } else if (call.name === 'read_note_file') {
           const path = (call.arguments?.path as string) || '文件';
-          summary = `阅读笔记：${path.split('/').pop() || path}`;
+          const offsetValue = call.arguments?.offset;
+          const offset = typeof offsetValue === 'number'
+            ? offsetValue
+            : typeof offsetValue === 'string'
+              ? Number.parseInt(offsetValue, 10)
+              : undefined;
+          summary = offset && !Number.isNaN(offset)
+            ? `读取文件 ${path.split('/').pop() || path}（偏移 ${offset} 附近）`
+            : `读取文件 ${path.split('/').pop() || path}`;
           inputSummary = `读取 ${path}`;
-          resultSummary = call.status === 'error' ? '读取失败' : '读取成功';
+          resultSummary = call.status === 'error' ? '读取失败' : '已载入原文片段';
           detail = `输入：${inputSummary}；结果：${resultSummary}`;
         } else {
           summary = `检索信息：${call.name}`;
@@ -487,9 +547,13 @@ export const generateProcessSummary = (
         break;
       
       case 'validate':
-        summary = `验证推理：${call.name}`;
+        summary = call.name === 'run_code_interpreter'
+          ? `执行代码验证 -> ${summarizeInterpreterResult(call.result)}`
+          : `验证步骤：${call.name}`;
         inputSummary = '执行验证';
-        resultSummary = call.status === 'error' ? '验证失败' : '验证完成';
+        resultSummary = call.status === 'error'
+          ? '验证失败'
+          : summarizeInterpreterResult(call.result);
         detail = `输入：${inputSummary}；结果：${resultSummary}`;
         break;
       
@@ -586,7 +650,7 @@ export const computeHonestySignals = (
   
   if (weakMatches.length > 0) {
     honestyWarnings.push(
-      `${weakMatches.length} 条引用来自相关性较低的检索结果（距离>=0.8），建议进一步核实`
+      `${weakMatches.length} 条引用来自相关性较低的检索结果（距离 >= 0.8），建议进一步核实`
     );
   }
   
@@ -605,7 +669,7 @@ export const computeHonestySignals = (
   // 局限性说明
   let limitationNote: string | undefined;
   if (reasonCodes.includes('no_hit')) {
-    limitationNote = '笔记中没有检索到直接相关记录，回答仅能基于通用推理。';
+    limitationNote = '笔记中没有检索到直接相关记录，回答只能基于有限线索推断。';
   } else if (reasonCodes.includes('weak_match')) {
     limitationNote = '检索结果相关性偏弱，请优先核对原文后再采纳结论。';
   } else if (reasonCodes.includes('insufficient_hits')) {

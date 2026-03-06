@@ -54,9 +54,11 @@ const extractSourceRefs = (metadata: unknown): EvidenceRef[] => {
     const charOffset = asNumber(entry?.char_offset);
     const score = asNumber(entry?.score);
     const citationId = asString(entry?.citation_id);
+    const sourceTitle = asString(entry?.source_title)?.trim();
 
     refs.push({
       sourcePath: path,
+      sourceTitle,
       heading,
       snippet,
       charOffsetStart: charOffset,

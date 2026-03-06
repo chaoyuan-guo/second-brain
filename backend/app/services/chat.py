@@ -1717,6 +1717,7 @@ async def run_chat_conversation(
                             used_source_refs.append(
                                 {
                                     "path": normalized,
+                                    "source_title": item.get("document_title") or "",
                                     "heading": heading,
                                     "char_offset": jump_offset,
                                     "snippet": snippet,
@@ -1976,6 +1977,7 @@ async def run_chat_conversation(
                     )
                     used_source_refs.append({
                         "path": normalized,
+                        "source_title": Path(normalized).stem.replace("_", " ").replace("-", " "),
                         "heading": "",
                         "char_offset": read_offset,
                         "snippet": content_text,
