@@ -112,6 +112,24 @@ describe('enrichCitationsWithEvidence', () => {
     
     expect(enriched[0].sourcePath).toBe('');
   });
+
+  it('should sanitize xml-like snippet wrappers from evidence refs', () => {
+    const citations: CitationRef[] = [
+      { id: '01', sourcePath: '', retrievalScore: undefined, snippet: undefined },
+    ];
+
+    const sourceRefMap = new Map<string, EvidenceRef>([
+      ['path1|heading|0|snippet', {
+        sourcePath: '/notes/dp.md',
+        charOffsetStart: 620,
+        snippet: '<path>/notes/dp.md</path><content>620: 动态规划的核心是状态转移。</content>',
+        citationId: '01',
+      }],
+    ]);
+
+    const enriched = enrichCitationsWithEvidence(citations, sourceRefMap);
+    expect(enriched[0].snippet).toBe('动态规划的核心是状态转移。');
+  });
 });
 
 // ============================================================================
@@ -148,6 +166,16 @@ describe('splitDirectAnswer', () => {
     const { directAnswer, fullAnalysis } = splitDirectAnswer(content);
     
     expect(directAnswer).toBe('只有一句话');
+    expect(fullAnalysis).toBe('');
+  });
+
+  it('should not split on markdown file extensions inside citations', () => {
+    const content =
+      '动态规划核心思想（基于你的笔记）：先定义状态，再写状态转移（data/notes/my_markdowns/动态规划.md:632）。然后再考虑初始化。';
+    const { directAnswer, fullAnalysis } = splitDirectAnswer(content);
+
+    expect(directAnswer).toContain('动态规划.md:632');
+    expect(directAnswer).toContain('然后再考虑初始化');
     expect(fullAnalysis).toBe('');
   });
 });
@@ -346,5 +374,41 @@ describe('synthesizeFinalEvent', () => {
     expect(finalEvent.references?.[0].sourcePath).toBe('/notes/dp_notes.md');
     expect(finalEvent.references?.[0].charOffsetStart).toBe(42);
     expect(finalEvent.honestySignals?.reasonCodes).not.toContain('no_hit');
+  });
+
+  it('should derive content fallback references and normalize no_hit when answer mentions note paths', () => {
+    const finalEvent = synthesizeFinalEvent({
+      startTime: Date.now() - 1200,
+      activeCalls: new Map(),
+      completedCalls: [],
+      errorCalls: [],
+      assistantContent:
+        '这是结论。引用：data/notes/my_markdowns/动态规划.md:632\n' +
+        '更多说明见 data/notes/my_markdowns/爬楼梯动态规划思路解析.md:49',
+      eventVersion: 0,
+      sourceRefMap: new Map(),
+    });
+
+    expect(finalEvent.references).toHaveLength(2);
+    expect(finalEvent.references?.[0].sourcePath).toBe('data/notes/my_markdowns/动态规划.md');
+    expect(finalEvent.honestySignals?.reasonCodes).toEqual(['weak_match']);
+    expect(finalEvent.honestySignals?.limitationNote).toBe(
+      '回答正文已显式引用相关笔记文件，但上游事件未返回精确检索分数，请优先核对原文。',
+    );
+    expect(finalEvent.honestySignals?.retrievalHitCount).toBe(2);
+  });
+
+  it('should mark final process phase as completed', () => {
+    const finalEvent = synthesizeFinalEvent({
+      startTime: Date.now() - 500,
+      activeCalls: new Map(),
+      completedCalls: [],
+      errorCalls: [],
+      assistantContent: '这是最终回答。',
+      eventVersion: 0,
+      sourceRefMap: new Map(),
+    });
+
+    expect(finalEvent.processOverview.phase).toBe('completed');
   });
 });

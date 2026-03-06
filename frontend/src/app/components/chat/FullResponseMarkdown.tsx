@@ -55,6 +55,10 @@ const renderCitationNodes = (
   citationMap: Record<string, CitationRef>,
   onOpenPreview?: (path: string, title: string, ref?: { char_offset?: number; snippet?: string }) => void,
 ): ReactNode => {
+  if (Array.isArray(node)) {
+    return Children.map(node, (child) => renderCitationNodes(child, citationMap, onOpenPreview));
+  }
+
   if (typeof node === 'string') {
     return renderTextWithCitations(node, citationMap, onOpenPreview);
   }

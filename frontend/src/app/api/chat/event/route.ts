@@ -31,6 +31,12 @@ const asString = (value: unknown): string | undefined =>
 const asNumber = (value: unknown): number | undefined =>
   typeof value === 'number' ? value : undefined;
 
+const getToolInput = (state: Record<string, unknown>): Record<string, unknown> | undefined =>
+  asRecord(state.arguments) || asRecord(state.input);
+
+const getToolOutput = (state: Record<string, unknown>): unknown =>
+  state.result ?? state.output;
+
 /**
  * 从工具 metadata 中提取 source_refs
  */
@@ -326,9 +332,9 @@ export async function GET(request: Request): Promise<Response> {
 
       if (status) {
         updateToolCall(acc, callId, toolName, status, {
-          arguments: state.arguments as Record<string, unknown>,
+          arguments: getToolInput(state),
           error: asString(state.error),
-          result: state.result,
+          result: getToolOutput(state),
         });
 
         // completed 时提取 source_refs

@@ -6,7 +6,13 @@ import { FullResponseMarkdown } from './FullResponseMarkdown';
 import { ReferencesPanel } from './ReferencesPanel';
 import { HonestyBanner } from './HonestyBanner';
 import { InlineCitation } from './InlineCitation';
-import { deriveSourceTitle, inferSourceDateLabel } from '../../lib/citation-utils';
+import {
+  deriveSourceTitle,
+  extractFileLevelReferencesFromContent,
+  inferSourceDateLabel,
+  normalizeHonestySignalsWithReferences,
+  sanitizeCitationSnippet,
+} from '../../lib/citation-utils';
 
 // ============================================================================
 // 辅助函数
@@ -84,6 +90,46 @@ const renderCitedContent = (
   return parts;
 };
 
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const normalizePathForCitation = (value: string): string[] => {
+  const normalized = value.replace(/\\/g, '/');
+  const variants = new Set<string>([normalized]);
+  if (normalized.startsWith('/app/')) {
+    variants.add(normalized.slice('/app/'.length));
+  }
+  if (normalized.startsWith('data/')) {
+    variants.add(`/app/${normalized}`);
+  }
+  return Array.from(variants);
+};
+
+const replaceRawPathMentionsWithCitations = (
+  content: string,
+  references: CitationRef[] | null,
+): string => {
+  if (!content || !references || references.length === 0) {
+    return content;
+  }
+
+  let nextContent = content;
+  references.forEach((ref) => {
+    const citationToken = `[c${ref.id.startsWith('c') ? ref.id.slice(1) : ref.id}]`;
+    const patterns = normalizePathForCitation(ref.sourcePath).map((variant) =>
+      new RegExp(`\`?${escapeRegExp(variant)}(?::\\d+)?\`?`, 'g'),
+    );
+    patterns.forEach((pattern) => {
+      nextContent = nextContent.replace(pattern, citationToken);
+    });
+  });
+
+  return nextContent
+    .replace(/引用：\s*((?:\[c\d{2,3}\]\s*)+)/g, (_match, citations: string) => `引用：${citations.trim()}`)
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 const extractContentFallbackReferences = (message: ChatMessage): CitationRef[] | null => {
   const contentPool = [message.directAnswer, message.fullAnalysis, message.content]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
@@ -91,34 +137,16 @@ const extractContentFallbackReferences = (message: ChatMessage): CitationRef[] |
   if (!contentPool) {
     return null;
   }
-
-  const pathPattern = /((?:[\w.\-\u4e00-\u9fa5]+\/)+[\w.\-\u4e00-\u9fa5]+\.md)(?::(\d+))?/g;
-  const refs: CitationRef[] = [];
-  const seen = new Set<string>();
-  let match: RegExpExecArray | null;
-
-  while ((match = pathPattern.exec(contentPool)) !== null) {
-    const sourcePath = match[1];
-    if (seen.has(sourcePath)) {
-      continue;
-    }
-    seen.add(sourcePath);
-
-    refs.push({
-      id: String(refs.length + 1).padStart(2, '0'),
-      sourcePath,
-      sourceTitle: deriveSourceTitle(sourcePath),
-      sourceDateLabel: inferSourceDateLabel(sourcePath),
-      snippet: match[2] ? `回答正文引用了该文件的第 ${match[2]} 行附近内容。` : '回答正文引用了该文件中的内容。',
-    });
-  }
-
+  const refs = extractFileLevelReferencesFromContent(contentPool);
   return refs.length > 0 ? refs : null;
 };
 
 const buildFallbackReferences = (message: ChatMessage): CitationRef[] | null => {
   if (message.references && message.references.length > 0) {
-    return message.references;
+    return message.references.map((ref) => ({
+      ...ref,
+      snippet: sanitizeCitationSnippet(ref.snippet),
+    }));
   }
   if (message.sourceRefs && message.sourceRefs.length > 0) {
     return message.sourceRefs.map((ref, idx) => ({
@@ -127,31 +155,11 @@ const buildFallbackReferences = (message: ChatMessage): CitationRef[] | null => 
       sourceTitle: deriveSourceTitle(ref.path, undefined, ref.heading),
       sourceDateLabel: inferSourceDateLabel(ref.path, ref.heading),
       heading: ref.heading,
-      snippet: ref.snippet,
+      snippet: sanitizeCitationSnippet(ref.snippet),
       charOffsetStart: ref.char_offset,
     }));
   }
   return extractContentFallbackReferences(message);
-};
-
-const normalizeHonestySignals = (
-  signals: ChatMessage['honestySignals'],
-  references: CitationRef[] | null,
-): ChatMessage['honestySignals'] => {
-  if (!signals || !references || references.length === 0 || !signals.reasonCodes.includes('no_hit')) {
-    return signals;
-  }
-
-  const nextReasonCodes = signals.reasonCodes.filter((code) => code !== 'no_hit');
-  return {
-    ...signals,
-    reasonCodes: nextReasonCodes.length > 0 ? nextReasonCodes : ['weak_match'],
-    evidenceQuality: signals.evidenceQuality === 'none' ? 'weak' : signals.evidenceQuality,
-    limitationNote: '回答正文已显式引用相关笔记文件，但上游事件未返回精确检索分数，请优先核对原文。',
-    hasDirectEvidence: true,
-    retrievalHitCount: Math.max(signals.retrievalHitCount ?? 0, references.length),
-    unscoredMatches: Array.from(new Set([...signals.unscoredMatches, ...references.map((ref) => ref.id)])),
-  };
 };
 
 // ============================================================================
@@ -192,19 +200,27 @@ export function AnswerPanel({
     const map: Record<string, CitationRef> = {};
     if (message.citationMap) {
       Object.entries(message.citationMap).forEach(([id, ref]) => {
-        map[id] = ref;
+        const normalizedRef = {
+          ...ref,
+          snippet: sanitizeCitationSnippet(ref.snippet),
+        };
+        map[id] = normalizedRef;
         const normalized = id.startsWith('c') ? id.slice(1) : id;
-        map[normalized] = ref;
-        map[`c${normalized}`] = ref;
+        map[normalized] = normalizedRef;
+        map[`c${normalized}`] = normalizedRef;
       });
       return map;
     }
     if (message.references) {
       message.references.forEach(ref => {
-        map[ref.id] = ref;
+        const normalizedRef = {
+          ...ref,
+          snippet: sanitizeCitationSnippet(ref.snippet),
+        };
+        map[ref.id] = normalizedRef;
         const normalized = ref.id.startsWith('c') ? ref.id.slice(1) : ref.id;
-        map[normalized] = ref;
-        map[`c${normalized}`] = ref;
+        map[normalized] = normalizedRef;
+        map[`c${normalized}`] = normalizedRef;
       });
     }
     return map;
@@ -216,7 +232,7 @@ export function AnswerPanel({
   );
   const displayReferences = useMemo(() => buildFallbackReferences(message), [message]);
   const effectiveHonestySignals = useMemo(
-    () => normalizeHonestySignals(message.honestySignals, displayReferences),
+    () => normalizeHonestySignalsWithReferences(message.honestySignals, displayReferences),
     [displayReferences, message.honestySignals],
   );
 
@@ -280,6 +296,8 @@ export function AnswerPanel({
   // 使用直接回答或从完整内容中提取
   const answerContent = directAnswer || decisionSummary?.conclusion || message.content.split('\n')[0];
   const analysisContent = fullAnalysis || message.content;
+  const displayAnswerContent = replaceRawPathMentionsWithCitations(answerContent, displayReferences);
+  const displayAnalysisContent = replaceRawPathMentionsWithCitations(analysisContent, displayReferences);
 
   return (
     <div className="answer-panel evidence-traceable">
@@ -293,7 +311,7 @@ export function AnswerPanel({
         <h2 className="section-title">回答</h2>
         <div className="direct-answer-content">
           <FullResponseMarkdown
-            content={answerContent}
+            content={displayAnswerContent}
             messageId={`${message.id}-direct-answer`}
             copiedKey={copiedKey}
             onCopyCode={onCopyCode}
@@ -336,7 +354,7 @@ export function AnswerPanel({
         {isAnalysisExpanded && (
           <div className="full-analysis-content">
             <FullResponseMarkdown
-              content={analysisContent}
+              content={displayAnalysisContent}
               messageId={message.id}
               copiedKey={copiedKey}
               onCopyCode={onCopyCode}

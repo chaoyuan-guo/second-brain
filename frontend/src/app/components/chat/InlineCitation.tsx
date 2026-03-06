@@ -8,6 +8,7 @@ import {
   getCitationSuperscript,
   isWeakRetrievalScore,
   normalizeCitationId,
+  sanitizeCitationSnippet,
 } from '../../lib/citation-utils';
 
 interface InlineCitationProps {
@@ -24,7 +25,13 @@ export function InlineCitation({ citationId, citationMap, onOpenPreview }: Inlin
   const [isHovered, setIsHovered] = useState(false);
 
   const normalizedId = normalizeCitationId(citationId);
-  const ref = citationMap[citationId] || citationMap[normalizedId] || citationMap[`c${normalizedId}`];
+  const rawRef = citationMap[citationId] || citationMap[normalizedId] || citationMap[`c${normalizedId}`];
+  const ref = rawRef
+    ? {
+        ...rawRef,
+        snippet: sanitizeCitationSnippet(rawRef.snippet),
+      }
+    : undefined;
   const hasRef = !!ref;
   const isWeakMatch = isWeakRetrievalScore(ref?.retrievalScore);
   const sourceTitle = ref ? deriveSourceTitle(ref.sourcePath, ref.sourceTitle, ref.heading) : '';

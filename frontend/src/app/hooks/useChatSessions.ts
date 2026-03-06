@@ -54,6 +54,15 @@ const asRecord = (value: unknown): JsonRecord | undefined =>
 const asString = (value: unknown): string | undefined =>
   typeof value === 'string' ? value : undefined;
 
+const getToolArguments = (state: JsonRecord | undefined): Record<string, unknown> | undefined => {
+  if (!state) {
+    return undefined;
+  }
+  return asRecord(state.arguments) || asRecord(state.input);
+};
+
+const getToolResult = (state: JsonRecord | undefined): unknown => state?.result ?? state?.output;
+
 const parseDecisionSummary = (value: unknown): DecisionSummary | undefined => {
   const record = asRecord(value);
   const conclusion = asString(record?.conclusion);
@@ -763,6 +772,8 @@ export function useChatSessions(): UseChatSessionsResult {
 
             // 查找或创建工具步骤
             let toolStep = steps.find(s => s.tool?.id === callId);
+            const toolArguments = getToolArguments(state);
+            const toolResult = getToolResult(state);
 
             if (status === 'pending' || status === 'running') {
               updateAssistantState({
@@ -780,7 +791,7 @@ export function useChatSessions(): UseChatSessionsResult {
                     id: callId,
                     name: toolName,
                     status: status,
-                    arguments: state?.arguments as Record<string, unknown>,
+                    arguments: toolArguments,
                     startedAt: Date.now(),
                   },
                   timestamp: Date.now(),
@@ -792,6 +803,7 @@ export function useChatSessions(): UseChatSessionsResult {
                   tool: {
                     ...toolStep.tool!,
                     status: status,
+                    arguments: toolArguments ?? toolStep.tool?.arguments,
                   }
                 });
               }
@@ -812,7 +824,8 @@ export function useChatSessions(): UseChatSessionsResult {
                   tool: {
                     ...toolStep.tool!,
                     status: 'completed',
-                    result: state?.result,
+                    arguments: toolArguments ?? toolStep.tool?.arguments,
+                    result: toolResult,
                     completedAt: Date.now(),
                   }
                 });
@@ -833,6 +846,7 @@ export function useChatSessions(): UseChatSessionsResult {
                   tool: {
                     ...toolStep.tool!,
                     status: 'error',
+                    arguments: toolArguments ?? toolStep.tool?.arguments,
                     error: message,
                     completedAt: Date.now(),
                   }

@@ -17,9 +17,12 @@ import type {
 } from '../../lib/chat-types';
 import {
   deriveSourceTitle,
+  extractFileLevelReferencesFromContent,
   inferSourceDateLabel,
   isWeakRetrievalScore,
+  normalizeHonestySignalsWithReferences,
   normalizeCitationId,
+  sanitizeCitationSnippet,
 } from '../../lib/citation-utils';
 
 // ============================================================================
@@ -174,7 +177,7 @@ const getNumberValue = (
 
 const extractSnippetPreview = (result: unknown): string | undefined => {
   if (typeof result === 'string') {
-    const normalized = result.replace(/\s+/g, ' ').trim();
+    const normalized = sanitizeCitationSnippet(result);
     return normalized ? normalized.slice(0, 220) : undefined;
   }
 
@@ -188,7 +191,7 @@ const extractSnippetPreview = (result: unknown): string | undefined => {
     return undefined;
   }
 
-  const normalized = raw.replace(/\s+/g, ' ').trim();
+  const normalized = sanitizeCitationSnippet(raw);
   return normalized ? normalized.slice(0, 220) : undefined;
 };
 
@@ -541,7 +544,7 @@ export const enrichCitationsWithEvidence = (
           sourceTitle: ref.sourceTitle,
           sourceDateLabel: ref.sourceDateLabel ?? inferSourceDateLabel(ref.sourcePath, ref.sourceTitle, ref.heading),
           heading: ref.heading,
-          snippet: ref.snippet,
+          snippet: sanitizeCitationSnippet(ref.snippet),
           retrievalScore: ref.retrievalScore,
           weakMatch: isWeakRetrievalScore(ref.retrievalScore),
         };
@@ -579,8 +582,12 @@ export const splitDirectAnswer = (content: string): { directAnswer: string; full
     }
   }
 
-  // 默认策略：按句子分割，前 2-3 句为直接回答
-  const sentences = content.split(/(?<=[.!?。！？])\s*/);
+  // 默认策略：按句子分割，前 2-3 句为直接回答。
+  // 仅在英文句号/问号/感叹号后存在空白或已到结尾时分割，避免把 ".md" 这类文件扩展名误切开。
+  const sentences = content
+    .split(/(?<=[。！？])\s*|(?<=[.!?])(?=\s|$)/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
   if (sentences.length <= 2) {
     return { directAnswer: content.trim(), fullAnalysis: '' };
   }
@@ -853,7 +860,12 @@ export const synthesizeFinalEvent = (acc: ProcessAccumulator): FinalEventPayload
   // 丰富引用信息（关联 sourceRefMap 中的证据详情）
   const enrichedCitations = enrichCitationsWithEvidence(citations, acc.sourceRefMap);
   const fallbackReferences = deriveReferencesFromCalls(acc.completedCalls);
-  const references = enrichedCitations.length > 0 ? enrichedCitations : fallbackReferences;
+  const contentFallbackReferences = extractFileLevelReferencesFromContent(acc.assistantContent);
+  const references = enrichedCitations.length > 0
+    ? enrichedCitations
+    : fallbackReferences.length > 0
+      ? fallbackReferences
+      : contentFallbackReferences;
 
   // 拆分直接回答和完整分析
   const { directAnswer, fullAnalysis } = splitDirectAnswer(acc.assistantContent);
@@ -862,10 +874,13 @@ export const synthesizeFinalEvent = (acc: ProcessAccumulator): FinalEventPayload
   const processSummary = generateProcessSummary(acc.completedCalls, acc.errorCalls);
 
   // 计算诚实性信号
-  const honestySignals = computeHonestySignals(
+  const honestySignals = normalizeHonestySignalsWithReferences(
+    computeHonestySignals(
+      references,
+      acc.errorCalls.length > 0,
+      acc.errorCalls.length
+    ),
     references,
-    acc.errorCalls.length > 0,
-    acc.errorCalls.length
   );
 
   // 递增事件版本
@@ -875,7 +890,10 @@ export const synthesizeFinalEvent = (acc: ProcessAccumulator): FinalEventPayload
     event_kind: 'final',
     event_version: acc.eventVersion,
     decisionSummary,
-    processOverview,
+    processOverview: {
+      ...processOverview,
+      phase: 'completed',
+    },
     completionState,
     evidence,
     // 新增字段
@@ -883,6 +901,6 @@ export const synthesizeFinalEvent = (acc: ProcessAccumulator): FinalEventPayload
     fullAnalysis: fullAnalysis || undefined,
     references: references.length > 0 ? references : undefined,
     processSummary: processSummary.length > 0 ? processSummary : undefined,
-    honestySignals: honestySignals.hasSufficientEvidence ? undefined : honestySignals,
+    honestySignals: !honestySignals || honestySignals.hasSufficientEvidence ? undefined : honestySignals,
   };
 };

@@ -8,6 +8,7 @@ import {
   getCitationSuperscript,
   isWeakRetrievalScore,
   normalizeCitationId,
+  sanitizeCitationSnippet,
 } from '../../lib/citation-utils';
 
 interface ReferencesPanelProps {
@@ -37,10 +38,19 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
     );
   }
 
+  const normalizedReferences = useMemo(
+    () =>
+      references.map((ref) => ({
+        ...ref,
+        snippet: sanitizeCitationSnippet(ref.snippet),
+      })),
+    [references],
+  );
+
   const citationOrder = (id: string) => Number.parseInt(normalizeCitationId(id), 10);
 
   const sortedRefs = useMemo(() => {
-    return [...references].sort((a, b) => {
+    return [...normalizedReferences].sort((a, b) => {
       if (sortBy === 'relevance') {
         const aHasScore = typeof a.retrievalScore === 'number';
         const bHasScore = typeof b.retrievalScore === 'number';
@@ -55,7 +65,7 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
       }
       return citationOrder(a.id) - citationOrder(b.id);
     });
-  }, [references, sortBy]);
+  }, [normalizedReferences, sortBy]);
 
   const groupedRefs = useMemo(() => {
     const groups = new Map<string, CitationRef[]>();
@@ -109,9 +119,9 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
   };
 
   // 统计信息
-  const strongMatches = references.filter(r => r.retrievalScore !== undefined && r.retrievalScore < 0.8).length;
-  const weakMatches = references.filter(r => r.retrievalScore !== undefined && r.retrievalScore >= 0.8).length;
-  const unscored = references.filter(r => r.retrievalScore === undefined).length;
+  const strongMatches = normalizedReferences.filter(r => r.retrievalScore !== undefined && r.retrievalScore < 0.8).length;
+  const weakMatches = normalizedReferences.filter(r => r.retrievalScore !== undefined && r.retrievalScore >= 0.8).length;
+  const unscored = normalizedReferences.filter(r => r.retrievalScore === undefined).length;
 
   return (
     <div className="references-panel">
@@ -121,7 +131,7 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
             <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
           </svg>
           引用来源
-          <span className="ref-count">({references.length})</span>
+          <span className="ref-count">({normalizedReferences.length})</span>
         </h3>
         
         <div className="sort-controls">

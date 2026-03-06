@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 import { AnswerPanel } from '../app/components/chat/AnswerPanel';
 import type { ChatMessage } from '../app/lib/chat-types';
@@ -88,5 +88,78 @@ describe('AnswerPanel', () => {
     expect(screen.getAllByText('爬楼梯动态规划思路解析.md').length).toBeGreaterThan(0);
     expect(screen.queryByText('笔记中没有检索到直接相关记录，回答只能基于有限线索推断。')).not.toBeInTheDocument();
     expect(screen.getByText('回答正文已显式引用相关笔记文件，但上游事件未返回精确检索分数，请优先核对原文。')).toBeInTheDocument();
+  });
+
+  it('replaces raw file paths in answer content with inline citations when references exist', () => {
+    render(
+      <AnswerPanel
+        message={createMessage({
+          directAnswer: '结论如下。引用：data/notes/my_markdowns/动态规划.md:632',
+          fullAnalysis: '完整分析见 /app/data/notes/my_markdowns/动态规划.md:632',
+          references: [
+            {
+              id: '02',
+              sourcePath: '/app/data/notes/my_markdowns/动态规划.md',
+              sourceTitle: '动态规划.md',
+              snippet: '动态规划是一种通过状态转移复用子问题结果的方法。',
+            },
+          ],
+        })}
+        copiedKey={null}
+        onCopyCode={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('结论如下。引用：')).toBeInTheDocument();
+    expect(screen.queryByText(/data\/notes\/my_markdowns\/动态规划\.md:632/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /查看引用 02/ })).toBeInTheDocument();
+  });
+
+  it('sanitizes raw snippet wrappers in references panel', () => {
+    render(
+      <AnswerPanel
+        message={createMessage({
+          directAnswer: '结论见 [c01]。',
+          references: [
+            {
+              id: '01',
+              sourcePath: '/app/data/notes/my_markdowns/动态规划.md',
+              sourceTitle: '动态规划.md',
+              snippet: '<path>/app/data/notes/my_markdowns/动态规划.md</path><content>620: 动态规划的核心是状态转移。</content>',
+            },
+          ],
+        })}
+        copiedKey={null}
+        onCopyCode={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('动态规划.md', { selector: '.reference-item .ref-title' }));
+
+    expect(screen.getByText('动态规划的核心是状态转移。')).toBeInTheDocument();
+    expect(screen.queryByText(/<path>/)).not.toBeInTheDocument();
+  });
+
+  it('renders inline citations inside markdown list items with mixed children', () => {
+    render(
+      <AnswerPanel
+        message={createMessage({
+          directAnswer: '- **适用前提**：满足最优子结构。引用：[c01]',
+          references: [
+            {
+              id: '01',
+              sourcePath: '/app/data/notes/my_markdowns/动态规划.md',
+              sourceTitle: '动态规划.md',
+              snippet: '动态规划要求问题具备最优子结构。',
+            },
+          ],
+        })}
+        copiedKey={null}
+        onCopyCode={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /查看引用 01/ })).toBeInTheDocument();
+    expect(screen.queryByText('[c01]')).not.toBeInTheDocument();
   });
 });
