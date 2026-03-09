@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import type { ChatMessage, ProcessOverview, ThinkingStep, ProcessStepSummary } from '../../lib/chat-types';
 import { ProcessOverviewBar } from './ProcessOverviewBar';
 import { ProcessGroupList } from './ProcessGroupList';
 import { ProcessDebugDrawer } from './ProcessDebugDrawer';
+import { generateProcessSummary, type ToolCallRecord } from '../../api/_lib/event-adapter';
 
 /**
  * 判断是否具备有效的过程数据
@@ -40,16 +41,11 @@ interface ProcessPanelProps {
  * 新增：支持语义化的 processSummary 展示
  */
 export function ProcessPanel({ message }: ProcessPanelProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(Boolean(message.isThinking));
   const [isDebugOpen, setIsDebugOpen] = useState(false);
+  const { processOverview, thinkingSteps, processSummary } = message;
 
   const hasProcess = useMemo(() => hasValidProcessData(message), [message]);
-
-  if (!hasProcess) {
-    return null;
-  }
-
-  const { processOverview, thinkingSteps, processSummary } = message;
 
   // 从 thinkingSteps 中提取工具调用
   const toolCalls = useMemo(() => {
@@ -59,20 +55,72 @@ export function ProcessPanel({ message }: ProcessPanelProps) {
       .map((step) => step.tool!);
   }, [thinkingSteps]);
 
+  const liveProcessSummary = useMemo(() => {
+    if (processSummary && processSummary.length > 0) {
+      return processSummary;
+    }
+    if (!thinkingSteps || thinkingSteps.length === 0) {
+      return [];
+    }
+
+    const activeCalls: ToolCallRecord[] = [];
+    const completedCalls: ToolCallRecord[] = [];
+    const errorCalls: ToolCallRecord[] = [];
+
+    thinkingSteps
+      .filter((step) => step.type === 'tool' && step.tool)
+      .forEach((step) => {
+        const tool = step.tool!;
+        const call: ToolCallRecord = {
+          id: tool.id,
+          name: tool.name,
+          status: tool.status,
+          arguments: tool.arguments,
+          result: tool.result,
+          error: tool.error,
+          startedAt: tool.startedAt ?? step.timestamp,
+          completedAt: tool.completedAt,
+        };
+
+        if (tool.status === 'completed') {
+          completedCalls.push(call);
+          return;
+        }
+        if (tool.status === 'error') {
+          errorCalls.push(call);
+          return;
+        }
+        activeCalls.push(call);
+      });
+
+    return generateProcessSummary(completedCalls, errorCalls, activeCalls);
+  }, [processSummary, thinkingSteps]);
+
+  useEffect(() => {
+    if (message.isThinking) {
+      setIsExpanded(true);
+    }
+  }, [message.isThinking]);
+
+  if (!hasProcess) {
+    return null;
+  }
+
   return (
     <div className="process-panel">
       {/* 过程摘要条 */}
       <ProcessOverviewBar
         processOverview={processOverview}
         toolCalls={toolCalls}
+        isThinking={message.isThinking}
         isExpanded={isExpanded}
         onToggle={() => setIsExpanded(!isExpanded)}
       />
 
       {/* 展开后的语义化过程摘要 */}
-      {isExpanded && processSummary && processSummary.length > 0 && (
+      {isExpanded && liveProcessSummary.length > 0 && (
         <>
-          <SemanticProcessSummary steps={processSummary} />
+          <SemanticProcessSummary steps={liveProcessSummary} />
           <button
             type="button"
             className="debug-toggle-btn"
@@ -84,7 +132,7 @@ export function ProcessPanel({ message }: ProcessPanelProps) {
       )}
 
       {/* 展开后的过程分组列表（旧版兼容） */}
-      {isExpanded && (!processSummary || processSummary.length === 0) && (
+      {isExpanded && liveProcessSummary.length === 0 && (
         <ProcessGroupList
           thinkingSteps={thinkingSteps}
           onOpenDebug={() => setIsDebugOpen(true)}
@@ -137,6 +185,8 @@ function SemanticProcessSummary({ steps }: SemanticProcessSummaryProps) {
           const icon = phaseIcons[phase] || '•';
           const phaseLabel = phaseLabels[phase] || phase;
           
+          const isRunning = step.status === 'running';
+
           return (
             <div key={step.stepNumber} className={`timeline-item status-${step.status || 'completed'}`}>
               <div className="timeline-marker">
@@ -147,6 +197,7 @@ function SemanticProcessSummary({ steps }: SemanticProcessSummaryProps) {
                   <span className="step-icon">{icon}</span>
                   <span className="step-phase">{phaseLabel}</span>
                   <span className="step-summary">{step.summary}</span>
+                  {isRunning && <span className="step-live-badge">进行中</span>}
                 </div>
                 {step.detail && (
                   <div className="step-detail">{step.detail}</div>

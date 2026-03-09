@@ -5,6 +5,7 @@ import type { ProcessOverview, ToolInvocation, RunPhase } from '../../lib/chat-t
 interface ProcessOverviewBarProps {
   processOverview?: ProcessOverview;
   toolCalls: ToolInvocation[];
+  isThinking?: boolean;
   isExpanded: boolean;
   onToggle: () => void;
 }
@@ -23,6 +24,7 @@ const phaseLabels: Record<RunPhase, string> = {
 export function ProcessOverviewBar({
   processOverview,
   toolCalls,
+  isThinking = false,
   isExpanded,
   onToggle,
 }: ProcessOverviewBarProps) {
@@ -34,7 +36,13 @@ export function ProcessOverviewBar({
   const errorCount = toolCalls.filter((tool) => tool.status === 'error').length;
 
   // 从 processOverview 或默认值获取阶段
-  const phase: RunPhase = processOverview?.phase || (activeCount > 0 ? 'retrieving' : 'completed');
+  const phase: RunPhase = processOverview?.phase
+    ? (isThinking && processOverview.phase === 'completed' ? 'synthesizing' : processOverview.phase)
+    : activeCount > 0
+      ? 'retrieving'
+      : isThinking
+        ? 'synthesizing'
+        : 'completed';
 
   // 计算耗时
   const durationMs = processOverview?.durationMs || 0;

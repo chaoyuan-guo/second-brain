@@ -841,23 +841,31 @@ export default function HomePage() {
                         </div>
                         <div className="message-stack">
                           {/* Answer-first 渲染模式 */}
-                          {FEATURE_ANSWER_FIRST_REDESIGN && message.role === 'assistant' && !message.isThinking ? (
+                          {FEATURE_ANSWER_FIRST_REDESIGN && message.role === 'assistant' ? (
                             <>
-                              <AnswerPanel
-                                message={message}
-                                copiedKey={copiedKey}
-                                onCopyCode={handleCopy}
-                                onOpenPreview={(path, title, ref) => {
-                                  const sourceRef: SourceRef | undefined = ref ? {
-                                    path,
-                                    heading: '',
-                                    char_offset: ref.char_offset,
-                                    snippet: ref.snippet,
-                                  } : undefined;
-                                  handleOpenPreview(path, title, sourceRef);
-                                }}
-                              />
+                              {!message.isThinking && (
+                                <AnswerPanel
+                                  message={message}
+                                  copiedKey={copiedKey}
+                                  onCopyCode={handleCopy}
+                                  onOpenPreview={(path, title, ref) => {
+                                    const sourceRef: SourceRef | undefined = ref ? {
+                                      path,
+                                      heading: '',
+                                      char_offset: ref.char_offset,
+                                      snippet: ref.snippet,
+                                    } : undefined;
+                                    handleOpenPreview(path, title, sourceRef);
+                                  }}
+                                />
+                              )}
                               <ProcessPanel message={message} />
+                              {message.statusText && (
+                                <div className="message-status" role="status" aria-live="polite">
+                                  <span className="status-spinner" aria-hidden />
+                                  <span>{message.statusText}</span>
+                                </div>
+                              )}
                             </>
                           ) : (
                             <>

@@ -78,6 +78,29 @@ export const getToolSemantic = (toolName: string): ToolSemantic => {
   return TOOL_SEMANTIC_MAP[toolName] || 'other';
 };
 
+const getBashCommand = (args?: Record<string, unknown>): string => {
+  const command = args?.command;
+  return typeof command === 'string' ? command.trim() : '';
+};
+
+const getCallSemantic = (call: Pick<ToolCallRecord, 'name' | 'arguments'>): ToolSemantic => {
+  if (call.name !== 'bash') {
+    return getToolSemantic(call.name);
+  }
+
+  const command = getBashCommand(call.arguments);
+  if (!command) {
+    return 'other';
+  }
+  if (/\b(find|rg|grep|glob|ls|cat)\b/.test(command)) {
+    return 'retrieve';
+  }
+  if (/\b(python|python3|node|jq|awk|sed|wc)\b/.test(command)) {
+    return 'validate';
+  }
+  return 'synthesize_helper';
+};
+
 // ============================================================================
 // 阶段判定逻辑
 // ============================================================================
@@ -135,6 +158,81 @@ const summarizeInterpreterResult = (result: unknown): string => {
     return `退出码 ${status}`;
   }
   return '已完成验证';
+};
+
+const summarizeBashCall = (call: ToolCallRecord): {
+  summary: string;
+  inputSummary: string;
+  resultSummary: string;
+} => {
+  const command = getBashCommand(call.arguments);
+  const description = getStringValue(call.arguments, ['description']) || '执行命令';
+  const output = typeof call.result === 'string' ? call.result.trim() : '';
+  const outputLines = output ? output.split('\n').filter((line) => line.trim()).length : 0;
+  const uniqueFiles = output
+    ? new Set(
+        output
+          .split('\n')
+          .map((line) => line.match(/(\/[^\s:]+\.md|data\/[^\s:]+\.md)/)?.[1])
+          .filter((value): value is string => Boolean(value)),
+      ).size
+    : 0;
+
+  if (/\bfind\b/.test(command)) {
+    const target = command.match(/find\s+(\S+)/)?.[1] || '笔记目录';
+    return {
+      summary:
+        call.status === 'running' || call.status === 'pending'
+          ? `定位候选文件 ${target}`
+          : `定位候选文件 ${target} -> 命中 ${outputLines} 个文件`,
+      inputSummary: `扫描 ${target}`,
+      resultSummary:
+        call.status === 'running' || call.status === 'pending'
+          ? '正在枚举候选文件'
+          : `命中 ${outputLines} 个文件`,
+    };
+  }
+
+  if (/\brg\b/.test(command) || /\bgrep\b/.test(command)) {
+    const quotedSegments = Array.from(
+      command.matchAll(/'([^']+)'|"([^"]+)"/g),
+      (match) => match[1] || match[2],
+    ).filter((segment) => segment && !segment.endsWith('.md'));
+    const query = quotedSegments[quotedSegments.length - 1] || '关键词';
+    return {
+      summary:
+        call.status === 'running' || call.status === 'pending'
+          ? `检索笔记 "${query}"`
+          : uniqueFiles > 0
+            ? `检索笔记 "${query}" -> 命中 ${outputLines} 条，来自 ${uniqueFiles} 个文件`
+            : `检索笔记 "${query}" -> 命中 ${outputLines} 条`,
+      inputSummary: `检索词 "${query}"`,
+      resultSummary:
+        call.status === 'running' || call.status === 'pending'
+          ? '正在检索笔记内容'
+          : uniqueFiles > 0
+            ? `命中 ${outputLines} 条，来自 ${uniqueFiles} 个文件`
+            : `命中 ${outputLines} 条`,
+    };
+  }
+
+  if (/\b(python|python3|node)\b/.test(command)) {
+    return {
+      summary: `执行代码验证 -> ${description}`,
+      inputSummary: description,
+      resultSummary:
+        call.status === 'running' || call.status === 'pending'
+          ? '正在执行验证'
+          : output.split('\n')[0]?.slice(0, 72) || '验证完成',
+    };
+  }
+
+  return {
+    summary: `整理结论 -> ${description}`,
+    inputSummary: description,
+    resultSummary:
+      call.status === 'running' || call.status === 'pending' ? '执行中' : '执行完成',
+  };
 };
 
 const getStringValue = (
@@ -255,6 +353,40 @@ const deriveReferencesFromCalls = (calls: ToolCallRecord[]): CitationRef[] => {
   return refs;
 };
 
+const collapseReferencesToFileLevel = (references: CitationRef[]): CitationRef[] => {
+  const grouped = new Map<string, CitationRef>();
+
+  references.forEach((ref) => {
+    if (!ref.sourcePath) {
+      return;
+    }
+
+    const existing = grouped.get(ref.sourcePath);
+    if (!existing) {
+      grouped.set(ref.sourcePath, {
+        ...ref,
+        charOffsetStart: undefined,
+      });
+      return;
+    }
+
+    const currentSnippetLength = existing.snippet?.length ?? 0;
+    const nextSnippetLength = ref.snippet?.length ?? 0;
+    if (nextSnippetLength > currentSnippetLength) {
+      grouped.set(ref.sourcePath, {
+        ...existing,
+        snippet: ref.snippet,
+      });
+    }
+  });
+
+  return Array.from(grouped.values()).map((ref, index) => ({
+    ...ref,
+    id: String(index + 1).padStart(2, '0'),
+    charOffsetStart: undefined,
+  }));
+};
+
 /**
  * 根据活跃工具集合判定当前阶段
  */
@@ -331,9 +463,9 @@ export const updateToolCall = (
     acc.activeCalls.set(callId, {
       id: callId,
       name: toolName,
-      status,
       ...existing,
       ...extras,
+      status,
     });
   } else {
     // completed 或 error：从活跃移到完成/错误列表
@@ -343,9 +475,9 @@ export const updateToolCall = (
     const record: ToolCallRecord = {
       id: callId,
       name: toolName,
-      status,
       ...existing,
       ...extras,
+      status,
     };
 
     if (status === 'error') {
@@ -374,7 +506,7 @@ export const mergeSourceRefs = (acc: ProcessAccumulator, refs: EvidenceRef[]): v
 export const computeProcessOverview = (acc: ProcessAccumulator): ProcessOverview => {
   const activeSemantics = new Set<ToolSemantic>();
   acc.activeCalls.forEach((call) => {
-    activeSemantics.add(getToolSemantic(call.name));
+    activeSemantics.add(getCallSemantic(call));
   });
 
   const phase = determinePhase(activeSemantics, acc.assistantContent.length > 0);
@@ -612,18 +744,19 @@ export const splitDirectAnswer = (content: string): { directAnswer: string; full
  */
 export const generateProcessSummary = (
   completedCalls: ToolCallRecord[],
-  errorCalls: ToolCallRecord[]
+  errorCalls: ToolCallRecord[],
+  activeCalls: ToolCallRecord[] = [],
 ): ProcessStepSummary[] => {
   const summaries: ProcessStepSummary[] = [];
 
   // 按时间排序
-  const allCalls = [...completedCalls, ...errorCalls].sort((a, b) => 
+  const allCalls = [...completedCalls, ...errorCalls, ...activeCalls].sort((a, b) =>
     (a.startedAt || 0) - (b.startedAt || 0)
   );
 
   allCalls.forEach((call, index) => {
     const stepNumber = index + 1;
-    const semantic = getToolSemantic(call.name);
+    const semantic = getCallSemantic(call);
     
     // 根据工具语义生成摘要
     let summary = '';
@@ -633,6 +766,14 @@ export const generateProcessSummary = (
 
     switch (semantic) {
       case 'retrieve':
+        if (call.name === 'bash') {
+          const bashSummary = summarizeBashCall(call);
+          summary = bashSummary.summary;
+          inputSummary = bashSummary.inputSummary;
+          resultSummary = bashSummary.resultSummary;
+          detail = `输入：${inputSummary}；结果：${resultSummary}`;
+          break;
+        }
         if (call.name === 'query_my_notes') {
           const query = (call.arguments?.query as string) || '相关笔记';
           const resultCount = getResultCount(call.result);
@@ -649,7 +790,11 @@ export const generateProcessSummary = (
           const query = (call.arguments?.query as string) || '';
           summary = query ? `联网搜索 "${query}"` : '联网搜索';
           inputSummary = query ? `搜索词 "${query}"` : '无输入';
-          resultSummary = call.status === 'error' ? '搜索失败' : '已返回结果';
+          resultSummary = call.status === 'error'
+            ? '搜索失败'
+            : call.status === 'running' || call.status === 'pending'
+              ? '搜索中'
+              : '已返回结果';
           detail = `输入：${inputSummary}；结果：${resultSummary}`;
         } else if (call.name === 'read_note_file' || call.name === 'read') {
           const path = extractPathFromCall(call) || '文件';
@@ -663,50 +808,96 @@ export const generateProcessSummary = (
             ? `读取文件 ${path.split('/').pop() || path}（偏移 ${offset} 附近）`
             : `读取文件 ${path.split('/').pop() || path}`;
           inputSummary = `读取 ${path}`;
-          resultSummary = call.status === 'error' ? '读取失败' : '已载入原文片段';
+          resultSummary = call.status === 'error'
+            ? '读取失败'
+            : call.status === 'running' || call.status === 'pending'
+              ? '正在读取原文片段'
+              : '已载入原文片段';
           detail = `输入：${inputSummary}；结果：${resultSummary}`;
         } else if (call.name === 'grep') {
           const pattern = (call.arguments?.pattern as string) || (call.arguments?.query as string) || '关键词';
-          summary = `搜索文件内容 "${pattern}" -> 命中 ${getResultCount(call.result)} 条`;
+          summary = call.status === 'running' || call.status === 'pending'
+            ? `搜索文件内容 "${pattern}"`
+            : `搜索文件内容 "${pattern}" -> 命中 ${getResultCount(call.result)} 条`;
           inputSummary = `搜索词 "${pattern}"`;
-          resultSummary = call.status === 'error' ? '搜索失败' : `命中 ${getResultCount(call.result)} 条`;
+          resultSummary = call.status === 'error'
+            ? '搜索失败'
+            : call.status === 'running' || call.status === 'pending'
+              ? '正在搜索'
+              : `命中 ${getResultCount(call.result)} 条`;
           detail = `输入：${inputSummary}；结果：${resultSummary}`;
         } else if (call.name === 'glob') {
           const pattern = (call.arguments?.pattern as string) || (call.arguments?.query as string) || '文件模式';
-          summary = `定位候选文件 "${pattern}" -> 命中 ${getResultCount(call.result)} 条`;
+          summary = call.status === 'running' || call.status === 'pending'
+            ? `定位候选文件 "${pattern}"`
+            : `定位候选文件 "${pattern}" -> 命中 ${getResultCount(call.result)} 条`;
           inputSummary = `文件模式 "${pattern}"`;
-          resultSummary = call.status === 'error' ? '枚举失败' : `命中 ${getResultCount(call.result)} 条`;
+          resultSummary = call.status === 'error'
+            ? '枚举失败'
+            : call.status === 'running' || call.status === 'pending'
+              ? '正在枚举候选文件'
+              : `命中 ${getResultCount(call.result)} 条`;
           detail = `输入：${inputSummary}；结果：${resultSummary}`;
         } else {
           summary = `检索信息：${call.name}`;
           inputSummary = '执行检索';
-          resultSummary = call.status === 'error' ? '执行失败' : '执行完成';
+          resultSummary = call.status === 'error'
+            ? '执行失败'
+            : call.status === 'running' || call.status === 'pending'
+              ? '执行中'
+              : '执行完成';
           detail = `输入：${inputSummary}；结果：${resultSummary}`;
         }
         break;
       
       case 'validate':
+        if (call.name === 'bash') {
+          const bashSummary = summarizeBashCall(call);
+          summary = bashSummary.summary;
+          inputSummary = bashSummary.inputSummary;
+          resultSummary = bashSummary.resultSummary;
+          detail = `输入：${inputSummary}；结果：${resultSummary}`;
+          break;
+        }
         summary = call.name === 'run_code_interpreter'
           ? `执行代码验证 -> ${summarizeInterpreterResult(call.result)}`
           : `验证步骤：${call.name}`;
         inputSummary = '执行验证';
         resultSummary = call.status === 'error'
           ? '验证失败'
-          : summarizeInterpreterResult(call.result);
+          : call.status === 'running' || call.status === 'pending'
+            ? '验证中'
+            : summarizeInterpreterResult(call.result);
         detail = `输入：${inputSummary}；结果：${resultSummary}`;
         break;
       
       case 'synthesize_helper':
+        if (call.name === 'bash') {
+          const bashSummary = summarizeBashCall(call);
+          summary = bashSummary.summary;
+          inputSummary = bashSummary.inputSummary;
+          resultSummary = bashSummary.resultSummary;
+          detail = `输入：${inputSummary}；结果：${resultSummary}`;
+          break;
+        }
         summary = `辅助分析：${call.name}`;
         inputSummary = '执行辅助分析';
-        resultSummary = call.status === 'error' ? '执行失败' : '执行完成';
+        resultSummary = call.status === 'error'
+          ? '执行失败'
+          : call.status === 'running' || call.status === 'pending'
+            ? '执行中'
+            : '执行完成';
         detail = `输入：${inputSummary}；结果：${resultSummary}`;
         break;
       
       default:
         summary = `执行操作：${call.name}`;
         inputSummary = '执行操作';
-        resultSummary = call.status === 'error' ? '执行失败' : '执行完成';
+        resultSummary = call.status === 'error'
+          ? '执行失败'
+          : call.status === 'running' || call.status === 'pending'
+            ? '执行中'
+            : '执行完成';
         detail = `输入：${inputSummary}；结果：${resultSummary}`;
     }
 
@@ -715,6 +906,8 @@ export const generateProcessSummary = (
       summary = `${summary}（失败）`;
       const errorText = call.error || '执行出错';
       detail = detail ? `${detail}；错误：${errorText}` : errorText;
+    } else if (call.status === 'running' || call.status === 'pending') {
+      summary = `${summary}（进行中）`;
     }
 
     summaries.push({
@@ -727,7 +920,11 @@ export const generateProcessSummary = (
       semanticType: semantic,
       inputSummary,
       resultSummary,
-      status: call.status === 'error' ? 'error' : 'completed',
+      status: call.status === 'error'
+        ? 'error'
+        : call.status === 'running' || call.status === 'pending'
+          ? 'running'
+          : 'completed',
       durationMs: call.completedAt && call.startedAt 
         ? call.completedAt - call.startedAt 
         : undefined,
@@ -864,7 +1061,7 @@ export const synthesizeFinalEvent = (acc: ProcessAccumulator): FinalEventPayload
   const references = enrichedCitations.length > 0
     ? enrichedCitations
     : fallbackReferences.length > 0
-      ? fallbackReferences
+      ? collapseReferencesToFileLevel(fallbackReferences)
       : contentFallbackReferences;
 
   // 拆分直接回答和完整分析

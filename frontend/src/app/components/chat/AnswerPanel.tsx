@@ -90,46 +90,6 @@ const renderCitedContent = (
   return parts;
 };
 
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const normalizePathForCitation = (value: string): string[] => {
-  const normalized = value.replace(/\\/g, '/');
-  const variants = new Set<string>([normalized]);
-  if (normalized.startsWith('/app/')) {
-    variants.add(normalized.slice('/app/'.length));
-  }
-  if (normalized.startsWith('data/')) {
-    variants.add(`/app/${normalized}`);
-  }
-  return Array.from(variants);
-};
-
-const replaceRawPathMentionsWithCitations = (
-  content: string,
-  references: CitationRef[] | null,
-): string => {
-  if (!content || !references || references.length === 0) {
-    return content;
-  }
-
-  let nextContent = content;
-  references.forEach((ref) => {
-    const citationToken = `[c${ref.id.startsWith('c') ? ref.id.slice(1) : ref.id}]`;
-    const patterns = normalizePathForCitation(ref.sourcePath).map((variant) =>
-      new RegExp(`\`?${escapeRegExp(variant)}(?::\\d+)?\`?`, 'g'),
-    );
-    patterns.forEach((pattern) => {
-      nextContent = nextContent.replace(pattern, citationToken);
-    });
-  });
-
-  return nextContent
-    .replace(/引用：\s*((?:\[c\d{2,3}\]\s*)+)/g, (_match, citations: string) => `引用：${citations.trim()}`)
-    .replace(/\s+\n/g, '\n')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-};
-
 const extractContentFallbackReferences = (message: ChatMessage): CitationRef[] | null => {
   const contentPool = [message.directAnswer, message.fullAnalysis, message.content]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
@@ -239,17 +199,12 @@ export function AnswerPanel({
   // 降级渲染：缺失结构化字段时，展示原始回答正文和降级提示
   if (!hasStructured) {
     return (
-      <div className="answer-panel degraded">
+      <div className="answer-panel fallback-answer">
         {effectiveHonestySignals && !effectiveHonestySignals.hasSufficientEvidence && (
           <HonestyBanner signals={effectiveHonestySignals} />
         )}
-        <div className="degraded-notice">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <span>结构化数据暂不可用，以下为原始回答</span>
-        </div>
-        <div className="full-analysis-content degraded-content">
+        <section className="answer-section direct-answer-section fallback-answer-section">
+          <h2 className="section-title">完整回答</h2>
           <FullResponseMarkdown
             content={message.content}
             messageId={message.id}
@@ -257,9 +212,9 @@ export function AnswerPanel({
             onCopyCode={onCopyCode}
             citationMap={citationMap}
             onOpenPreview={onOpenPreview}
-            title="完整回答"
+            title={null}
           />
-        </div>
+        </section>
         {displayReferences && displayReferences.length > 0 && (
           <section className="answer-section references-section">
             <ReferencesPanel references={displayReferences} onOpenPreview={onOpenPreview} />
@@ -296,8 +251,6 @@ export function AnswerPanel({
   // 使用直接回答或从完整内容中提取
   const answerContent = directAnswer || decisionSummary?.conclusion || message.content.split('\n')[0];
   const analysisContent = fullAnalysis || message.content;
-  const displayAnswerContent = replaceRawPathMentionsWithCitations(answerContent, displayReferences);
-  const displayAnalysisContent = replaceRawPathMentionsWithCitations(analysisContent, displayReferences);
 
   return (
     <div className="answer-panel evidence-traceable">
@@ -311,7 +264,7 @@ export function AnswerPanel({
         <h2 className="section-title">回答</h2>
         <div className="direct-answer-content">
           <FullResponseMarkdown
-            content={displayAnswerContent}
+            content={answerContent}
             messageId={`${message.id}-direct-answer`}
             copiedKey={copiedKey}
             onCopyCode={onCopyCode}
@@ -354,7 +307,7 @@ export function AnswerPanel({
         {isAnalysisExpanded && (
           <div className="full-analysis-content">
             <FullResponseMarkdown
-              content={displayAnalysisContent}
+              content={analysisContent}
               messageId={message.id}
               copiedKey={copiedKey}
               onCopyCode={onCopyCode}

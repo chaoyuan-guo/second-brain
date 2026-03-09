@@ -39,7 +39,7 @@ describe('AnswerPanel', () => {
     expect(screen.getByText('展开完整分析')).toBeInTheDocument();
   });
 
-  it('renders markdown in degraded mode instead of raw markdown syntax', () => {
+  it('renders markdown in fallback mode instead of raw markdown syntax', () => {
     render(
       <AnswerPanel
         message={createMessage({
@@ -50,7 +50,7 @@ describe('AnswerPanel', () => {
       />,
     );
 
-    expect(screen.getByText('结构化数据暂不可用，以下为原始回答')).toBeInTheDocument();
+    expect(screen.queryByText('结构化数据暂不可用，以下为原始回答')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '完整回答' })).toBeInTheDocument();
     expect(screen.getByText('完整回答', { selector: 'strong' })).toBeInTheDocument();
     expect(screen.getByText('第一条')).toBeInTheDocument();
@@ -87,10 +87,10 @@ describe('AnswerPanel', () => {
     expect(screen.getAllByText('动态规划.md').length).toBeGreaterThan(0);
     expect(screen.getAllByText('爬楼梯动态规划思路解析.md').length).toBeGreaterThan(0);
     expect(screen.queryByText('笔记中没有检索到直接相关记录，回答只能基于有限线索推断。')).not.toBeInTheDocument();
-    expect(screen.getByText('回答正文已显式引用相关笔记文件，但上游事件未返回精确检索分数，请优先核对原文。')).toBeInTheDocument();
+    expect(screen.queryByText('回答正文已显式引用相关笔记文件，但上游事件未返回精确检索分数，请优先核对原文。')).not.toBeInTheDocument();
   });
 
-  it('replaces raw file paths in answer content with inline citations when references exist', () => {
+  it('does not fabricate inline citations from raw file paths in fallback mode', () => {
     render(
       <AnswerPanel
         message={createMessage({
@@ -110,9 +110,8 @@ describe('AnswerPanel', () => {
       />,
     );
 
-    expect(screen.getByText('结论如下。引用：')).toBeInTheDocument();
-    expect(screen.queryByText(/data\/notes\/my_markdowns\/动态规划\.md:632/)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /查看引用 02/ })).toBeInTheDocument();
+    expect(screen.getByText(/结论如下。引用：data\/notes\/my_markdowns\/动态规划\.md:632/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /查看引用 02/ })).not.toBeInTheDocument();
   });
 
   it('sanitizes raw snippet wrappers in references panel', () => {

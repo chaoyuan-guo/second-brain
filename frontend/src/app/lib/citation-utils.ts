@@ -128,6 +128,21 @@ export const normalizeHonestySignalsWithReferences = (
     signals.unscoredMatches.length >= references.length &&
     signals.reasonCodes.includes('weak_match');
 
+  const referencesHaveConcreteScores = references.some(
+    (ref) => typeof ref.retrievalScore === 'number',
+  );
+
+  const hasOnlyFileLevelFallback =
+    !referencesHaveConcreteScores &&
+    (
+      hasOnlyUnscoredReferences ||
+      signals.reasonCodes.includes('no_hit')
+    );
+
+  if (hasOnlyFileLevelFallback) {
+    return undefined;
+  }
+
   if (!signals.reasonCodes.includes('no_hit') && !hasOnlyUnscoredReferences) {
     return signals;
   }

@@ -6,6 +6,8 @@ import {
   splitDirectAnswer,
   generateProcessSummary,
   computeHonestySignals,
+  createProcessAccumulator,
+  updateToolCall,
   type ToolCallRecord,
 } from '../app/api/_lib/event-adapter';
 import type { CitationRef, EvidenceRef } from '../app/lib/chat-types';
@@ -261,6 +263,44 @@ describe('generateProcessSummary', () => {
     expect(summaries[0].summary).toContain('读取文件');
     expect(summaries[0].summary).toContain('dp_notes.md');
   });
+
+  it('should summarize bash note discovery commands semantically', () => {
+    const calls: ToolCallRecord[] = [
+      {
+        id: '1',
+        name: 'bash',
+        status: 'completed',
+        arguments: {
+          command: "find /app/data/notes/my_markdowns -name '*.md' -maxdepth 2",
+          description: 'Find markdown notes files',
+        },
+        result: '/app/data/notes/my_markdowns/a.md\n/app/data/notes/my_markdowns/b.md\n',
+        startedAt: 1000,
+        completedAt: 1300,
+      },
+      {
+        id: '2',
+        name: 'bash',
+        status: 'completed',
+        arguments: {
+          command: "rg -n --glob '*.md' '动态规划|DP|dp' /app/data/notes/my_markdowns",
+          description: 'Search DP keywords in notes',
+        },
+        result:
+          '/app/data/notes/my_markdowns/动态规划.md:1:# 动态规划\n' +
+          '/app/data/notes/my_markdowns/爬楼梯动态规划思路解析.md:1:# 爬楼梯动态规划思路解析\n',
+        startedAt: 1400,
+        completedAt: 1700,
+      },
+    ];
+
+    const summaries = generateProcessSummary(calls, []);
+
+    expect(summaries[0].summary).toContain('定位候选文件');
+    expect(summaries[0].summary).toContain('命中 2 个文件');
+    expect(summaries[1].summary).toContain('检索笔记');
+    expect(summaries[1].summary).toContain('来自 2 个文件');
+  });
 });
 
 // ============================================================================
@@ -349,6 +389,26 @@ describe('computeHonestySignals', () => {
 // ============================================================================
 
 describe('synthesizeFinalEvent', () => {
+  it('should preserve completed status when a tool transitions from running to completed', () => {
+    const acc = createProcessAccumulator();
+
+    updateToolCall(acc, 'call-1', 'bash', 'running', {
+      arguments: { command: "find /app/data/notes/my_markdowns -name '*.md'" },
+      startedAt: 1000,
+    });
+    updateToolCall(acc, 'call-1', 'bash', 'completed', {
+      result: '/app/data/notes/my_markdowns/动态规划.md\n',
+      completedAt: 1200,
+    });
+    acc.assistantContent = '已完成总结。';
+
+    const finalEvent = synthesizeFinalEvent(acc);
+
+    expect(finalEvent.processSummary?.[0].status).toBe('completed');
+    expect(finalEvent.processSummary?.[0].summary).toContain('定位候选文件');
+    expect(finalEvent.processSummary?.[0].summary).not.toContain('进行中');
+  });
+
   it('should derive fallback references from read calls when inline citations are missing', () => {
     const finalEvent = synthesizeFinalEvent({
       startTime: Date.now() - 1200,
@@ -372,8 +432,43 @@ describe('synthesizeFinalEvent', () => {
 
     expect(finalEvent.references).toHaveLength(1);
     expect(finalEvent.references?.[0].sourcePath).toBe('/notes/dp_notes.md');
-    expect(finalEvent.references?.[0].charOffsetStart).toBe(42);
-    expect(finalEvent.honestySignals?.reasonCodes).not.toContain('no_hit');
+    expect(finalEvent.references?.[0].charOffsetStart).toBeUndefined();
+    expect(finalEvent.honestySignals).toBeUndefined();
+  });
+
+  it('should collapse repeated read calls from the same file into one file-level fallback reference', () => {
+    const finalEvent = synthesizeFinalEvent({
+      startTime: Date.now() - 1200,
+      activeCalls: new Map(),
+      completedCalls: [
+        {
+          id: 'read-1',
+          name: 'read',
+          status: 'completed',
+          arguments: { filePath: '/notes/dp_notes.md', offset: 42 },
+          result: { content: '第一段：动态规划先定义状态。' },
+          startedAt: 1000,
+          completedAt: 1400,
+        },
+        {
+          id: 'read-2',
+          name: 'read',
+          status: 'completed',
+          arguments: { filePath: '/notes/dp_notes.md', offset: 360 },
+          result: { content: '第二段：再写状态转移与初始化。' },
+          startedAt: 1500,
+          completedAt: 1800,
+        },
+      ],
+      errorCalls: [],
+      assistantContent: '动态规划的核心是先定义状态，再设计状态转移。',
+      eventVersion: 0,
+      sourceRefMap: new Map(),
+    });
+
+    expect(finalEvent.references).toHaveLength(1);
+    expect(finalEvent.references?.[0].sourcePath).toBe('/notes/dp_notes.md');
+    expect(finalEvent.references?.[0].snippet?.length ?? 0).toBeGreaterThan(0);
   });
 
   it('should derive content fallback references and normalize no_hit when answer mentions note paths', () => {
@@ -391,11 +486,7 @@ describe('synthesizeFinalEvent', () => {
 
     expect(finalEvent.references).toHaveLength(2);
     expect(finalEvent.references?.[0].sourcePath).toBe('data/notes/my_markdowns/动态规划.md');
-    expect(finalEvent.honestySignals?.reasonCodes).toEqual(['weak_match']);
-    expect(finalEvent.honestySignals?.limitationNote).toBe(
-      '回答正文已显式引用相关笔记文件，但上游事件未返回精确检索分数，请优先核对原文。',
-    );
-    expect(finalEvent.honestySignals?.retrievalHitCount).toBe(2);
+    expect(finalEvent.honestySignals).toBeUndefined();
   });
 
   it('should mark final process phase as completed', () => {

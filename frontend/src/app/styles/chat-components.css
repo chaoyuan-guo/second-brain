@@ -19,6 +19,10 @@
   padding: 12px 0;
 }
 
+.answer-panel.fallback-answer {
+  padding: 0;
+}
+
 .answer-panel.failed {
   padding: 20px;
   background: var(--danger-soft);
@@ -767,25 +771,6 @@
    降级提示
    ============================================================================ */
 
-.degraded-notice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  margin-bottom: 12px;
-  background: rgba(251, 191, 36, 0.1);
-  border: 1px solid rgba(251, 191, 36, 0.2);
-  border-radius: var(--radius-sm);
-  font-size: 0.8rem;
-  color: #b45309;
-}
-
-.degraded-notice svg {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
 /* ============================================================================
    证据可追溯性与过程透明度组件样式
    新增：AnswerPanel 三段式布局、InlineCitation、ReferencesPanel、HonestyBanner
@@ -822,6 +807,11 @@
   background: linear-gradient(135deg, rgba(79, 107, 255, 0.05) 0%, rgba(79, 107, 255, 0.01) 100%);
   border: 1px solid rgba(79, 107, 255, 0.12);
   border-radius: var(--radius-md);
+}
+
+.fallback-answer-section {
+  background: var(--surface-overlay);
+  border-color: var(--panel-border);
 }
 
 .direct-answer-content {
@@ -1616,11 +1606,30 @@
   color: var(--danger);
 }
 
+.timeline-item.status-running .timeline-marker {
+  background: rgba(79, 107, 255, 0.16);
+  color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(79, 107, 255, 0.08);
+}
+
+.timeline-item.status-running .step-number {
+  color: var(--accent);
+}
+
 .step-summary {
   flex: 1;
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text-strong);
+}
+
+.step-live-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: rgba(79, 107, 255, 0.12);
+  color: var(--accent);
 }
 
 .step-detail {

@@ -33,7 +33,7 @@ WORKDIR /app
 COPY --from=node-runtime /usr/local/ /usr/local/
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends curl jq \
+  && apt-get install -y --no-install-recommends curl jq ripgrep \
   && rm -rf /var/lib/apt/lists/*
 
 RUN node --version \
