@@ -7,7 +7,8 @@ ARG NEXT_PUBLIC_FEATURE_ANSWER_FIRST=1
 ENV NEXT_PUBLIC_FEATURE_ANSWER_FIRST=${NEXT_PUBLIC_FEATURE_ANSWER_FIRST}
 
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm config set fetch-retries 5 \
+RUN npm config set registry https://registry.npmmirror.com \
+  && npm config set fetch-retries 5 \
   && npm config set fetch-retry-mintimeout 20000 \
   && npm config set fetch-retry-maxtimeout 120000 \
   && npm ci
@@ -38,6 +39,7 @@ RUN apt-get update \
 
 RUN node --version \
   && npm --version \
+  && npm config set registry https://registry.npmmirror.com \
   && npm install -g "opencode-ai@${OPENCODE_VERSION}" \
   && opencode --version
 

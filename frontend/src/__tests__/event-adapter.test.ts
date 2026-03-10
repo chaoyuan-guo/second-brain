@@ -7,6 +7,8 @@ import {
   generateProcessSummary,
   computeHonestySignals,
   createProcessAccumulator,
+  deriveSyntheticSourceRefsFromCall,
+  mergeSourceRefs,
   updateToolCall,
   type ToolCallRecord,
 } from '../app/api/_lib/event-adapter';
@@ -131,6 +133,46 @@ describe('enrichCitationsWithEvidence', () => {
 
     const enriched = enrichCitationsWithEvidence(citations, sourceRefMap);
     expect(enriched[0].snippet).toBe('动态规划的核心是状态转移。');
+  });
+});
+
+describe('deriveSyntheticSourceRefsFromCall', () => {
+  it('assigns stable synthetic citation ids for read calls in read order', () => {
+    const sourceRefMap = new Map<string, EvidenceRef>();
+
+    const firstRefs = deriveSyntheticSourceRefsFromCall(
+      {
+        name: 'read',
+        arguments: { filePath: '/notes/dp_notes.md', offset: 42 },
+        result: { content: '动态规划先定义状态，再写状态转移。' },
+      },
+      sourceRefMap,
+    );
+    mergeSourceRefs(
+      {
+        startTime: Date.now(),
+        activeCalls: new Map(),
+        completedCalls: [],
+        errorCalls: [],
+        assistantContent: '',
+        eventVersion: 0,
+        sourceRefMap,
+      },
+      firstRefs,
+    );
+
+    const secondRefs = deriveSyntheticSourceRefsFromCall(
+      {
+        name: 'read',
+        arguments: { filePath: '/notes/greedy.md', offset: 12 },
+        result: { content: '贪心依赖局部最优的可证明性。' },
+      },
+      sourceRefMap,
+    );
+
+    expect(firstRefs[0].citationId).toBe('c01');
+    expect(secondRefs[0].citationId).toBe('c02');
+    expect(firstRefs[0].snippet).toContain('动态规划先定义状态');
   });
 });
 
@@ -434,6 +476,47 @@ describe('synthesizeFinalEvent', () => {
     expect(finalEvent.references?.[0].sourcePath).toBe('/notes/dp_notes.md');
     expect(finalEvent.references?.[0].charOffsetStart).toBeUndefined();
     expect(finalEvent.honestySignals).toBeUndefined();
+  });
+
+  it('should resolve inline citations through synthetic read refs when metadata source_refs are absent', () => {
+    const sourceRefMap = new Map<string, EvidenceRef>();
+    const syntheticRefs = deriveSyntheticSourceRefsFromCall(
+      {
+        name: 'read',
+        arguments: { filePath: '/notes/dp_notes.md', offset: 42 },
+        result: { content: '动态规划的核心是先定义状态，再设计状态转移。' },
+      },
+      sourceRefMap,
+    );
+
+    const acc = {
+      startTime: Date.now() - 1200,
+      activeCalls: new Map(),
+      completedCalls: [
+        {
+          id: 'read-1',
+          name: 'read',
+          status: 'completed' as const,
+          arguments: { filePath: '/notes/dp_notes.md', offset: 42 },
+          result: { content: '动态规划的核心是先定义状态，再设计状态转移。' },
+          startedAt: 1000,
+          completedAt: 1800,
+          sourceRefs: syntheticRefs,
+        },
+      ],
+      errorCalls: [],
+      assistantContent: '动态规划的核心是先定义状态，再设计状态转移。[c01]',
+      eventVersion: 0,
+      sourceRefMap,
+    };
+    mergeSourceRefs(acc, syntheticRefs);
+
+    const finalEvent = synthesizeFinalEvent(acc);
+
+    expect(finalEvent.references).toHaveLength(1);
+    expect(finalEvent.references?.[0].id).toBe('01');
+    expect(finalEvent.references?.[0].sourcePath).toBe('/notes/dp_notes.md');
+    expect(finalEvent.references?.[0].snippet).toContain('动态规划的核心');
   });
 
   it('should collapse repeated read calls from the same file into one file-level fallback reference', () => {

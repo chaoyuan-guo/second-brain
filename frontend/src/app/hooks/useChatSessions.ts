@@ -6,7 +6,6 @@ import {
   type ChatMessage,
   type ChatSession,
   type ThinkingStep,
-  type ToolInvocation,
   SESSION_ENDPOINT,
   sessionMessageEndpoint,
   type SourceRef,
@@ -19,9 +18,25 @@ import {
   type RunPhase,
   type CitationRef,
   type ProcessStepSummary,
+  type EvidenceRef,
   // 证据与透明性新增类型
   type HonestySignals,
 } from '../lib/chat-types';
+import {
+  computeHonestySignals,
+  enrichCitationsWithEvidence,
+  extractCitations,
+  generateProcessSummary,
+  splitDirectAnswer,
+  type ToolCallRecord,
+} from '../api/_lib/event-adapter';
+import {
+  deriveSourceTitle,
+  inferSourceDateLabel,
+  isWeakRetrievalScore,
+  normalizeHonestySignalsWithReferences,
+  sanitizeCitationSnippet,
+} from '../lib/citation-utils';
 import { createEmptySession, createId, deriveTitle } from '../lib/chat-helpers';
 
 interface UseChatSessionsResult {
@@ -47,6 +62,7 @@ const LEGACY_STORAGE_KEY = 'second_brain_sessions_v1';
 const DEFAULT_OPENCODE_SESSION_PATH =
   process.env.NEXT_PUBLIC_OPENCODE_SESSION_PATH?.trim() || '/app';
 const FINAL_EVENT_ABORT_DELAY_MS = 3500;
+const CHAT_STREAM_ENDPOINT = '/api/chat/stream/';
 
 const asRecord = (value: unknown): JsonRecord | undefined =>
   value && typeof value === 'object' ? (value as JsonRecord) : undefined;
@@ -190,6 +206,87 @@ const extractSourceRefs = (metadata: unknown): SourceRef[] => {
 
   return refs;
 };
+
+const extractEvidenceSourceRefs = (metadata: unknown): EvidenceRef[] => {
+  const record = asRecord(metadata);
+  const raw = record?.source_refs;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const refs: EvidenceRef[] = [];
+  raw.forEach((item) => {
+    const entry = asRecord(item);
+    const sourcePath = asString(entry?.path)?.trim();
+    if (!sourcePath) {
+      return;
+    }
+
+    const heading = asString(entry?.heading)?.trim();
+    const snippet = sanitizeCitationSnippet(asString(entry?.snippet));
+    const sourceTitle = asString(entry?.source_title)?.trim();
+    const charOffset = typeof entry?.char_offset === 'number' ? entry.char_offset : undefined;
+    const score = typeof entry?.score === 'number' ? entry.score : undefined;
+    const citationId = asString(entry?.citation_id)?.trim();
+
+    refs.push({
+      sourcePath,
+      sourceTitle: sourceTitle || deriveSourceTitle(sourcePath, sourceTitle, heading),
+      sourceDateLabel: inferSourceDateLabel(sourcePath, sourceTitle, heading),
+      heading,
+      snippet,
+      charOffsetStart: charOffset,
+      retrievalScore: score,
+      citationId,
+    });
+  });
+
+  return refs;
+};
+
+const stripUnresolvedCitations = (
+  content: string,
+  evidenceRefs: EvidenceRef[],
+): string => {
+  if (!content) {
+    return content;
+  }
+
+  const resolvedIds = new Set<string>();
+  evidenceRefs.forEach((ref) => {
+    const citationId = ref.citationId?.trim();
+    if (!citationId) {
+      return;
+    }
+    const normalized = citationId.startsWith('c') ? citationId.slice(1) : citationId;
+    resolvedIds.add(normalized);
+    resolvedIds.add(`c${normalized}`);
+  });
+
+  return content.replace(/\[c(\d{2,3})\]/g, (match, id: string) =>
+    resolvedIds.has(id) || resolvedIds.has(`c${id}`) ? match : '',
+  );
+};
+
+const hasExplicitNoHitStatement = (content: string): boolean =>
+  /没有关于.*直接记录|没有相关记录|未找到.*记录|没有检索到.*记录/.test(content);
+
+const didAllRetrievalStepsMiss = (steps: ProcessStepSummary[]): boolean => {
+  const retrievalSteps = steps.filter((step) => step.phase === 'retrieving');
+  if (retrievalSteps.length === 0) {
+    return false;
+  }
+
+  return retrievalSteps.every((step) => {
+    const haystack = [step.summary, step.detail, step.resultSummary].filter(Boolean).join(' ');
+    return /命中\s*0\s*条/.test(haystack);
+  });
+};
+
+const buildNoHitAnswer = (hasWeakReferences: boolean): string =>
+  hasWeakReferences
+    ? '你的笔记中没有关于该问题的直接记录。当前只检索到弱相关内容，不能据此给出可靠结论，请优先核对下方原文引用。'
+    : '你的笔记中没有关于该问题的直接记录，目前也没有可支撑回答的相关引用。';
 
 export function useChatSessions(): UseChatSessionsResult {
   const defaultSession = useMemo(() => createEmptySession(), []);
@@ -385,6 +482,59 @@ export function useChatSessions(): UseChatSessionsResult {
     [],
   );
 
+  const parseNdjsonStream = useCallback(
+    async (
+      reader: ReadableStreamDefaultReader<Uint8Array>,
+      onEvent: (event: JsonRecord) => void,
+    ): Promise<void> => {
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        let newlineIndex = buffer.indexOf('\n');
+        while (newlineIndex !== -1) {
+          const rawLine = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+          const line = rawLine.trim();
+          if (line) {
+            try {
+              const parsed = JSON.parse(line);
+              const record = asRecord(parsed);
+              if (record) {
+                onEvent(record);
+              }
+            } catch {
+              // Ignore malformed partial lines from upstream.
+            }
+          }
+          newlineIndex = buffer.indexOf('\n');
+        }
+      }
+
+      const trailing = buffer.trim();
+      if (!trailing) {
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(trailing);
+        const record = asRecord(parsed);
+        if (record) {
+          onEvent(record);
+        }
+      } catch {
+        // Ignore malformed trailing data.
+      }
+    },
+    [],
+  );
+
   const ensureUpstreamSessionId = useCallback(
     async (sessionId: string, baseUrl: string, traceId: string): Promise<string> => {
       const existing = sessionsRef.current.find((item) => item.id === sessionId)?.upstreamSessionId;
@@ -511,6 +661,7 @@ export function useChatSessions(): UseChatSessionsResult {
       let assistantContent = '';
 
       const sourceRefMap = new Map<string, SourceRef>();
+      const evidenceSourceRefMap = new Map<string, EvidenceRef>();
       const toolStatusByCall = new Map<string, ToolStatus>();
       const normalizedUserInput = content.trim();
       let finalizedEventVersion: number | undefined;
@@ -570,6 +721,20 @@ export function useChatSessions(): UseChatSessionsResult {
         });
       };
 
+      const mergeEvidenceSourceRefs = (refs: EvidenceRef[]) => {
+        refs.forEach((ref) => {
+          const key = [
+            ref.sourcePath,
+            ref.heading ?? '',
+            ref.charOffsetStart ?? '',
+            ref.citationId ?? '',
+          ].join('|');
+          if (!evidenceSourceRefMap.has(key)) {
+            evidenceSourceRefMap.set(key, ref);
+          }
+        });
+      };
+
       const scheduleCompletionAbort = () => {
         clearCompletionTimer();
         completionTimer = window.setTimeout(() => {
@@ -591,46 +756,37 @@ export function useChatSessions(): UseChatSessionsResult {
         apiBaseUrlRef.current = baseUrl;
         const traceId = buildTraceId(targetSessionId);
 
-        const upstreamSessionId = await ensureUpstreamSessionId(targetSessionId, baseUrl, traceId);
+        const sessionSnapshot =
+          sessionsRef.current.find((session) => session.id === targetSessionId) ?? activeSession;
+        const requestMessages = [...(sessionSnapshot?.messages ?? []), userMessage]
+          .filter((message) => message.id !== assistantPlaceholder.id)
+          .map((message) => ({
+            role: message.role,
+            content: message.content,
+          }));
 
-        const streamResponse = await fetch(`${baseUrl}${EVENT_ENDPOINT}`, {
-          method: 'GET',
+        if (requestMessages.length === 0) {
+          requestMessages.push({ role: 'user', content });
+        }
+
+        const streamResponse = await fetch(`${baseUrl}${CHAT_STREAM_ENDPOINT}`, {
+          method: 'POST',
           headers: {
-            Accept: 'text/event-stream',
+            'Content-Type': 'application/json',
+            Accept: 'application/x-ndjson',
+            'X-Stream-Format': 'ndjson',
             'X-Request-Id': traceId,
             'X-Trace-Id': traceId,
-            'X-Session-Id': upstreamSessionId,
           },
-          cache: 'no-store',
+          body: JSON.stringify({
+            messages: requestMessages,
+          }),
           signal: controller.signal,
         });
 
         if (!streamResponse.ok || !streamResponse.body) {
           const detail = (await streamResponse.text()).trim();
-          throw new Error(detail || `连接 OpenCode 事件流失败: ${streamResponse.status}`);
-        }
-
-        updateAssistantState({
-          isThinking: true,
-          statusText: '已连接 OpenCode，等待响应...',
-        });
-
-        const promptResponse = await fetch(`${baseUrl}${sessionMessageEndpoint(upstreamSessionId)}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-Id': traceId,
-            'X-Trace-Id': traceId,
-          },
-          body: JSON.stringify({
-            parts: [{ type: 'text', text: content }],
-          }),
-          signal: controller.signal,
-        });
-
-        if (!promptResponse.ok) {
-          const detail = (await promptResponse.text()).trim();
-          throw new Error(detail || `发送消息失败: ${promptResponse.status}`);
+          throw new Error(detail || `连接后端流式接口失败: ${streamResponse.status}`);
         }
 
         updateAssistantState({
@@ -645,110 +801,21 @@ export function useChatSessions(): UseChatSessionsResult {
 
         const reader = streamResponse.body.getReader();
 
-        await parseSseStream(reader, (eventName, data) => {
-          let parsedValue: unknown;
-          try {
-            parsedValue = JSON.parse(data);
-          } catch {
-            return;
-          }
-          const parsed = asRecord(parsedValue);
-          if (!parsed) {
-            return;
-          }
-
-          // 处理终态事件 (event: final)
-          if (eventName === 'final') {
-            const eventVersion = typeof parsed.event_version === 'number' ? parsed.event_version : 0;
-
-            // 终态竞态检查：只接受更高版本
-            if (finalizedEventVersion !== undefined && eventVersion <= finalizedEventVersion) {
-              return;
-            }
-
-	            finalizedEventVersion = eventVersion;
-
-	            const parsedDecisionSummary = parseDecisionSummary(parsed.decisionSummary);
-	            const parsedProcessOverview = parseProcessOverview(parsed.processOverview);
-	            const parsedCompletionState = parseCompletionState(parsed.completionState);
-	            const parsedEvidence = Array.isArray(parsed.evidence)
-	              ? (parsed.evidence as EvidenceItem[])
-	              : undefined;
-	            const directAnswer = asString(parsed.directAnswer);
-	            const fullAnalysis = asString(parsed.fullAnalysis);
-	            const references = parseReferences(parsed.references);
-	            const processSummary = parseProcessSummary(parsed.processSummary);
-	            const honestySignals = parsed.honestySignals && typeof parsed.honestySignals === 'object'
-	              ? (parsed.honestySignals as HonestySignals)
-	              : undefined;
-
-	            decisionSummary = parsedDecisionSummary ?? decisionSummary;
-	            processOverview = parsedProcessOverview ?? processOverview;
-	            completionState = parsedCompletionState ?? completionState;
-	            evidence = parsedEvidence ?? evidence;
-
-	            updateAssistantState({
-	              isThinking: false,
-	              statusText: '',
-	              sourceRefs: buildSourceRefs(),
-	              finalizedEventVersion,
-	              ...(parsedDecisionSummary ? { decisionSummary: parsedDecisionSummary } : {}),
-	              ...(parsedProcessOverview ? { processOverview: parsedProcessOverview } : {}),
-	              ...(parsedCompletionState ? { completionState: parsedCompletionState } : {}),
-	              ...(parsedEvidence ? { evidence: parsedEvidence } : {}),
-	              ...(directAnswer ? { directAnswer } : {}),
-	              ...(fullAnalysis ? { fullAnalysis } : {}),
-	              ...(references ? { references, citationMap: buildCitationMap(references) } : {}),
-	              ...(processSummary ? { processSummary } : {}),
-	              ...(honestySignals ? { honestySignals } : {}),
-	            });
-              scheduleCompletionAbort();
-	            return;
-	          }
-
-          // 处理 OpenCode 原始事件 (message.part.updated)
-          const eventType = asString(parsed.type) ?? eventName;
-          if (eventType !== 'message.part.updated') {
+        await parseNdjsonStream(reader, (parsed) => {
+          const eventType = asString(parsed.type);
+          if (!eventType) {
             return;
           }
 
           clearCompletionTimer();
           autoCompletedAbort = false;
 
-          const properties = asRecord(parsed.properties);
-          const part = asRecord(properties?.part ?? parsed.part);
-          if (!part) {
-            return;
-          }
-
-          const partSessionId = asString(part.sessionID);
-          if (!partSessionId || partSessionId !== upstreamSessionId) {
-            return;
-          }
-
-          const partType = asString(part.type);
-          const partMessageId = asString(part.messageID);
-          if (!partType) {
-            return;
-          }
-
-          if (partType === 'text') {
-            if (!sawStepStart) {
+          if (eventType === 'delta') {
+            const delta = asString(parsed.delta);
+            if (!delta) {
               return;
             }
-
-            if (currentStepMessageId && partMessageId && partMessageId !== currentStepMessageId) {
-              return;
-            }
-
-            const delta = asString(properties?.delta ?? parsed.delta);
-            const partText = asString(part.text);
-            if (delta && delta.length > 0) {
-              assistantContent += delta;
-            } else if (partText !== undefined && partText.length > 0) {
-              assistantContent = partText;
-            }
-
+            assistantContent += delta;
             updateAssistantState({
               content: assistantContent,
               isThinking: true,
@@ -758,175 +825,217 @@ export function useChatSessions(): UseChatSessionsResult {
             return;
           }
 
-          if (partType === 'tool') {
-            const toolName = asString(part.tool) ?? 'tool';
-            const callId = asString(part.callID) ?? `${toolName}-${toolStatusByCall.size}`;
-            const state = asRecord(part.state);
-            const status = asString(state?.status) as ToolStatus | undefined;
-
-            if (!status) {
-              return;
-            }
-
-            toolStatusByCall.set(callId, status);
-
-            // 查找或创建工具步骤
-            let toolStep = steps.find(s => s.tool?.id === callId);
-            const toolArguments = getToolArguments(state);
-            const toolResult = getToolResult(state);
-
-            if (status === 'pending' || status === 'running') {
-              updateAssistantState({
-                isThinking: true,
-                statusText: `正在调用工具：${toolName}`,
-              });
-
-              // 创建新的工具步骤
-              if (!toolStep) {
-                const stepId = createId();
-                toolStep = {
-                  id: stepId,
-                  type: 'tool',
-                  tool: {
-                    id: callId,
-                    name: toolName,
-                    status: status,
-                    arguments: toolArguments,
-                    startedAt: Date.now(),
-                  },
-                  timestamp: Date.now(),
-                };
-                addStep(toolStep);
-              } else {
-                // 更新状态
-                updateStep(toolStep.id, {
-                  tool: {
-                    ...toolStep.tool!,
-                    status: status,
-                    arguments: toolArguments ?? toolStep.tool?.arguments,
-                  }
-                });
-              }
-              return;
-            }
-
-            if (status === 'completed') {
-              mergeSourceRefs(extractSourceRefs(state?.metadata));
-              updateAssistantState({
-                isThinking: true,
-                statusText: activeToolCount() > 0 ? '等待其他工具完成...' : '',
-                sourceRefs: buildSourceRefs(),
-              });
-
-              // 更新工具步骤为完成状态
-              if (toolStep) {
-                updateStep(toolStep.id, {
-                  tool: {
-                    ...toolStep.tool!,
-                    status: 'completed',
-                    arguments: toolArguments ?? toolStep.tool?.arguments,
-                    result: toolResult,
-                    completedAt: Date.now(),
-                  }
-                });
-              }
-              return;
-            }
-
-            if (status === 'error') {
-              const message = asString(state?.error) ?? '工具执行失败';
-              updateAssistantState({
-                isThinking: true,
-                statusText: `${toolName} 失败：${message}`,
-              });
-
-              // 更新工具步骤为错误状态
-              if (toolStep) {
-                updateStep(toolStep.id, {
-                  tool: {
-                    ...toolStep.tool!,
-                    status: 'error',
-                    arguments: toolArguments ?? toolStep.tool?.arguments,
-                    error: message,
-                    completedAt: Date.now(),
-                  }
-                });
-              }
-            }
-            return;
-          }
-
-          if (partType === 'step-start') {
-            sawStepStart = true;
-            if (partMessageId) {
-              currentStepMessageId = partMessageId;
-            }
+          if (eventType === 'status') {
+            const message = asString(parsed.message) || '正在思考...';
             updateAssistantState({
               isThinking: true,
-              statusText: assistantContent.trim() ? '' : '正在思考...',
+              statusText: message,
             });
+            if (!steps.some((step) => step.type === 'thought')) {
+              addStep({
+                id: createId(),
+                type: 'thought',
+                content: message,
+                timestamp: Date.now(),
+              });
+            }
+            return;
+          }
 
-            // 添加思考步骤
-            const stepId = asString(part.stepID) || createId();
-            addStep({
-              id: stepId,
-              type: 'thought',
-              content: asString(part.content) || '正在思考...',
-              timestamp: Date.now(),
+          if (eventType === 'tool') {
+            const toolName = asString(parsed.tool_name) ?? 'tool';
+            const callId = asString(parsed.tool_call_id) ?? `${toolName}-${toolStatusByCall.size}`;
+            const stage = asString(parsed.stage);
+            const toolArguments = asRecord(parsed.arguments);
+            const status: ToolStatus =
+              stage === 'start'
+                ? 'running'
+                : stage === 'end'
+                  ? 'completed'
+                  : 'error';
+
+            toolStatusByCall.set(callId, status);
+            let toolStep = steps.find((step) => step.tool?.id === callId);
+
+            if (!toolStep) {
+              const stepId = createId();
+              toolStep = {
+                id: stepId,
+                type: 'tool',
+                tool: {
+                  id: callId,
+                  name: toolName,
+                  status,
+                  arguments: toolArguments,
+                  startedAt: Date.now(),
+                },
+                timestamp: Date.now(),
+              };
+              addStep(toolStep);
+            } else {
+              updateStep(toolStep.id, {
+                tool: {
+                  ...toolStep.tool!,
+                  status,
+                  arguments: toolArguments ?? toolStep.tool?.arguments,
+                  error: status === 'error' ? asString(parsed.error) ?? toolStep.tool?.error : toolStep.tool?.error,
+                  completedAt: status === 'running' ? toolStep.tool?.completedAt : Date.now(),
+                },
+              });
+            }
+
+            updateAssistantState({
+              isThinking: true,
+              statusText:
+                asString(parsed.message) ||
+                (status === 'error' ? `${toolName} 失败` : `正在执行：${toolName}`),
             });
             return;
           }
 
-          if (partType === 'step-finish') {
-            if (currentStepMessageId && partMessageId && partMessageId !== currentStepMessageId) {
-              return;
-            }
+          if (eventType === 'sources') {
+            const previewRefs = extractSourceRefs(parsed);
+            const evidenceRefs = extractEvidenceSourceRefs(parsed);
+            mergeSourceRefs(previewRefs);
+            mergeEvidenceSourceRefs(evidenceRefs);
+            updateAssistantState({
+              sourceRefs: buildSourceRefs(),
+            });
+            return;
           }
         });
 
-          // 最终步骤：合并思考步骤
-        const finalText = assistantContent.trim() || '助手暂时没有回复。';
+        const filteredAssistantContent = stripUnresolvedCitations(
+          assistantContent,
+          Array.from(evidenceSourceRefMap.values()),
+        );
+        const finalText = filteredAssistantContent.trim() || '助手暂时没有回复。';
         const normalizedFinal = finalText.trim();
         const safeFinalText =
           normalizedFinal && normalizedFinal !== normalizedUserInput
             ? finalText
             : '本次请求未产出可展示的最终回复，请重试或缩小问题范围。';
 
-        // 如果没有收到 final 事件，使用降级状态
-	        const finalUpdate: Partial<ChatMessage> = {
-	          content: safeFinalText,
-	          isThinking: false,
-	          statusText: '',
-	          sourceRefs: buildSourceRefs(),
-	        };
+        const evidenceRefs = Array.from(evidenceSourceRefMap.values());
+        const evidenceMap = new Map<string, EvidenceRef>();
+        evidenceRefs.forEach((ref) => {
+          const key = [
+            ref.sourcePath,
+            ref.heading ?? '',
+            ref.charOffsetStart ?? '',
+            ref.citationId ?? '',
+          ].join('|');
+          evidenceMap.set(key, ref);
+        });
 
-	        const fallbackAnswer = splitFallbackAnswer(safeFinalText);
-	        if (finalizedEventVersion === undefined) {
-	          finalUpdate.directAnswer = fallbackAnswer.directAnswer || safeFinalText;
-	          finalUpdate.fullAnalysis = fallbackAnswer.fullAnalysis || safeFinalText;
-	        }
+        const references = enrichCitationsWithEvidence(
+          extractCitations(safeFinalText),
+          evidenceMap,
+        ).filter((ref) => Boolean(ref.sourcePath));
 
-	        // 仅在未收到终态事件时才设置默认值
-	        if (decisionSummary === undefined) {
-          finalUpdate.decisionSummary = {
-            conclusion: safeFinalText.slice(0, 200),
-            actions: [],
-            confidence: 'unknown',
-            assumptions: [],
-            risks: [],
-          };
-          finalUpdate.processOverview = processOverview || {
-            phase: 'completed',
-            durationMs: 0,
-            warningCount: 0,
-            blockingErrorCount: 0,
-            impact: 'none',
-          };
-          finalUpdate.completionState = 'completed';
-          finalUpdate.evidence = [];
-        }
+        const fallbackReferences = evidenceRefs
+          .filter((ref) => Boolean(ref.sourcePath))
+          .map((ref, index) => ({
+            id: String(index + 1).padStart(2, '0'),
+            sourcePath: ref.sourcePath,
+            sourceTitle: ref.sourceTitle || deriveSourceTitle(ref.sourcePath, ref.sourceTitle, ref.heading),
+            sourceDateLabel: ref.sourceDateLabel || inferSourceDateLabel(ref.sourcePath, ref.sourceTitle, ref.heading),
+            heading: ref.heading,
+            charOffsetStart: ref.charOffsetStart,
+            snippet: sanitizeCitationSnippet(ref.snippet),
+            retrievalScore: ref.retrievalScore,
+          }));
 
-        updateAssistantState(finalUpdate);
+        const resolvedReferences = references.length > 0 ? references : fallbackReferences;
+
+        const completedCalls: ToolCallRecord[] = [];
+        const errorCalls: ToolCallRecord[] = [];
+        const activeCalls: ToolCallRecord[] = [];
+        steps
+          .filter((step) => step.type === 'tool' && step.tool)
+          .forEach((step) => {
+            const tool = step.tool!;
+            const toolRecord = {
+              id: tool.id,
+              name: tool.name,
+              status: tool.status,
+              arguments: tool.arguments,
+              result: tool.result,
+              error: tool.error,
+              startedAt: tool.startedAt ?? step.timestamp,
+              completedAt: tool.completedAt,
+              sourceRefs: evidenceRefs.filter((ref) => Boolean(ref.sourcePath)),
+            };
+            if (tool.status === 'completed') {
+              completedCalls.push(toolRecord);
+            } else if (tool.status === 'error') {
+              errorCalls.push(toolRecord);
+            } else {
+              activeCalls.push(toolRecord);
+            }
+          });
+
+        const generatedProcessSummary = generateProcessSummary(
+          completedCalls,
+          errorCalls,
+          activeCalls,
+        );
+        const computedHonestySignals = normalizeHonestySignalsWithReferences(
+          computeHonestySignals(resolvedReferences, errorCalls.length > 0, errorCalls.length),
+          resolvedReferences,
+        );
+        const allRetrievalStepsMissed = didAllRetrievalStepsMiss(generatedProcessSummary);
+        const hasWeakReferences = resolvedReferences.some((ref) =>
+          isWeakRetrievalScore(ref.retrievalScore),
+        );
+        const onlyWeakReferences =
+          resolvedReferences.length > 0 &&
+          resolvedReferences.every((ref) => isWeakRetrievalScore(ref.retrievalScore));
+        const shouldForceNoHitAnswer =
+          allRetrievalStepsMissed &&
+          (resolvedReferences.length === 0 || onlyWeakReferences) &&
+          !hasExplicitNoHitStatement(safeFinalText);
+        const finalAnswerText = shouldForceNoHitAnswer
+          ? buildNoHitAnswer(hasWeakReferences)
+          : safeFinalText;
+        const answerParts = splitDirectAnswer(finalAnswerText);
+
+        decisionSummary = {
+          conclusion: (answerParts.directAnswer || finalAnswerText).slice(0, 200),
+          actions: [],
+          confidence: computedHonestySignals?.hasSufficientEvidence ? 'high' : 'unknown',
+          assumptions: [],
+          risks: computedHonestySignals?.honestyWarnings ?? [],
+        };
+        processOverview = {
+          phase: 'completed',
+          durationMs: Date.now() - assistantPlaceholder.timestamp!,
+          warningCount: errorCalls.length,
+          blockingErrorCount: 0,
+          impact: errorCalls.length > 0 ? 'partial' : 'none',
+        };
+        completionState = 'completed';
+        evidence = [];
+
+        updateAssistantState({
+          content: finalAnswerText,
+          isThinking: false,
+          statusText: '',
+          sourceRefs: buildSourceRefs(),
+          directAnswer: answerParts.directAnswer || finalAnswerText,
+          fullAnalysis: answerParts.fullAnalysis || finalAnswerText,
+          references: resolvedReferences.length > 0 ? resolvedReferences : undefined,
+          citationMap: resolvedReferences.length > 0 ? buildCitationMap(resolvedReferences) : undefined,
+          processSummary: generatedProcessSummary.length > 0 ? generatedProcessSummary : undefined,
+          honestySignals:
+            computedHonestySignals && !computedHonestySignals.hasSufficientEvidence
+              ? computedHonestySignals
+              : undefined,
+          decisionSummary,
+          processOverview,
+          completionState,
+          evidence,
+        });
       } catch (error) {
         if ((error as DOMException)?.name === 'AbortError') {
 	          if (autoCompletedAbort) {
@@ -999,9 +1108,8 @@ export function useChatSessions(): UseChatSessionsResult {
     },
     [
       activeSession,
-      ensureUpstreamSessionId,
       inputValue,
-      parseSseStream,
+      parseNdjsonStream,
       pendingSessions,
       setSessionPending,
       updateAssistantMessage,

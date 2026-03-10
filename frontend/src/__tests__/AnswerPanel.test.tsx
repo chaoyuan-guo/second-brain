@@ -57,6 +57,21 @@ describe('AnswerPanel', () => {
     expect(screen.queryByText('**完整回答**')).not.toBeInTheDocument();
   });
 
+  it('hides the analysis toggle when there is no analysis content beyond the direct answer', () => {
+    render(
+      <AnswerPanel
+        message={createMessage({
+          content: '这是直接回答。',
+          directAnswer: '这是直接回答。',
+        })}
+        copiedKey={null}
+        onCopyCode={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText('展开完整分析')).not.toBeInTheDocument();
+  });
+
   it('derives file-level references from content paths and suppresses contradictory no_hit wording', () => {
     render(
       <AnswerPanel

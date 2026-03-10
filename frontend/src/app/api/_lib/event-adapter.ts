@@ -319,6 +319,64 @@ const extractPathFromCall = (call: ToolCallRecord): string | undefined => {
   ]);
 };
 
+const buildSourceRefIdentity = (
+  ref: Pick<EvidenceRef, 'sourcePath' | 'heading' | 'charOffsetStart'>,
+): string => [
+  ref.sourcePath,
+  ref.heading ?? '',
+  ref.charOffsetStart ?? '',
+].join('|');
+
+const getNextCitationId = (sourceRefMap: Map<string, EvidenceRef>): string => {
+  let maxId = 0;
+  sourceRefMap.forEach((ref) => {
+    if (!ref.citationId) {
+      return;
+    }
+    const normalized = normalizeCitationId(ref.citationId);
+    const numeric = Number.parseInt(normalized, 10);
+    if (!Number.isNaN(numeric)) {
+      maxId = Math.max(maxId, numeric);
+    }
+  });
+
+  return `c${String(maxId + 1).padStart(2, '0')}`;
+};
+
+const getStoredSourceRef = (
+  sourceRefMap: Map<string, EvidenceRef>,
+  ref: Pick<EvidenceRef, 'sourcePath' | 'heading' | 'charOffsetStart' | 'citationId'>,
+): [string, EvidenceRef] | undefined => {
+  const identity = buildSourceRefIdentity(ref);
+
+  for (const entry of sourceRefMap.entries()) {
+    const [, stored] = entry;
+    if (ref.citationId && stored.citationId === ref.citationId) {
+      return entry;
+    }
+    if (buildSourceRefIdentity(stored) === identity) {
+      return entry;
+    }
+  }
+
+  return undefined;
+};
+
+const chooseBetterSnippet = (
+  currentSnippet?: string,
+  nextSnippet?: string,
+): string | undefined => {
+  const current = sanitizeCitationSnippet(currentSnippet);
+  const next = sanitizeCitationSnippet(nextSnippet);
+  if (!current) {
+    return next;
+  }
+  if (!next) {
+    return current;
+  }
+  return next.length > current.length ? next : current;
+};
+
 const deriveReferencesFromCalls = (calls: ToolCallRecord[]): CitationRef[] => {
   const refs: CitationRef[] = [];
   const seen = new Set<string>();
@@ -493,11 +551,85 @@ export const updateToolCall = (
  */
 export const mergeSourceRefs = (acc: ProcessAccumulator, refs: EvidenceRef[]): void => {
   refs.forEach((ref) => {
-    const key = [ref.sourcePath, ref.heading ?? '', ref.charOffsetStart ?? '', ref.snippet ?? ''].join('|');
-    if (!acc.sourceRefMap.has(key)) {
-      acc.sourceRefMap.set(key, ref);
+    if (!ref.sourcePath) {
+      return;
     }
+
+    const storedEntry = getStoredSourceRef(acc.sourceRefMap, ref);
+    if (storedEntry) {
+      const [existingKey, existingRef] = storedEntry;
+      const mergedRef: EvidenceRef = {
+        ...existingRef,
+        ...ref,
+        citationId: existingRef.citationId || ref.citationId || getNextCitationId(acc.sourceRefMap),
+        sourceTitle: ref.sourceTitle || existingRef.sourceTitle,
+        sourceDateLabel:
+          ref.sourceDateLabel ||
+          existingRef.sourceDateLabel ||
+          inferSourceDateLabel(ref.sourcePath, ref.sourceTitle, ref.heading),
+        heading: ref.heading || existingRef.heading,
+        charOffsetStart: ref.charOffsetStart ?? existingRef.charOffsetStart,
+        snippet: chooseBetterSnippet(existingRef.snippet, ref.snippet),
+        retrievalScore:
+          typeof ref.retrievalScore === 'number'
+            ? typeof existingRef.retrievalScore === 'number'
+              ? Math.min(existingRef.retrievalScore, ref.retrievalScore)
+              : ref.retrievalScore
+            : existingRef.retrievalScore,
+      };
+      acc.sourceRefMap.delete(existingKey);
+      acc.sourceRefMap.set(buildSourceRefIdentity(mergedRef), mergedRef);
+      return;
+    }
+
+    const normalizedRef: EvidenceRef = {
+      ...ref,
+      citationId: ref.citationId || getNextCitationId(acc.sourceRefMap),
+      sourceTitle: ref.sourceTitle || deriveSourceTitle(ref.sourcePath, ref.sourceTitle, ref.heading),
+      sourceDateLabel:
+        ref.sourceDateLabel ||
+        inferSourceDateLabel(ref.sourcePath, ref.sourceTitle, ref.heading),
+      snippet: chooseBetterSnippet(undefined, ref.snippet),
+    };
+    acc.sourceRefMap.set(buildSourceRefIdentity(normalizedRef), normalizedRef);
   });
+};
+
+export const deriveSyntheticSourceRefsFromCall = (
+  call: Pick<ToolCallRecord, 'name' | 'arguments' | 'result'>,
+  sourceRefMap: Map<string, EvidenceRef>,
+): EvidenceRef[] => {
+  if (call.name !== 'read' && call.name !== 'read_note_file') {
+    return [];
+  }
+
+  const sourcePath = extractPathFromCall(call as ToolCallRecord);
+  if (!sourcePath) {
+    return [];
+  }
+
+  const resultRecord = call.result && typeof call.result === 'object'
+    ? (call.result as Record<string, unknown>)
+    : undefined;
+  const charOffsetStart =
+    getNumberValue(call.arguments, ['offset', 'char_offset', 'charOffset']) ??
+    getNumberValue(resultRecord, ['offset', 'char_offset', 'charOffset']);
+  const snippet = extractSnippetPreview(call.result);
+  const baseRef: EvidenceRef = {
+    sourcePath,
+    sourceTitle: deriveSourceTitle(sourcePath),
+    sourceDateLabel: inferSourceDateLabel(sourcePath),
+    charOffsetStart,
+    snippet,
+  };
+  const existing = getStoredSourceRef(sourceRefMap, baseRef);
+
+  return [
+    {
+      ...baseRef,
+      citationId: existing?.[1].citationId || getNextCitationId(sourceRefMap),
+    },
+  ];
 };
 
 /**
@@ -1055,7 +1187,8 @@ export const synthesizeFinalEvent = (acc: ProcessAccumulator): FinalEventPayload
   const citations = extractCitations(acc.assistantContent);
 
   // 丰富引用信息（关联 sourceRefMap 中的证据详情）
-  const enrichedCitations = enrichCitationsWithEvidence(citations, acc.sourceRefMap);
+  const enrichedCitations = enrichCitationsWithEvidence(citations, acc.sourceRefMap)
+    .filter((citation) => Boolean(citation.sourcePath));
   const fallbackReferences = deriveReferencesFromCalls(acc.completedCalls);
   const contentFallbackReferences = extractFileLevelReferencesFromContent(acc.assistantContent);
   const references = enrichedCitations.length > 0

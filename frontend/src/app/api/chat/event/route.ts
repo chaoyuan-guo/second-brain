@@ -6,6 +6,7 @@ import {
 } from '../../_lib/upstream';
 import {
   createProcessAccumulator,
+  deriveSyntheticSourceRefsFromCall,
   updateToolCall,
   mergeSourceRefs,
   synthesizeFinalEvent,
@@ -339,7 +340,18 @@ export async function GET(request: Request): Promise<Response> {
 
         // completed 时提取 source_refs
         if (status === 'completed') {
-          const refs = extractSourceRefs(state.metadata);
+          const refsFromMetadata = extractSourceRefs(state.metadata);
+          const refs =
+            refsFromMetadata.length > 0
+              ? refsFromMetadata
+              : deriveSyntheticSourceRefsFromCall(
+                  {
+                    name: toolName,
+                    arguments: getToolInput(state),
+                    result: getToolOutput(state),
+                  },
+                  acc.sourceRefMap,
+                );
           if (refs.length > 0) {
             mergeSourceRefs(acc, refs);
             // 更新工具调用记录

@@ -103,10 +103,13 @@ const extractContentFallbackReferences = (message: ChatMessage): CitationRef[] |
 
 const buildFallbackReferences = (message: ChatMessage): CitationRef[] | null => {
   if (message.references && message.references.length > 0) {
-    return message.references.map((ref) => ({
-      ...ref,
-      snippet: sanitizeCitationSnippet(ref.snippet),
-    }));
+    const refs = message.references
+      .filter((ref) => Boolean(ref.sourcePath && ref.sourcePath.trim()))
+      .map((ref) => ({
+        ...ref,
+        snippet: sanitizeCitationSnippet(ref.snippet),
+      }));
+    return refs.length > 0 ? refs : null;
   }
   if (message.sourceRefs && message.sourceRefs.length > 0) {
     return message.sourceRefs.map((ref, idx) => ({
@@ -251,6 +254,9 @@ export function AnswerPanel({
   // 使用直接回答或从完整内容中提取
   const answerContent = directAnswer || decisionSummary?.conclusion || message.content.split('\n')[0];
   const analysisContent = fullAnalysis || message.content;
+  const hasDistinctAnalysis =
+    analysisContent.trim().length > 0 &&
+    analysisContent.trim() !== answerContent.trim();
 
   return (
     <div className="answer-panel evidence-traceable">
@@ -286,37 +292,39 @@ export function AnswerPanel({
       )}
 
       {/* 4. 完整分析（Full Analysis）- 可折叠 */}
-      <section className="answer-section analysis-section">
-        <button
-          className={`analysis-toggle ${isAnalysisExpanded ? 'expanded' : ''}`}
-          onClick={() => setIsAnalysisExpanded(!isAnalysisExpanded)}
-        >
-          <span className="toggle-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d={isAnalysisExpanded ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
-            </svg>
-          </span>
-          <span className="toggle-label">
-            {isAnalysisExpanded ? '收起完整分析' : '展开完整分析'}
-          </span>
-          {analysisContent.length > 500 && (
-            <span className="toggle-hint">（详细推理过程）</span>
+      {hasDistinctAnalysis && (
+        <section className="answer-section analysis-section">
+          <button
+            className={`analysis-toggle ${isAnalysisExpanded ? 'expanded' : ''}`}
+            onClick={() => setIsAnalysisExpanded(!isAnalysisExpanded)}
+          >
+            <span className="toggle-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d={isAnalysisExpanded ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"} />
+              </svg>
+            </span>
+            <span className="toggle-label">
+              {isAnalysisExpanded ? '收起完整分析' : '展开完整分析'}
+            </span>
+            {analysisContent.length > 500 && (
+              <span className="toggle-hint">（详细推理过程）</span>
+            )}
+          </button>
+
+          {isAnalysisExpanded && (
+            <div className="full-analysis-content">
+              <FullResponseMarkdown
+                content={analysisContent}
+                messageId={message.id}
+                copiedKey={copiedKey}
+                onCopyCode={onCopyCode}
+                citationMap={citationMap}
+                onOpenPreview={onOpenPreview}
+              />
+            </div>
           )}
-        </button>
-        
-        {isAnalysisExpanded && (
-          <div className="full-analysis-content">
-            <FullResponseMarkdown
-              content={analysisContent}
-              messageId={message.id}
-              copiedKey={copiedKey}
-              onCopyCode={onCopyCode}
-              citationMap={citationMap}
-              onOpenPreview={onOpenPreview}
-            />
-          </div>
-        )}
-      </section>
+        </section>
+      )}
 
       {/* 5. 旧版兼容：证据面板（如果存在 legacy evidence 数据） */}
       {message.evidence && message.evidence.length > 0 && !message.references?.length && (
