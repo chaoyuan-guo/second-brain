@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import type { ChatMessage, ProcessOverview, ThinkingStep, ProcessStepSummary } from '../../lib/chat-types';
+import type { ChatMessage, ProcessStepSummary } from '../../lib/chat-types';
 import { ProcessOverviewBar } from './ProcessOverviewBar';
 import { ProcessGroupList } from './ProcessGroupList';
 import { ProcessDebugDrawer } from './ProcessDebugDrawer';
@@ -180,7 +180,7 @@ function SemanticProcessSummary({ steps }: SemanticProcessSummaryProps) {
   return (
     <div className="semantic-process-summary">
       <div className="process-timeline">
-        {steps.map((step, index) => {
+        {steps.map((step) => {
           const phase = step.phase || 'synthesizing';
           const icon = phaseIcons[phase] || '•';
           const phaseLabel = phaseLabels[phase] || phase;

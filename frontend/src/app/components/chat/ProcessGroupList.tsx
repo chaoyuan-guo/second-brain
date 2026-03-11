@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { ThinkingStep, ToolInvocation } from '../../lib/chat-types';
+import type { ThinkingStep } from '../../lib/chat-types';
 
 interface ProcessGroupListProps {
   thinkingSteps?: ThinkingStep[];

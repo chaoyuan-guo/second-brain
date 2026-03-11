@@ -43,7 +43,6 @@ import {
   UPLOAD_ENDPOINT,
   type ChatSession,
   type SourceRef,
-  type ChatMessage,
 } from './lib/chat-types';
 
 // Feature Flag: Answer-first 重构开关（默认开启，可通过环境变量关闭）

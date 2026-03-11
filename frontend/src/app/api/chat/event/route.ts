@@ -313,7 +313,7 @@ export async function GET(request: Request): Promise<Response> {
   /**
    * 处理单个事件并返回是否应立即合成 final 事件
    */
-  const processEvent = (eventName: string, data: string): boolean => {
+  const processEvent = (data: string): boolean => {
     // 日志摘要
     summarizeEvent(requestId, traceId, targetSessionId, data);
 
@@ -475,7 +475,7 @@ export async function GET(request: Request): Promise<Response> {
 
           if (line.startsWith('data:')) {
             const data = line.slice(5).trimStart();
-            const shouldEmitFinal = processEvent('message', data);
+            const shouldEmitFinal = processEvent(data);
             if (shouldEmitFinal) {
               emitFinalEvent(controller, 'step_finish');
             }
@@ -489,7 +489,7 @@ export async function GET(request: Request): Promise<Response> {
         const tail = buffer.trim();
         if (tail.startsWith('data:')) {
           const data = tail.slice(5).trimStart();
-          const shouldEmitFinal = processEvent('message', data);
+          const shouldEmitFinal = processEvent(data);
           if (shouldEmitFinal) {
             emitFinalEvent(controller, 'step_finish');
           }
