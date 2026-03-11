@@ -63,9 +63,6 @@ export interface FinalEventPayload {
 // ============================================================================
 
 const TOOL_SEMANTIC_MAP: Record<string, ToolSemantic> = {
-  query_my_notes: 'retrieve',
-  web_search: 'retrieve',
-  read_page: 'retrieve',
   read_note_file: 'retrieve',
   read: 'retrieve',
   grep: 'retrieve',
@@ -904,29 +901,7 @@ export const generateProcessSummary = (
           detail = `输入：${inputSummary}；结果：${resultSummary}`;
           break;
         }
-        if (call.name === 'query_my_notes') {
-          const query = (call.arguments?.query as string) || '相关笔记';
-          const resultCount = getResultCount(call.result);
-          const fileCount = getUniqueFileCount(call);
-          summary = fileCount > 0
-            ? `检索笔记 "${query}" -> 命中 ${resultCount} 条，来自 ${fileCount} 个文件`
-            : `检索笔记 "${query}" -> 命中 ${resultCount} 条`;
-          inputSummary = `检索词 "${query}"`;
-          resultSummary = fileCount > 0
-            ? `命中 ${resultCount} 条，涉及 ${fileCount} 个文件`
-            : `命中 ${resultCount} 条`;
-          detail = `输入：${inputSummary}；结果：${resultSummary}`;
-        } else if (call.name === 'web_search') {
-          const query = (call.arguments?.query as string) || '';
-          summary = query ? `联网搜索 "${query}"` : '联网搜索';
-          inputSummary = query ? `搜索词 "${query}"` : '无输入';
-          resultSummary = call.status === 'error'
-            ? '搜索失败'
-            : call.status === 'running' || call.status === 'pending'
-              ? '搜索中'
-              : '已返回结果';
-          detail = `输入：${inputSummary}；结果：${resultSummary}`;
-        } else if (call.name === 'read_note_file' || call.name === 'read') {
+        if (call.name === 'read_note_file' || call.name === 'read') {
           const path = extractPathFromCall(call) || '文件';
           const offsetValue = call.arguments?.offset;
           const offset = typeof offsetValue === 'number'

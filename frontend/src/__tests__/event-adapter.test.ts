@@ -233,10 +233,10 @@ describe('generateProcessSummary', () => {
     const completedCalls: ToolCallRecord[] = [
       {
         id: '1',
-        name: 'query_my_notes',
+        name: 'grep',
         status: 'completed',
         arguments: { query: '搜索关键词' },
-        result: { results: [{ source_path: 'test.md' }, { source_path: 'other.md' }] },
+        result: [{ file: 'test.md' }, { file: 'other.md' }],
         sourceRefs: [
           { sourcePath: 'test.md', citationId: '01' },
           { sourcePath: 'other.md', citationId: '02' },
@@ -249,8 +249,8 @@ describe('generateProcessSummary', () => {
     const summaries = generateProcessSummary(completedCalls, []);
     
     expect(summaries).toHaveLength(1);
-    expect(summaries[0].summary).toContain('检索笔记');
-    expect(summaries[0].summary).toContain('2 个文件');
+    expect(summaries[0].summary).toContain('搜索文件内容');
+    expect(summaries[0].summary).toContain('命中 2 条');
     expect(summaries[0].phase).toBe('retrieving');
     expect(summaries[0].durationMs).toBe(1000);
     expect(summaries[0].detail).toContain('输入：');
@@ -262,9 +262,10 @@ describe('generateProcessSummary', () => {
     const errorCalls: ToolCallRecord[] = [
       {
         id: '1',
-        name: 'web_search',
+        name: 'read_note_file',
         status: 'error',
-        error: '网络错误',
+        arguments: { path: 'missing.md' },
+        error: '文件不存在',
         startedAt: 1000,
         completedAt: 1500,
       },
@@ -273,13 +274,13 @@ describe('generateProcessSummary', () => {
     const summaries = generateProcessSummary([], errorCalls);
     
     expect(summaries[0].summary).toContain('失败');
-    expect(summaries[0].detail).toContain('网络错误');
+    expect(summaries[0].detail).toContain('文件不存在');
   });
 
   it('should sort calls by start time', () => {
     const calls: ToolCallRecord[] = [
       { id: '2', name: 'read_note_file', status: 'completed', startedAt: 2000, completedAt: 2500 },
-      { id: '1', name: 'query_my_notes', status: 'completed', startedAt: 1000, completedAt: 1500 },
+      { id: '1', name: 'grep', status: 'completed', startedAt: 1000, completedAt: 1500 },
     ];
 
     const summaries = generateProcessSummary(calls, []);

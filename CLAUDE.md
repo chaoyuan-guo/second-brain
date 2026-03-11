@@ -52,7 +52,7 @@ docker stop second_brain_opencode
 
 - **后端**：遵循 PEP 8 与类型注解优先原则，保持 4 空格缩进、短小协程、集中式异常 `ToolExecutionError`；配置项放在 `BASE_DIR` 旁的常量里，新增工具函数时请以 `snake_case` 命名并补充 docstring。
 - **前端**：使用 TypeScript + Next.js App Router，组件命名采用 `PascalCase`，hooks/工具使用 `camelCase`；尽量将 UI 状态封装为客户端组件，网络请求统一调用 `/api` 代理或现有 FastAPI 端点。
-- **提交**：遵循 Conventional Commits 格式（如 `feat: add web_search retries`、`fix: guard empty query`），保持可读性；单次提交聚焦单一功能或缺陷修复。
+- **提交**：遵循 Conventional Commits 格式（如 `feat: add note upload validation`、`fix: guard empty filename`），保持可读性；单次提交聚焦单一功能或缺陷修复。
 - **语言**：文档和讨论使用中文，代码和命令使用英文。
 
 ## 测试指南

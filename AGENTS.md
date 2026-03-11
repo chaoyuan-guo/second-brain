@@ -30,7 +30,7 @@
 - 评估采用 LLM-as-Judge 方法，使用 Azure 端点的 `gpt-52` 模型，围绕个性化命中、精准简洁、诚实性、可追溯性四个维度评分：`./.venv/bin/python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9090 --concurrency 10 --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。
 
 ## Commit & Pull Request Guidelines
-- 仓库已初始化 Git，请继续遵循 Conventional Commits（如 `feat: add web_search retries`、`fix: guard empty query`）保持可读性；单次提交聚焦单一功能或缺陷修复。 Commits should stay atomic on the `main` branch unless stated otherwise.
+- 仓库已初始化 Git，请继续遵循 Conventional Commits（如 `feat: add note upload validation`、`fix: guard empty filename`）保持可读性；单次提交聚焦单一功能或缺陷修复。 Commits should stay atomic on the `main` branch unless stated otherwise.
 - PR 需包含变更摘要、验证方式（命令输出或截图）、相关 Issue 链接以及潜在风险；若触及容器启动参数或环境变量，请同步更新 Docker 启动说明以免部署偏差。 Request reviewers familiar with both FastAPI and Next.js when changes cross the stack.
 
 ## Security & Configuration Tips

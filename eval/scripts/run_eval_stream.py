@@ -389,11 +389,6 @@ def stream_opencode(
                     metadata = state.get("metadata")
                     if isinstance(metadata, dict):
                         tool_event["source_refs"] = metadata.get("source_refs", [])
-                    if tool_name == "query_my_notes":
-                        output = state.get("output")
-                        if isinstance(output, dict):
-                            tool_event["retrieved_sources"] = output.get("sources", [])
-                            tool_event["retrieved_chunks"] = output.get("chunks", [])
                     tool_events.append(tool_event)
                     continue
 

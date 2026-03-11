@@ -192,33 +192,46 @@ def check_retrieval_correctness(
         events = tool_trace
     else:
         events = tool_trace.get("events", [])
-    for event in events:
-        if event.get("tool_name") == "query_my_notes":
-            tool_output = event.get("output", "")
-            # Parse sources from tool output
-            if isinstance(tool_output, str):
-                for src in expected_sources:
-                    stem = Path(src).stem
-                    if stem in tool_output or src in tool_output:
-                        if src not in retrieved:
-                            retrieved.append(src)
-            elif isinstance(tool_output, dict):
-                sources = tool_output.get("sources", [])
-                for s in sources:
-                    name = s if isinstance(s, str) else s.get("file", "")
-                    if name not in retrieved:
-                        retrieved.append(name)
 
-    # Also check read_note_file calls
+    def _mark_retrieved(candidate: str) -> None:
+        if not candidate:
+            return
+        for src in expected_sources:
+            stem = Path(src).stem
+            if src in candidate or stem in candidate:
+                if src not in retrieved:
+                    retrieved.append(src)
+
     for event in events:
-        if event.get("tool_name") == "read_note_file":
-            args = event.get("arguments", {})
-            file_path = args.get("file_path", "") or args.get("path", "")
+        args = event.get("arguments", {})
+        if isinstance(args, dict):
+            file_path = args.get("file_path", "") or args.get("path", "") or args.get("pattern", "")
             if isinstance(file_path, str):
-                for src in expected_sources:
-                    if src in file_path or Path(src).stem in file_path:
-                        if src not in retrieved:
-                            retrieved.append(src)
+                _mark_retrieved(file_path)
+
+        output = event.get("output", "")
+        if isinstance(output, str):
+            _mark_retrieved(output)
+        elif isinstance(output, dict):
+            for value in output.values():
+                if isinstance(value, str):
+                    _mark_retrieved(value)
+                elif isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, str):
+                            _mark_retrieved(item)
+                        elif isinstance(item, dict):
+                            for nested in item.values():
+                                if isinstance(nested, str):
+                                    _mark_retrieved(nested)
+
+        refs = event.get("source_refs", [])
+        if isinstance(refs, list):
+            for ref in refs:
+                if isinstance(ref, dict):
+                    source_path = ref.get("source_path") or ref.get("sourcePath")
+                    if isinstance(source_path, str):
+                        _mark_retrieved(source_path)
 
     result["retrieved"] = retrieved
     if expected_sources:

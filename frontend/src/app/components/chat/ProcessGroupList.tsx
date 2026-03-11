@@ -21,14 +21,10 @@ type SemanticGroup = {
  * 基于规范文档 6.2 节主工具集合
  */
 const toolSemanticMap: Record<string, 'retrieve' | 'validate' | 'synthesize_helper' | 'other'> = {
-  // 信息检索类
-  query_my_notes: 'retrieve',
-  web_search: 'retrieve',
-  read_page: 'retrieve',
   read_note_file: 'retrieve',
+  read: 'retrieve',
   grep: 'retrieve',
   glob: 'retrieve',
-  // 证据验证类
   bash: 'validate',
 };
 
