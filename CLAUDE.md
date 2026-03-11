@@ -9,7 +9,7 @@ Second Brain 是一个基于本地 Markdown 的智能检索系统。它索引个
 ## 项目结构与模块组织
 
 - 后端代码位于 `backend/app`，`backend/app/main.py` 通过 FastAPI + OpenAI 工具链暴露 API，运行日志统一写入 `runtime/logs/backend.log`，而自定义笔记资源集中于 `data/notes/my_markdowns/` 方便复用。
-- Next.js 前端置于 `frontend/src/app`，静态导出产物写入 `frontend/out`，运行入口统一为 OpenCode 一体化 Docker 容器。
+- Next.js 前端置于 `frontend/src/app`，生产运行由容器内 `next start` 提供，运行入口统一为 OpenCode 一体化 Docker 容器。
 
 ## 开发命令
 
@@ -106,8 +106,7 @@ docker stop second_brain_opencode
 
 | 路径 | 用途 |
 |------|------|
-| `backend/app/services/chat.py` | 核心聊天编排，包含工具调用循环 |
-| `backend/app/services/tools.py` | 工具实现（查询、读取、代码解释器） |
+| `backend/app/services/tools.py` | 工具实现（检索、读取、query rewrite、技能加载） |
 | `backend/app/core/config.py` | 配置、系统提示词、常量 |
 | `data/notes/my_markdowns/` | 用于索引的源 Markdown 文件 |
 | `data/indexes/` | FAISS 索引文件 |
@@ -122,8 +121,6 @@ docker stop second_brain_opencode
 
 可选：
 - `CHAT_ALLOWED_ORIGINS` - CORS 来源（默认：localhost:9080）
-- `MCP_SSE_ENDPOINT` - MCP 解释器端点（默认：http://127.0.0.1:9070/sse/）
-- `MCP_INTERPRETER_BACKEND` - 强制使用 `embedded` 或 `mcp` 解释器模式
 - `OPENCODE_SELF_CHECK` - 容器启动后是否执行 OpenCode 自检（默认 `1`，设为 `0` 可跳过）
 - `.env.docker` - 容器推荐环境文件，统一维护 ai-builder/Azure 变量
 

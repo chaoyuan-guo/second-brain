@@ -12,7 +12,7 @@ description: 针对 data/notes/my_markdowns/leetcode_submissions.md 的统计与
 - `data/notes/my_markdowns/leetcode_submissions.md`
 
 ## 分析要求
-- 必须通过 `run_code_interpreter` 读取原始文件并计算，禁止凭检索片段估算。
+- 必须直接读取原始文件并计算，优先使用 `bash` + Python 标准库脚本，禁止凭检索片段估算。
 - 仅使用 Python 标准库。
 - 解析 Markdown 表格时：
   - 优先识别包含表头与分隔线的结构化记录，忽略代码块或示例性片段，避免误计数。
@@ -24,7 +24,7 @@ description: 针对 data/notes/my_markdowns/leetcode_submissions.md 的统计与
 
 ## 统计质量要求
 - 优先保证覆盖率，避免仅依据标题/摘要。
-- 使用 run_code_interpreter 读取笔记时，应尽量全量扫描并进行宽松候选抽取，再做轻度去噪与自检。
+- 读取笔记时，应尽量全量扫描并进行宽松候选抽取，再做轻度去噪与自检。
 - 若存在过滤步骤，需返回少量被过滤的噪声样例以便校验。
 - 若脚本产出结果与 Query 需求不符或缺失关键字段，必须复盘并迭代脚本直至得到可信答案。
 - 当 Query 指定具体主题/条目/章节时，统计范围必须限定在该主题对应的结构化记录或数据表内，禁止跨主题聚合。

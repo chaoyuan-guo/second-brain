@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import time
-import shutil
-import os
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, TypeVar
 
@@ -27,188 +24,19 @@ from ..core.config import (
     DIVERSITY_NEW_FILE_BONUS,
     QUERY_REWRITE_PROMPT,
     RETRYABLE_STATUS_CODES,
-    is_truthy,
-    running_in_container,
     settings,
 )
 from ..core.logging import app_logger
 from ..repositories.notes import load_index, load_metadata
 from .clients import client, chat_client_sync, chat_model_name
 from .exceptions import ToolExecutionError
-from .embedded_interpreter import embedded_python_interpreter
 from .skills import load_skill_content
 
 logger = app_logger
-
-_mcp_config_logged = False
-_mcp_stdio_warning_logged = False
-_embedded_interpreter_logged = False
-
-
-def _mcp_mode() -> str:
-    return "sse" if _mcp_endpoint else "stdio"
-
-
-def _use_embedded_interpreter() -> bool:
-    """判断是否走进程内解释器。
-
-    - 容器部署默认启用（满足单端口/单进程且高频调用更快）。
-    - 可通过 MCP_INTERPRETER_BACKEND 覆盖：
-      - embedded: 强制进程内
-      - mcp/sse/bridge: 强制沿用 MCP bridge（stdio 或 SSE）
-    """
-
-    forced = os.getenv("MCP_INTERPRETER_BACKEND")
-    if forced:
-        lowered = forced.strip().lower()
-        if lowered in {"embedded", "inprocess", "in-process"}:
-            return True
-        if lowered in {"mcp", "sse", "bridge", "stdio"}:
-            return False
-
-    return running_in_container()
-
-
-def _wrap_code_with_system_exit_guard(code: str) -> str:
-    """为解释器代码包裹 SystemExit 捕获，避免脚本调用 exit() 杀掉 MCP 服务。"""
-
-    stripped = code.strip("\n")
-    if not stripped:
-        return code
-    if stripped.lstrip().startswith("from __future__"):
-        return code
-
-    indented = "\n".join(f"    {line}" for line in stripped.splitlines())
-    return (
-        "try:\n"
-        f"{indented}\n"
-        "except SystemExit as exc:\n"
-        "    print(\"[SystemExit suppressed]\", exc)\n"
-    )
-
-
-def _summarize_code(code: str, max_chars: int = 160) -> str:
-    cleaned = " ".join(code.strip().split())
-    if len(cleaned) <= max_chars:
-        return cleaned
-    return f"{cleaned[:max_chars]}…"
-
-
-def _looks_like_sse_disconnect(detail: str) -> bool:
-    lowered = detail.lower()
-    markers = (
-        "error in sse_reader",
-        "remoteprotocolerror",
-        "incomplete chunked read",
-        "peer closed connection",
-        "connection refused",
-        "connecterror",
-    )
-    return any(marker in lowered for marker in markers)
-
-
-def _parse_requested_timeout(payload: dict[str, Any], default: int = 300) -> int:
-    try:
-        requested_timeout = int(payload.get("timeout") or default)
-    except (TypeError, ValueError):
-        requested_timeout = default
-    return max(requested_timeout, 1)
-
-
 API_BASE_URL = settings.api_base_url
 SEARCH_API_URL = f"{API_BASE_URL}/search/"
-MCP_BRIDGE_SCRIPT = settings.mcp_bridge_script
-DEFAULT_MCP_DRIVER = settings.mcp_driver_path
-DEFAULT_MCP_COMMAND = settings.mcp_command_path
-DEFAULT_MCP_WORKDIR = settings.mcp_workdir
-DEFAULT_MCP_ENDPOINT = settings.mcp_endpoint
-_mcp_python_path = settings.mcp_python_path
-
-_mcp_command = Path(DEFAULT_MCP_COMMAND)
-_mcp_workdir = Path(DEFAULT_MCP_WORKDIR)
-_mcp_endpoint = DEFAULT_MCP_ENDPOINT
 
 T = TypeVar("T")
-
-
-def _sync_mcp_workspace() -> None:
-    """在 MCP 工作目录下准备笔记目录。
-
-    在首次调用解释器前做一次轻量同步，确保解释器能按相对路径
-    访问 data/notes/my_markdowns。
-    """
-
-    source_dir = settings.base_dir / "data" / "notes" / "my_markdowns"
-    if not source_dir.exists():
-        return
-
-    dest_dir = _mcp_workdir / "data" / "notes" / "my_markdowns"
-    if dest_dir.exists():
-        return
-
-    dest_dir.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        dest_dir.symlink_to(source_dir, target_is_directory=True)
-    except OSError:
-        shutil.copytree(source_dir, dest_dir, dirs_exist_ok=True)
-
-
-def looks_like_raw_markdown(text: str | None) -> bool:
-    """粗略判断输出是否只是 Markdown 原文，没有结构化数据。"""
-
-    if not text:
-        return False
-    stripped = text.strip()
-    if not stripped:
-        return False
-    md_signals = ("# ", "## ", "```", "- ", "* ")
-    has_md = any(token in stripped for token in md_signals)
-    has_json = stripped.startswith("{") or stripped.startswith("[")
-    has_table = "|" in stripped.splitlines()[0] if stripped else False
-    return has_md and not (has_json or has_table)
-
-
-def looks_like_interpreter_error(text: str | None) -> bool:
-    """判断代码解释器输出是否包含典型错误栈或 Traceback。"""
-
-    if not text:
-        return False
-    lowered = text.lower()
-    error_keywords: Iterable[str] = (
-        "traceback (most recent call last)",
-        "error:",
-        "exception",
-        "stack trace",
-        "file \"",
-        "line ",
-    )
-    return any(keyword in lowered for keyword in error_keywords)
-
-
-def looks_like_incomplete_insight(text: str | None) -> bool:
-    """检测输出是否缺少指标或只包含模板提示。"""
-
-    if not text:
-        return True
-    lowered = text.lower()
-    incomplete_markers = (
-        "todo",
-        "tbd",
-        "placeholder",
-        "no data",
-        "not found",
-        "not_found",
-        "no_records",
-        "未解析",
-        "\"error\"",
-        "无法回答",
-    )
-    if any(marker in lowered for marker in incomplete_markers):
-        return True
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if len(lines) <= 2 and not looks_like_raw_markdown(text):
-        return True
-    return False
 
 
 def web_search(query: str) -> dict | list:
@@ -362,176 +190,6 @@ def read_note_file(
         }
 
     return result
-
-
-def ensure_mcp_ready() -> None:
-    global _mcp_config_logged, _mcp_stdio_warning_logged, _embedded_interpreter_logged
-
-    using_embedded = _use_embedded_interpreter()
-
-    if not _mcp_config_logged:
-        logger.info(
-            "MCP config loaded",
-            extra={
-                "mcp_mode": _mcp_mode(),
-                "mcp_endpoint": _mcp_endpoint,
-                "mcp_command": str(_mcp_command),
-                "mcp_driver": str(settings.mcp_driver_path),
-                "mcp_workdir": str(_mcp_workdir),
-            },
-        )
-        _mcp_config_logged = True
-
-    if using_embedded and not _embedded_interpreter_logged:
-        logger.info(
-            "Embedded interpreter enabled",
-            extra={"mcp_workdir": str(_mcp_workdir)},
-        )
-        _embedded_interpreter_logged = True
-
-    if not _mcp_stdio_warning_logged and not _mcp_endpoint and not using_embedded:
-        logger.warning(
-            "MCP is running in stdio mode; prefer setting MCP_SSE_ENDPOINT to use the persistent server",
-            extra={"mcp_workdir": str(_mcp_workdir), "mcp_command": str(_mcp_command)},
-        )
-        _mcp_stdio_warning_logged = True
-
-    if not using_embedded and not _mcp_command.exists():
-        raise ToolExecutionError(
-            "未找到 mcp-python-interpreter，请确认已在 .mcp_env 中安装。"
-        )
-    _mcp_workdir.mkdir(parents=True, exist_ok=True)
-    _sync_mcp_workspace()
-
-
-def call_mcp_python_interpreter(payload: dict[str, Any]) -> dict[str, Any]:
-    ensure_mcp_ready()
-
-    original_code = str(payload.get("code") or "")
-    payload = dict(payload)
-    payload["code"] = _wrap_code_with_system_exit_guard(original_code)
-    requested_timeout = _parse_requested_timeout(payload)
-
-    if _use_embedded_interpreter():
-        execution_mode = str(payload.get("execution_mode") or "inline")
-        session_id = str(payload.get("session_id") or "default")
-        allow_system_access = is_truthy(os.getenv("MCP_ALLOW_SYSTEM_ACCESS"))
-
-        logger.info(
-            "Invoking embedded interpreter (timeout=%ss session=%s code=%s)",
-            requested_timeout,
-            session_id,
-            _summarize_code(original_code),
-            extra={
-                "mcp_mode": "embedded",
-                "timeout": requested_timeout,
-                "execution_mode": execution_mode,
-                "session_id": session_id,
-            },
-        )
-
-        response = embedded_python_interpreter.run(
-            code=str(payload["code"]),
-            session_id=session_id,
-            execution_mode=execution_mode,
-            timeout=requested_timeout,
-            workdir=_mcp_workdir,
-            allow_system_access=allow_system_access,
-        )
-        if not response.get("ok"):
-            raise ToolExecutionError(response.get("error", "MCP 执行失败"))
-        return response
-
-    # Bridge 脚本的 --process-timeout 控制整个 MCP 调用的等待上限。
-    # 这里按 payload.timeout + buffer 对齐，避免默认 420s 导致前端长时间卡住。
-    process_timeout_seconds = max(60, requested_timeout + 30)
-
-    logger.info(
-        "Invoking MCP Python Interpreter (mode=%s endpoint=%s timeout=%ss process_timeout=%ss session=%s code=%s)",
-        _mcp_mode(),
-        _mcp_endpoint or "",
-        requested_timeout,
-        process_timeout_seconds,
-        payload.get("session_id") or "",
-        _summarize_code(original_code),
-        extra={
-            "mcp_mode": _mcp_mode(),
-            "timeout": requested_timeout,
-            "process_timeout": process_timeout_seconds,
-            "execution_mode": payload.get("execution_mode"),
-            "session_id": payload.get("session_id"),
-        },
-    )
-
-    cmd: list[str] = [
-        str(settings.mcp_driver_path),
-        str(MCP_BRIDGE_SCRIPT),
-        "--process-timeout",
-        str(process_timeout_seconds),
-    ]
-    if _mcp_endpoint:
-        cmd += ["--endpoint", _mcp_endpoint]
-    else:
-        cmd += [
-            "--workdir",
-            str(_mcp_workdir),
-            "--server-command",
-            str(_mcp_command),
-            "--server-python-path",
-            _mcp_python_path,
-        ]
-    try:
-        process = subprocess.run(
-            cmd,
-            input=json.dumps(payload).encode("utf-8"),
-            capture_output=True,
-            check=False,
-            timeout=process_timeout_seconds + 30,
-        )
-    except FileNotFoundError as exc:
-        raise ToolExecutionError("无法执行 MCP 解释器脚本") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise ToolExecutionError(
-            f"MCP 调用超时（{process_timeout_seconds}s），请检查脚本是否卡住或 MCP 服务是否可用。"
-        ) from exc
-
-    if process.returncode != 0:
-        stderr_output = process.stderr.decode("utf-8", errors="ignore")
-        stdout_output = process.stdout.decode("utf-8", errors="ignore")
-        detail = stderr_output or stdout_output or "unknown error"
-        detail = detail.strip()
-        max_chars = 4000
-        if len(detail) > max_chars:
-            detail = f"{detail[:max_chars]}\n...[truncated {len(detail) - max_chars} chars]"
-
-        if _mcp_endpoint and _looks_like_sse_disconnect(detail):
-            logger.warning(
-                "MCP SSE disconnected; the interpreter service may have crashed or restarted",
-                extra={"mcp_endpoint": _mcp_endpoint},
-            )
-        raise ToolExecutionError(f"MCP 进程退出异常: {detail}")
-
-    stdout_text = process.stdout.decode("utf-8", errors="ignore")
-    try:
-        response = json.loads(stdout_text)
-    except json.JSONDecodeError as exc:
-        raise ToolExecutionError(f"MCP 返回异常输出: {stdout_text[:200]}...") from exc
-
-    if not response.get("ok"):
-        raise ToolExecutionError(response.get("error", "MCP 执行失败"))
-
-    logger.info(
-        "MCP call succeeded",
-        extra={
-            "mcp_mode": _mcp_mode(),
-            "timeout": requested_timeout,
-            "process_timeout": process_timeout_seconds,
-            "content_length": len(str(response.get("content", ""))),
-        },
-    )
-    return response
-
-
 def build_embedding(text: str) -> List[float]:
     try:
         response = call_with_retries(
@@ -844,14 +502,9 @@ __all__ = [
     "web_search",
     "read_page",
     "read_note_file",
-    "ensure_mcp_ready",
-    "call_mcp_python_interpreter",
     "build_embedding",
     "query_my_notes",
     "load_skill",
     "call_with_retries",
     "is_retryable_status",
-    "looks_like_raw_markdown",
-    "looks_like_interpreter_error",
-    "looks_like_incomplete_insight",
 ]

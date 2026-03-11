@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run evaluation by calling chat/OpenCode endpoints and collecting answers.
+"""Run evaluation against the OpenCode session/event API and collect answers.
 
 Usage:
   python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9090
@@ -147,74 +147,6 @@ def _request_json(
         except json.JSONDecodeError:
             parsed = body
         return exc.code, parsed
-
-
-def stream_chat(
-    url: str,
-    payload: dict,
-    timeout: int,
-    extra_headers: Optional[Dict[str, str]] = None,
-    stage_cb: Optional[Callable[[str], None]] = None,
-) -> Tuple[str, List[Dict[str, Any]]]:
-    """旧 NDJSON /chat/stream 协议。"""
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = _build_request(url=url, method="POST", data=data, extra_headers=extra_headers)
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Accept", "application/x-ndjson")
-    req.add_header("x-stream-format", "ndjson")
-
-    answer_parts: List[str] = []
-    tool_events: List[Dict[str, Any]] = []
-
-    if stage_cb:
-        stage_cb("connect_start")
-    with _DIRECT_OPENER.open(req, timeout=timeout) as resp:
-        if stage_cb:
-            stage_cb("response_opened")
-        saw_first_chunk = False
-        while True:
-            raw = resp.readline()
-            if not raw:
-                break
-            line = raw.decode("utf-8", errors="ignore").strip()
-            if not line:
-                continue
-            if stage_cb and not saw_first_chunk:
-                stage_cb("first_chunk")
-                saw_first_chunk = True
-            try:
-                event = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-
-            event_type = event.get("type")
-
-            if event_type == "delta":
-                delta = event.get("delta")
-                if isinstance(delta, str):
-                    answer_parts.append(delta)
-            elif event_type == "tool":
-                tool_event = {
-                    "stage": event.get("stage"),
-                    "tool_name": event.get("tool_name"),
-                    "tool_call_id": event.get("tool_call_id"),
-                    "arguments": event.get("arguments"),
-                    "latency_ms": event.get("latency_ms"),
-                    "error": event.get("error"),
-                    "output": event.get("result"),
-                }
-                if event.get("tool_name") == "query_my_notes" and event.get("stage") == "end":
-                    result = event.get("result")
-                    if isinstance(result, dict):
-                        tool_event["retrieved_sources"] = result.get("sources", [])
-                        tool_event["retrieved_chunks"] = result.get("chunks", [])
-                tool_events.append(tool_event)
-            elif event_type == "done":
-                break
-
-    if stage_cb:
-        stage_cb("response_done")
-    return "".join(answer_parts).strip(), tool_events
 
 
 def stream_opencode(
@@ -506,42 +438,11 @@ def stream_opencode(
     return "".join(answer_parts).strip(), tool_events
 
 
-def chat_once(
-    url: str,
-    payload: dict,
-    timeout: int,
-    extra_headers: Optional[Dict[str, str]] = None,
-    stage_cb: Optional[Callable[[str], None]] = None,
-) -> str:
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    req = _build_request(url=url, method="POST", data=data, extra_headers=extra_headers)
-    req.add_header("Content-Type", "application/json")
-
-    if stage_cb:
-        stage_cb("connect_start")
-    with _DIRECT_OPENER.open(req, timeout=timeout) as resp:
-        if stage_cb:
-            stage_cb("response_opened")
-        raw = resp.read().decode("utf-8", errors="ignore")
-    if stage_cb:
-        stage_cb("response_done")
-    try:
-        payload_json = json.loads(raw)
-    except json.JSONDecodeError:
-        return raw.strip()
-    response = payload_json.get("response")
-    if isinstance(response, str):
-        return response.strip()
-    return ""
-
-
 def run_eval(
     questions: Iterable[dict],
     base_url: str,
-    endpoint: str,
     timeout: int,
     pause: float,
-    mode: str,
     headers: Dict[str, str],
     concurrency: int,
     limit: Optional[int] = None,
@@ -554,12 +455,10 @@ def run_eval(
     answers: Dict[str, str] = {}
     tool_traces: Dict[str, List[Dict[str, Any]]] = {}
     trace_summaries: Dict[str, Dict[str, Any]] = {}
-    url = base_url.rstrip("/") + endpoint
 
     def _run_single(q: dict) -> Tuple[str, str, List[Dict[str, Any]], Dict[str, Any]]:
         qid = q["id"]
         query = q["query"]
-        payload = {"user_message": query}
         request_headers = dict(headers)
         eval_trace_id = request_headers.get("x-request-id") or f"eval-{_safe_name(qid)}-{uuid.uuid4().hex[:8]}"
         request_headers["x-request-id"] = eval_trace_id
@@ -570,7 +469,7 @@ def run_eval(
             "trace_id": eval_trace_id,
             "question_id": qid,
             "query": query,
-            "mode": mode,
+            "mode": "opencode",
             "started_at": datetime.utcnow().isoformat() + "Z",
             "stages": [],
             "raw_events": [],
@@ -590,38 +489,17 @@ def run_eval(
                 print(f"[stage] {qid} {next_stage}", file=sys.stderr)
 
         try:
-            if mode == "chat":
-                if stage_log:
-                    print(f"[stage] {qid} request_start", file=sys.stderr)
-                answer = chat_once(
-                    url,
-                    payload,
-                    timeout,
-                    request_headers,
-                    stage_cb=_stage_cb,
-                )
-            elif mode == "stream":
-                if stage_log:
-                    print(f"[stage] {qid} request_start", file=sys.stderr)
-                answer, tool_events = stream_chat(
-                    url,
-                    payload,
-                    timeout,
-                    request_headers,
-                    stage_cb=_stage_cb,
-                )
-            else:
-                if stage_log:
-                    print(f"[stage] {qid} request_start", file=sys.stderr)
-                answer, tool_events = stream_opencode(
-                    base_url=base_url,
-                    query=query,
-                    timeout=timeout,
-                    session_path=session_path,
-                    extra_headers=request_headers,
-                    stage_cb=_stage_cb,
-                    trace=case_trace,
-                )
+            if stage_log:
+                print(f"[stage] {qid} request_start", file=sys.stderr)
+            answer, tool_events = stream_opencode(
+                base_url=base_url,
+                query=query,
+                timeout=timeout,
+                session_path=session_path,
+                extra_headers=request_headers,
+                stage_cb=_stage_cb,
+                trace=case_trace,
+            )
         except (TimeoutError, socket.timeout):
             if stage_log:
                 print(f"[stage] {qid} timeout stage={stage}", file=sys.stderr)
@@ -719,11 +597,9 @@ def run_eval(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run streaming eval against chat API")
+    parser = argparse.ArgumentParser(description="Run evaluation against the OpenCode API")
     parser.add_argument("--testset", default="eval/testsets/testset.json")
     parser.add_argument("--base-url", default="http://127.0.0.1:9090")
-    parser.add_argument("--endpoint", default="/chat/stream")
-    parser.add_argument("--mode", choices=["opencode", "stream", "chat"], default="opencode")
     parser.add_argument("--session-path", default="/app", help="OpenCode session path")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--pause", type=float, default=0.0)
@@ -780,10 +656,8 @@ def main() -> None:
     answers, tool_traces, trace_summaries = run_eval(
         questions,
         base_url=args.base_url,
-        endpoint=args.endpoint,
         timeout=args.timeout,
         pause=args.pause,
-        mode=args.mode,
         headers=headers,
         concurrency=args.concurrency,
         limit=args.limit,
@@ -855,8 +729,7 @@ def main() -> None:
             {
                 "out": str(out_path),
                 "report": args.report or "",
-                "mode": args.mode,
-                "endpoint": args.endpoint,
+                "mode": "opencode",
                 "base_url": args.base_url,
                 "concurrency": args.concurrency,
                 "timestamp": datetime.utcnow().isoformat() + "Z",

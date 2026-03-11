@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 - 后端代码位于 `backend/app`，`backend/app/main.py` 通过 FastAPI + OpenAI 工具链暴露 API，运行日志统一写入 `runtime/logs/backend.log`，而自定义笔记资源集中于 `data/notes/my_markdowns/` 方便复用。 Backend logic lives under `backend/app`, logs to `runtime/logs/backend.log`, while knowledge snippets live in `data/notes/my_markdowns/` for reuse.
-- Next.js 前端置于 `frontend/src/app`，静态导出产物写入 `frontend/out`，运行入口统一为 OpenCode 一体化 Docker 容器。 The UI resides under `frontend/src/app`, static export lands in `frontend/out`, and services are started via the integrated Docker container.
+- Next.js 前端置于 `frontend/src/app`，生产运行由容器内 `next start` 提供，运行入口统一为 OpenCode 一体化 Docker 容器。 The UI resides under `frontend/src/app`, production serving uses `next start` inside the container, and services are started via the integrated Docker container.
 
 ## Build, Test, and Development Commands
 - Docker（OpenCode 一体化容器）：

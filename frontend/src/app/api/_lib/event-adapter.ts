@@ -70,7 +70,6 @@ const TOOL_SEMANTIC_MAP: Record<string, ToolSemantic> = {
   read: 'retrieve',
   grep: 'retrieve',
   glob: 'retrieve',
-  run_code_interpreter: 'validate',
   load_skill: 'synthesize_helper',
 };
 
@@ -645,7 +644,7 @@ export const computeProcessOverview = (acc: ProcessAccumulator): ProcessOverview
   const durationMs = Date.now() - acc.startTime;
   const warningCount = acc.errorCalls.length;
   const blockingErrorCount = acc.errorCalls.filter((call) =>
-    call.status === 'error' && call.name === 'run_code_interpreter'
+    call.status === 'error' && getCallSemantic(call) === 'validate'
   ).length;
 
   const impact = blockingErrorCount > 0 ? 'blocking' :
@@ -991,9 +990,7 @@ export const generateProcessSummary = (
           detail = `输入：${inputSummary}；结果：${resultSummary}`;
           break;
         }
-        summary = call.name === 'run_code_interpreter'
-          ? `执行代码验证 -> ${summarizeInterpreterResult(call.result)}`
-          : `验证步骤：${call.name}`;
+        summary = `验证步骤：${call.name}`;
         inputSummary = '执行验证';
         resultSummary = call.status === 'error'
           ? '验证失败'

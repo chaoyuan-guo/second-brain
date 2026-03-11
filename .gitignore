@@ -61,6 +61,7 @@ Thumbs.db
 *.swo
 
 runtime/logs/
+runtime/mcp_workspace/
 
 docs/refer
 docs/features

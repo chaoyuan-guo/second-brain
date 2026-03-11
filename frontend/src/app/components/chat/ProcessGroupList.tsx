@@ -29,7 +29,6 @@ const toolSemanticMap: Record<string, 'retrieve' | 'validate' | 'synthesize_help
   grep: 'retrieve',
   glob: 'retrieve',
   // 证据验证类
-  run_code_interpreter: 'validate',
   bash: 'validate',
   // 合成辅助类
   load_skill: 'synthesize_helper',

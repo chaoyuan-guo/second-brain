@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
-import sys
 from pathlib import Path
 from typing import List
 
@@ -35,21 +33,6 @@ for directory in (DATA_DIR, NOTES_DIR, INDEX_DIR, RUNTIME_DIR, LOGS_DIR):
 DEFAULT_API_BASE_URL = "https://space.ai-builders.com/backend/v1"
 DEFAULT_MODEL_NAME = "gpt-5"
 DEFAULT_ALLOWED_ORIGINS = "http://localhost:9080,http://127.0.0.1:9080"
-DEFAULT_MCP_DRIVER = PROJECT_ROOT / ".mcp_env" / "bin" / "python"
-DEFAULT_MCP_COMMAND = PROJECT_ROOT / ".mcp_env" / "bin" / "mcp-python-interpreter"
-DEFAULT_MCP_WORKDIR = RUNTIME_DIR / "mcp_workspace"
-DEFAULT_MCP_ENDPOINT = "http://127.0.0.1:9070/sse/"
-DEFAULT_CONTAINER_MCP_DRIVER = Path("/usr/local/bin/python")
-DEFAULT_CONTAINER_MCP_COMMAND = Path("/usr/local/bin/mcp-python-interpreter")
-
-
-def _which(executable: str) -> Path | None:
-    resolved = shutil.which(executable)
-    if not resolved:
-        return None
-    return Path(resolved)
-
-
 def running_in_container() -> bool:
     """检测是否运行在 Docker/Koyeb 容器内。"""
 
@@ -116,13 +99,6 @@ SYSTEM_PROMPT_TOOLS = """
 ## read_note_file 结果理解
 - read_progress 字段为结构化进度提示，status=complete 表示已读完整文件，status=incomplete 表示尚未读完
 - 当 status=incomplete 且问题需要统计/完整记录时，应继续读取后续内容
-
-## run_code_interpreter 输出要求
-- 比较/排名类任务（"最多"、"最长"、"通过率对比"）：
-  - 如果存在 ≥3 条数据，输出 top 3-5 的对比表格（Markdown 格式）
-  - 如果数据不足 3 条，输出全部数据
-  - 说明计算范围（如"对比了全部 15 道题的提交记录"）
-  - 避免只输出单一答案而缺少验证依据
 """.strip()
 
 SYSTEM_PROMPT_FORMAT = """
@@ -242,23 +218,10 @@ class Settings(BaseModel):
     """集中管理运行配置。"""
 
     base_dir: Path = Field(default=PROJECT_ROOT, frozen=True)
-    frontend_build_dir: Path = Field(default=PROJECT_ROOT / "frontend" / "out", frozen=True)
-    frontend_index_file: Path = Field(
-        default=PROJECT_ROOT / "frontend" / "out" / "index.html",
-        frozen=True,
-    )
     log_path: Path = Field(default=LOGS_DIR / "backend.log")
     tool_log_path: Path = Field(default=LOGS_DIR / "tool_output.log")
     faiss_index_path: Path = Field(default=INDEX_DIR / "my_notes.index")
     faiss_metadata_path: Path = Field(default=NOTES_DIR / "my_notes_metadata.json")
-    mcp_driver_path: Path = Field(default=DEFAULT_MCP_DRIVER)
-    mcp_command_path: Path = Field(default=DEFAULT_MCP_COMMAND)
-    mcp_workdir: Path = Field(default=DEFAULT_MCP_WORKDIR)
-    mcp_endpoint: str = Field(default=DEFAULT_MCP_ENDPOINT)
-    mcp_python_path: str = Field(default_factory=lambda: str(DEFAULT_MCP_DRIVER))
-    mcp_bridge_script: Path = Field(
-        default=PROJECT_ROOT / "scripts" / "run_mcp_python_interpreter.py"
-    )
     api_key: str
     api_base_url: str = Field(default=DEFAULT_API_BASE_URL)
     chat_model_name: str = Field(default=DEFAULT_MODEL_NAME)
@@ -281,43 +244,6 @@ def load_settings() -> Settings:
 
     azure_api_version = os.getenv("azure_api_version") or os.getenv("azure_api-version")
 
-    driver_path = Path(
-        os.getenv("MCP_DRIVER_PYTHON", str(DEFAULT_MCP_DRIVER))
-    ).expanduser()
-    command_path = Path(
-        os.getenv("MCP_PYTHON_COMMAND", str(DEFAULT_MCP_COMMAND))
-    ).expanduser()
-
-    if not driver_path.exists() and sys.executable:
-        executable_path = Path(sys.executable)
-        if executable_path.exists():
-            driver_path = executable_path
-
-    if running_in_container():
-        if not driver_path.exists() and DEFAULT_CONTAINER_MCP_DRIVER.exists():
-            driver_path = DEFAULT_CONTAINER_MCP_DRIVER
-        if not command_path.exists() and DEFAULT_CONTAINER_MCP_COMMAND.exists():
-            command_path = DEFAULT_CONTAINER_MCP_COMMAND
-
-    if not driver_path.exists():
-        candidate = _which("python") or _which("python3")
-        if candidate is not None and candidate.exists():
-            driver_path = candidate
-
-    if not command_path.exists():
-        candidate = _which("mcp-python-interpreter")
-        if candidate is not None and candidate.exists():
-            command_path = candidate
-    if not command_path.exists() and DEFAULT_CONTAINER_MCP_COMMAND.exists():
-        command_path = DEFAULT_CONTAINER_MCP_COMMAND
-    workdir_path = Path(os.getenv("MCP_WORKDIR", str(DEFAULT_MCP_WORKDIR))).expanduser()
-
-    mcp_endpoint_env = os.getenv("MCP_SSE_ENDPOINT")
-    if mcp_endpoint_env is None and running_in_container():
-        mcp_endpoint = ""
-    else:
-        mcp_endpoint = mcp_endpoint_env or DEFAULT_MCP_ENDPOINT
-
     # 根据环境决定是否使用 Azure：本地开发默认使用 Azure，容器环境默认使用 ai-builder
     use_azure_env = os.getenv("use_azure")
     if use_azure_env is not None:
@@ -336,11 +262,6 @@ def load_settings() -> Settings:
         azure_api_key=os.getenv("azure_api_key"),
         azure_api_version=azure_api_version,
         allowed_origins=_parse_allowed_origins(os.getenv("CHAT_ALLOWED_ORIGINS")),
-        mcp_driver_path=driver_path,
-        mcp_command_path=command_path,
-        mcp_workdir=workdir_path,
-        mcp_endpoint=mcp_endpoint,
-        mcp_python_path=os.getenv("MCP_PYTHON_PATH") or str(driver_path),
     )
 
 
