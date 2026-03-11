@@ -2,7 +2,6 @@ beautifulsoup4==4.14.3
 faiss-cpu==1.10.0
 fastapi==0.129.0
 httpx==0.28.1
-mcp-python-interpreter==1.2.3
 numpy==2.2.6
 openai==2.20.0
 pydantic==2.12.5
