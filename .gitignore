@@ -18,6 +18,7 @@ venv/
 env/
 ENV/
 .mcp_env/
+.claude/
 mcp_workspace/
 pip-wheel-metadata/
 .python-version
