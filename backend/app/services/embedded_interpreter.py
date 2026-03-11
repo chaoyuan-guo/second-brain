@@ -31,10 +31,6 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
 
-class EmbeddedInterpreterError(RuntimeError):
-    """解释器内部错误。"""
-
-
 _EXEC_LOCK = threading.Lock()
 
 

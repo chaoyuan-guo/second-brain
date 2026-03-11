@@ -8,7 +8,7 @@ import time
 import shutil
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar
+from typing import Any, Callable, Dict, Iterable, List, TypeVar
 
 import httpx
 import numpy as np
@@ -33,7 +33,7 @@ from ..core.config import (
 )
 from ..core.logging import app_logger
 from ..repositories.notes import load_index, load_metadata
-from .clients import chat_client, client, chat_client_sync, chat_model_name
+from .clients import client, chat_client_sync, chat_model_name
 from .exceptions import ToolExecutionError
 from .embedded_interpreter import embedded_python_interpreter
 from .skills import load_skill_content
@@ -105,6 +105,14 @@ def _looks_like_sse_disconnect(detail: str) -> bool:
         "connecterror",
     )
     return any(marker in lowered for marker in markers)
+
+
+def _parse_requested_timeout(payload: dict[str, Any], default: int = 300) -> int:
+    try:
+        requested_timeout = int(payload.get("timeout") or default)
+    except (TypeError, ValueError):
+        requested_timeout = default
+    return max(requested_timeout, 1)
 
 
 API_BASE_URL = settings.api_base_url
@@ -402,15 +410,9 @@ def call_mcp_python_interpreter(payload: dict[str, Any]) -> dict[str, Any]:
     original_code = str(payload.get("code") or "")
     payload = dict(payload)
     payload["code"] = _wrap_code_with_system_exit_guard(original_code)
+    requested_timeout = _parse_requested_timeout(payload)
 
     if _use_embedded_interpreter():
-        requested_timeout: int
-        try:
-            requested_timeout = int(payload.get("timeout") or 300)
-        except (TypeError, ValueError):
-            requested_timeout = 300
-        requested_timeout = max(requested_timeout, 1)
-
         execution_mode = str(payload.get("execution_mode") or "inline")
         session_id = str(payload.get("session_id") or "default")
         allow_system_access = is_truthy(os.getenv("MCP_ALLOW_SYSTEM_ACCESS"))
@@ -440,12 +442,6 @@ def call_mcp_python_interpreter(payload: dict[str, Any]) -> dict[str, Any]:
             raise ToolExecutionError(response.get("error", "MCP 执行失败"))
         return response
 
-    requested_timeout: int
-    try:
-        requested_timeout = int(payload.get("timeout") or 300)
-    except (TypeError, ValueError):
-        requested_timeout = 300
-    requested_timeout = max(requested_timeout, 1)
     # Bridge 脚本的 --process-timeout 控制整个 MCP 调用的等待上限。
     # 这里按 payload.timeout + buffer 对齐，避免默认 420s 导致前端长时间卡住。
     process_timeout_seconds = max(60, requested_timeout + 30)

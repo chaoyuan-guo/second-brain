@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from threading import Lock
 from typing import Any, List, Optional
 

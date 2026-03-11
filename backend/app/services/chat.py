@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import json
 import time
 import uuid
@@ -33,7 +32,6 @@ from ..models.schemas import (
     ChatRequest,
     ChatResponse,
     ChatTitleResponse,
-    ConversationMessage,
     ToolCall,
     ToolCallFunction,
 )
@@ -42,8 +40,6 @@ from .exceptions import ToolExecutionError
 from .skills import build_skills_prompt
 from .tools import (
     call_mcp_python_interpreter,
-    ensure_mcp_ready,
-    is_retryable_status,
     looks_like_incomplete_insight,
     looks_like_interpreter_error,
     looks_like_raw_markdown,
@@ -70,18 +66,8 @@ def _streaming_timeout() -> httpx.Timeout:
     )
 
 
-async def _maybe_await(result: Any) -> Any:
-    if inspect.isawaitable(result):
-        return await result
-    return result
-
-
 async def _call_sync(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     return await asyncio.to_thread(func, *args, **kwargs)
-
-
-def _sanitize_text(text: str) -> str:
-    return text
 
 
 class _StreamSanitizer:
@@ -259,9 +245,6 @@ class CitationRegistry:
 
     def get_all_entries(self) -> List[Dict[str, Any]]:
         return list(self._entries)
-
-    def get_citation_map(self) -> Dict[str, Dict[str, Any]]:
-        return {entry["citation_id"]: entry for entry in self._entries}
 
     def format_for_prompt(self) -> str:
         if not self._entries:
@@ -1077,7 +1060,7 @@ async def _request_completion(
 
     message = completion.choices[0].message
     role = getattr(message, "role", "assistant") or "assistant"
-    content = _sanitize_text(message.content or "")
+    content = message.content or ""
     tool_calls = _normalize_tool_calls(getattr(message, "tool_calls", None))
 
     return {
@@ -1304,7 +1287,7 @@ async def _request_streaming_completion(
         raise HTTPException(status_code=502, detail="No response from assistant")
 
     message = completion.choices[0].message
-    fallback_content = _sanitize_text(message.content or "")
+    fallback_content = message.content or ""
     if fallback_content:
         stream_callback(fallback_content)
 
@@ -1499,14 +1482,12 @@ async def run_chat_conversation(
                 )
         # === Citation 注入结束 ===
 
-        assistant_message = await _maybe_await(
-            _request_completion(
-                messages,
-                stream_callback=stream_callback,
-                tools=tools_for_request,
-                trace_id=trace_id,
-                turn=turn + 1,
-            )
+        assistant_message = await _request_completion(
+            messages,
+            stream_callback=stream_callback,
+            tools=tools_for_request,
+            trace_id=trace_id,
+            turn=turn + 1,
         )
         tool_calls = assistant_message.get("tool_calls")
         tool_call_finished = assistant_message.get("tool_call_finished")

@@ -17,13 +17,6 @@ from ..services.chat import execute_chat, generate_title, stream_chat_response
 router = APIRouter()
 
 
-@router.get("/hello")
-def read_hello(input: str) -> dict[str, str]:
-    """Echo 输入。"""
-
-    return {"message": f"Hello, World {input}"}
-
-
 @router.post("/chat")
 async def chat_completion(request: Request, payload: ChatRequest) -> ChatResponse:
     eval_context = _extract_eval_context(request)
