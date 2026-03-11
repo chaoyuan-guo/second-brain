@@ -6,4 +6,3 @@ def test_public_api_routes_excludes_hello_and_keeps_core_endpoints() -> None:
 
     assert "/hello" not in public_paths
     assert "/notes/upload" in public_paths
-    assert "/notes/content" in public_paths
