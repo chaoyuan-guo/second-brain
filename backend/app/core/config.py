@@ -76,14 +76,14 @@ SYSTEM_PROMPT_CORE = """
 
 SYSTEM_PROMPT_TOOLS = """
 ## 工具协作顺序
-- 特定领域任务（如 LeetCode 统计）→ 先 load_skill 加载技能说明，再按说明执行
+- 特定领域任务（如 LeetCode 统计）→ 先 query_my_notes 定位相关记录，再 read_note_file 读取完整原文
 - 需要引用全文 → 先 query_my_notes 定位，再 read_note_file 读取完整原文
 - 实时信息摘要后需细节 → 先 web_search，再 read_page 抓取正文
 
 ## 工具调用规范
 - 通常在 7 轮内完成；若需更多轮次，向用户说明进度并确认是否继续
 - 工具返回错误时：可重试错误（超时/限流）自动重试一次；用户输入错误（路径不存在/参数无效）提示用户修正；系统故障告知用户稍后重试
-- 跨文件查询：先用 query_my_notes 定位所有相关文件，再逐一读取或用 code_interpreter 批量处理
+- 跨文件查询：先用 query_my_notes 定位所有相关文件，再逐一读取完整原文
 
 ## 检索策略
 - 跨主题问题（如"A 和 B 有什么联系"、"比较 X 和 Y"、"归纳多个题目的共同模式"）：按子主题分别调用 query_my_notes，每次聚焦一个方向，避免将多个主题混在同一次查询中

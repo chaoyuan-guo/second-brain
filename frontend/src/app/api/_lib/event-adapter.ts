@@ -70,7 +70,6 @@ const TOOL_SEMANTIC_MAP: Record<string, ToolSemantic> = {
   read: 'retrieve',
   grep: 'retrieve',
   glob: 'retrieve',
-  load_skill: 'synthesize_helper',
 };
 
 export const getToolSemantic = (toolName: string): ToolSemantic => {

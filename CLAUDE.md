@@ -110,7 +110,6 @@ docker stop second_brain_opencode
 | `backend/app/core/config.py` | 配置、系统提示词、常量 |
 | `data/notes/my_markdowns/` | 用于索引的源 Markdown 文件 |
 | `data/indexes/` | FAISS 索引文件 |
-| `skills/` | 技能定义（SKILL.md 文件），用于专门查询 |
 | `eval/` | 评估脚本和测试集 |
 | `runtime/logs/` | 运行时日志文件 |
 

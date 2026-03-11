@@ -30,8 +30,6 @@ const toolSemanticMap: Record<string, 'retrieve' | 'validate' | 'synthesize_help
   glob: 'retrieve',
   // 证据验证类
   bash: 'validate',
-  // 合成辅助类
-  load_skill: 'synthesize_helper',
 };
 
 const getToolSemantic = (toolName: string): 'retrieve' | 'validate' | 'synthesize_helper' | 'other' => {

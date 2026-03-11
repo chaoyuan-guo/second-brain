@@ -30,7 +30,6 @@ from ..core.logging import app_logger
 from ..repositories.notes import load_index, load_metadata
 from .clients import client, chat_client_sync, chat_model_name
 from .exceptions import ToolExecutionError
-from .skills import load_skill_content
 
 logger = app_logger
 API_BASE_URL = settings.api_base_url
@@ -440,17 +439,6 @@ def query_my_notes(query: str, top_k: int | None = None) -> dict[str, Any]:
         ),
     }
 
-
-def load_skill(skill_name: str) -> dict[str, str]:
-    """加载技能 SKILL.md 的完整内容。"""
-
-    if not skill_name:
-        raise ValueError("skill_name 不能为空")
-    content = load_skill_content(skill_name)
-    logger.info("Skill loaded", extra={"skill_name": skill_name, "length": len(content)})
-    return {"name": skill_name, "content": content}
-
-
 def call_with_retries(operation: Callable[[], T]) -> T:
     attempts = max(1, CHAT_API_MAX_RETRIES)
     last_error: Exception | None = None
@@ -504,7 +492,6 @@ __all__ = [
     "read_note_file",
     "build_embedding",
     "query_my_notes",
-    "load_skill",
     "call_with_retries",
     "is_retryable_status",
 ]
