@@ -38,6 +38,12 @@ const getToolInput = (state: Record<string, unknown>): Record<string, unknown> |
 const getToolOutput = (state: Record<string, unknown>): unknown =>
   state.result ?? state.output;
 
+interface KnownPartMeta {
+  type?: string;
+  messageID?: string;
+  sessionID?: string;
+}
+
 /**
  * 从工具 metadata 中提取 source_refs
  */
@@ -82,7 +88,11 @@ const extractSourceRefs = (metadata: unknown): EvidenceRef[] => {
  */
 const parseOpenCodeEvent = (
   data: string
-): { type: string; part: Record<string, unknown>; properties: Record<string, unknown> } | null => {
+): {
+  type: string;
+  part?: Record<string, unknown>;
+  properties: Record<string, unknown>;
+} | null => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(data);
@@ -94,12 +104,12 @@ const parseOpenCodeEvent = (
   if (!record) return null;
 
   const type = asString(record.type) || 'message';
-  if (type !== 'message.part.updated') {
+  if (type !== 'message.part.updated' && type !== 'message.part.delta') {
     return null;
   }
 
   const properties = asRecord(record.properties) || {};
-  const part = asRecord(properties.part ?? record.part) || {};
+  const part = asRecord(properties.part ?? record.part);
 
   return { type, part, properties };
 };
@@ -141,17 +151,33 @@ const summarizeEvent = (
     return;
   }
 
-  const { part } = parsed;
-  const partType = asString(part.type);
-  const sessionID = asString(part.sessionID);
-  const messageID = asString(part.messageID);
+  const { type, part, properties } = parsed;
+  const partType = asString(part?.type);
+  const sessionID = asString(part?.sessionID) ?? asString(properties.sessionID);
+  const messageID = asString(part?.messageID) ?? asString(properties.messageID);
 
   if (targetSessionId && sessionID && sessionID !== targetSessionId) {
     return;
   }
 
+  if (type === 'message.part.delta') {
+    logProxy('info', {
+      route: '/api/chat/event',
+      requestId,
+      traceId,
+      phase: 'event',
+      eventType: type,
+      partType,
+      sessionID,
+      messageID,
+      partID: properties.partID,
+      field: properties.field,
+    });
+    return;
+  }
+
   if (partType === 'tool') {
-    const state = asRecord(part.state) || {};
+    const state = asRecord(part?.state) || {};
     logProxy('info', {
       route: '/api/chat/event',
       requestId,
@@ -161,8 +187,8 @@ const summarizeEvent = (
       partType,
       sessionID,
       messageID,
-      tool: part.tool,
-      callID: part.callID,
+      tool: part?.tool,
+      callID: part?.callID,
       status: state.status,
     });
     return;
@@ -258,6 +284,7 @@ export async function GET(request: Request): Promise<Response> {
   const acc = createProcessAccumulator();
   let currentStepMessageId: string | undefined;
   let sawStepStart = false;
+  const knownParts = new Map<string, KnownPartMeta>();
 
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -295,14 +322,53 @@ export async function GET(request: Request): Promise<Response> {
       return false;
     }
 
-    const { part, properties } = parsed;
-    const partType = asString(part.type);
-    const partMessageId = asString(part.messageID);
-    const sessionID = asString(part.sessionID);
+    const { type, part, properties } = parsed;
+
+    if (type === 'message.part.delta') {
+      const partID = asString(properties.partID);
+      const delta = asString(properties.delta);
+      const field = asString(properties.field);
+      const meta = partID ? knownParts.get(partID) : undefined;
+      const partType = meta?.type;
+      const partMessageId = asString(properties.messageID) ?? meta?.messageID;
+      const sessionID = asString(properties.sessionID) ?? meta?.sessionID;
+
+      if (targetSessionId && sessionID && sessionID !== targetSessionId) {
+        return false;
+      }
+
+      if (field !== 'text' || !delta || partType !== 'text') {
+        return false;
+      }
+
+      if (!sawStepStart) {
+        return false;
+      }
+
+      if (currentStepMessageId && partMessageId && partMessageId !== currentStepMessageId) {
+        return false;
+      }
+
+      acc.assistantContent += delta;
+      return false;
+    }
+
+    const partType = asString(part?.type);
+    const partMessageId = asString(part?.messageID);
+    const sessionID = asString(part?.sessionID);
+    const partId = asString(part?.id);
 
     // 会话过滤
     if (targetSessionId && sessionID && sessionID !== targetSessionId) {
       return false;
+    }
+
+    if (partId) {
+      knownParts.set(partId, {
+        type: partType,
+        messageID: partMessageId,
+        sessionID,
+      });
     }
 
     // 处理不同 partType
@@ -316,7 +382,7 @@ export async function GET(request: Request): Promise<Response> {
       }
 
       const delta = asString(properties?.delta ?? parsed.properties?.delta);
-      const partText = asString(part.text);
+      const partText = asString(part?.text);
       if (delta && delta.length > 0) {
         acc.assistantContent += delta;
       } else if (partText !== undefined && partText.length > 0) {
@@ -326,9 +392,9 @@ export async function GET(request: Request): Promise<Response> {
     }
 
     if (partType === 'tool') {
-      const toolName = asString(part.tool) ?? 'tool';
-      const callId = asString(part.callID) ?? `${toolName}-${Date.now()}`;
-      const state = asRecord(part.state) || {};
+      const toolName = asString(part?.tool) ?? 'tool';
+      const callId = asString(part?.callID) ?? `${toolName}-${Date.now()}`;
+      const state = asRecord(part?.state) || {};
       const status = asString(state.status) as ToolCallRecord['status'] | undefined;
 
       if (status) {

@@ -1,11 +1,11 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "azure/gpt-52",
+  "model": "azure/gpt-52-low",
   "agent": {
     "build": {
       "mode": "primary",
       "prompt": "{file:../AGENTS.md}",
-      "steps": 6
+      "steps": 5
     }
   },
   "provider": {
@@ -20,13 +20,25 @@
       "models": {
         "deepseek": {
           "name": "deepseek",
+          "reasoning": false,
+          "tool_call": true,
           "limit": {
             "context": 65536,
             "output": 8192
           }
         },
         "gpt-5": {
-          "name": "gpt-5"
+          "name": "gpt-5",
+          "reasoning": false,
+          "tool_call": true
+        },
+        "kimi-k2.5": {
+          "name": "kimi-k2.5",
+          "reasoning": true,
+          "tool_call": true,
+          "interleaved": {
+            "field": "reasoning_content"
+          }
         }
       }
     },
@@ -40,6 +52,14 @@
       "models": {
         "gpt-52": {
           "name": "gpt-52"
+        },
+        "gpt-52-low": {
+          "id": "gpt-52",
+          "name": "gpt-52",
+          "options": {
+            "reasoningEffort": "low",
+            "reasoningSummary": null
+          }
         }
       }
     }
