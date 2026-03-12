@@ -21,7 +21,6 @@ type SemanticGroup = {
  * 基于规范文档 6.2 节主工具集合
  */
 const toolSemanticMap: Record<string, 'retrieve' | 'validate' | 'synthesize_helper' | 'other'> = {
-  read_note_file: 'retrieve',
   read: 'retrieve',
   grep: 'retrieve',
   glob: 'retrieve',

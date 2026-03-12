@@ -262,9 +262,9 @@ describe('generateProcessSummary', () => {
     const errorCalls: ToolCallRecord[] = [
       {
         id: '1',
-        name: 'read_note_file',
+        name: 'read',
         status: 'error',
-        arguments: { path: 'missing.md' },
+        arguments: { filePath: 'missing.md' },
         error: '文件不存在',
         startedAt: 1000,
         completedAt: 1500,
@@ -279,7 +279,7 @@ describe('generateProcessSummary', () => {
 
   it('should sort calls by start time', () => {
     const calls: ToolCallRecord[] = [
-      { id: '2', name: 'read_note_file', status: 'completed', startedAt: 2000, completedAt: 2500 },
+      { id: '2', name: 'read', status: 'completed', startedAt: 2000, completedAt: 2500 },
       { id: '1', name: 'grep', status: 'completed', startedAt: 1000, completedAt: 1500 },
     ];
 

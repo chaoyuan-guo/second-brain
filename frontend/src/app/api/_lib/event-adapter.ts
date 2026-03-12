@@ -63,7 +63,6 @@ export interface FinalEventPayload {
 // ============================================================================
 
 const TOOL_SEMANTIC_MAP: Record<string, ToolSemantic> = {
-  read_note_file: 'retrieve',
   read: 'retrieve',
   grep: 'retrieve',
   glob: 'retrieve',
@@ -377,7 +376,7 @@ const deriveReferencesFromCalls = (calls: ToolCallRecord[]): CitationRef[] => {
   const seen = new Set<string>();
 
   calls.forEach((call) => {
-    if (call.name !== 'read' && call.name !== 'read_note_file') {
+    if (call.name !== 'read') {
       return;
     }
 
@@ -594,7 +593,7 @@ export const deriveSyntheticSourceRefsFromCall = (
   call: Pick<ToolCallRecord, 'name' | 'arguments' | 'result'>,
   sourceRefMap: Map<string, EvidenceRef>,
 ): EvidenceRef[] => {
-  if (call.name !== 'read' && call.name !== 'read_note_file') {
+  if (call.name !== 'read') {
     return [];
   }
 
@@ -901,7 +900,7 @@ export const generateProcessSummary = (
           detail = `输入：${inputSummary}；结果：${resultSummary}`;
           break;
         }
-        if (call.name === 'read_note_file' || call.name === 'read') {
+        if (call.name === 'read') {
           const path = extractPathFromCall(call) || '文件';
           const offsetValue = call.arguments?.offset;
           const offset = typeof offsetValue === 'number'
