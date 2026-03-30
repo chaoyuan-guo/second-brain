@@ -5,7 +5,7 @@
     "build": {
       "mode": "primary",
       "prompt": "{file:../AGENTS.md}",
-      "steps": 10
+      "steps": 14
     }
   },
   "provider": {
