@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "azure/gpt-52-low",
+  "model": "azure/gpt-5.4-low",
   "agent": {
     "build": {
       "mode": "primary",
@@ -50,12 +50,12 @@
         "apiKey": "{env:azure_api_key}"
       },
       "models": {
-        "gpt-52": {
-          "name": "gpt-52"
+        "gpt-5.4": {
+          "name": "gpt-5.4"
         },
-        "gpt-52-low": {
-          "id": "gpt-52",
-          "name": "gpt-52",
+        "gpt-5.4-low": {
+          "id": "gpt-5.4",
+          "name": "gpt-5.4",
           "options": {
             "reasoningEffort": "low",
             "reasoningSummary": null

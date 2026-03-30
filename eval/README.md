@@ -77,7 +77,7 @@ docker run -d --name second_brain_opencode --restart unless-stopped \
   --answers eval/reports/answers.json \
   --tool-traces eval/reports/answers_tool_traces.json \
   --output eval/reports/report.json \
-  --model gpt-52
+  --model gpt-5.4
 ```
 
 ## 报告格式
@@ -87,7 +87,7 @@ docker run -d --name second_brain_opencode --restart unless-stopped \
   "meta": {
     "testset_name": "personalization_eval",
     "scoring_mode": "llm_judge",
-    "model": "gpt-52",
+    "model": "gpt-5.4",
     "version": "1.0"
   },
   "summary": {

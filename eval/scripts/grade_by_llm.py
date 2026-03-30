@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 DEFAULT_API_BASE_URL = "https://td06.openai.azure.com/openai/v1"
-DEFAULT_CHAT_MODEL = "gpt-52"
+DEFAULT_CHAT_MODEL = "gpt-5.4"
 PASS_THRESHOLD = 0.6
 DIMENSIONS = ["personalization", "precision", "honesty", "traceability"]
 INLINE_CITATION_RE = re.compile(r"\[c(\d{2,3})\]")
@@ -617,7 +617,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--model",
-        help="Model for LLM judge (default: from env or gpt-52)",
+        help="Model for LLM judge (default: from env or gpt-5.4)",
     )
     parser.add_argument(
         "--concurrency",

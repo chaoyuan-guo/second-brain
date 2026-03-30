@@ -27,7 +27,7 @@
 - 前端测试位于 `frontend/src/__tests__/`，采用 React Testing Library + Vitest；执行 `npm run test`（`vitest run`）并通过 `npm run lint`（`tsc --noEmit`）保证 TS/JSX 规范，命名遵循 `<Component>.test.tsx`。 Snapshot tests should be paired with meaningful interaction assertions.
 
 ## Evaluation Guidelines
-- 评估采用 LLM-as-Judge 方法，使用 Azure 端点的 `gpt-52` 模型，围绕个性化命中、精准简洁、诚实性、可追溯性四个维度评分：`./.venv/bin/python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9090 --concurrency 10 --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。
+- 评估采用 LLM-as-Judge 方法，使用 Azure 端点的 `gpt-5.4` 模型，围绕个性化命中、精准简洁、诚实性、可追溯性四个维度评分：`./.venv/bin/python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9090 --concurrency 10 --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。
 
 ## Commit & Pull Request Guidelines
 - 仓库已初始化 Git，请继续遵循 Conventional Commits（如 `feat: add note upload validation`、`fix: guard empty filename`）保持可读性；单次提交聚焦单一功能或缺陷修复。 Commits should stay atomic on the `main` branch unless stated otherwise.
@@ -42,7 +42,7 @@
   - **非容器环境**：默认使用 Azure 端点（`azure_base_url`、`azure_api_key`、`azure_api-version`、`azure_use_model`），可通过 `use_azure=False` 覆盖。
   - **容器服务**：默认使用 ai-builder 端点（`SUPER_MIND_API_BASE_URL`、`SUPER_MIND_CHAT_MODEL`），可通过 `use_azure=True` 覆盖。
 - **Embedding 模型**：所有环境统一使用 ai-builder 端点（https://space.ai-builders.com/backend/v1），通过 `SUPER_MIND_API_KEY` 或 `AI_BUILDER_TOKEN` 认证。
-- **评估评分**（`eval/scripts/grade_by_llm.py`）：默认使用 Azure 端点的 `gpt-52` 模型进行 LLM-as-Judge 评分，可通过 `azure_base_url`、`azure_api_key`、`azure_use_model` 环境变量覆盖。
+- **评估评分**（`eval/scripts/grade_by_llm.py`）：默认使用 Azure 端点的 `gpt-5.4` 模型进行 LLM-as-Judge 评分，可通过 `azure_base_url`、`azure_api_key`、`azure_use_model` 环境变量覆盖。
 
 ## 协作与设计原则
 - 讨论技术实现方案时，请优先从更通用、可复用、泛化能力更强的角度思考与给出建议。
