@@ -5,10 +5,12 @@ import type { CitationRef } from '../../lib/chat-types';
 import {
   deriveSourceTitle,
   formatRetrievalDistance,
+  getReferenceKindLabel,
   getCitationSuperscript,
   isWeakRetrievalScore,
   normalizeCitationId,
   sanitizeCitationSnippet,
+  shouldUsePrecisePreviewTarget,
 } from '../../lib/citation-utils';
 
 interface ReferencesPanelProps {
@@ -51,6 +53,17 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
 
   const sortedRefs = useMemo(() => {
     return [...normalizedReferences].sort((a, b) => {
+      const kindPriority = (ref: CitationRef) => {
+        if (ref.kind === 'precise' && ref.provenance === 'native') return 0;
+        if (ref.kind === 'precise' && ref.provenance === 'synthetic_read') return 1;
+        if (ref.kind === 'file' && ref.provenance === 'native') return 2;
+        if (ref.kind === 'file' && ref.provenance === 'synthetic_read') return 3;
+        return 4;
+      };
+      const typeDiff = kindPriority(a) - kindPriority(b);
+      if (typeDiff !== 0) {
+        return typeDiff;
+      }
       if (sortBy === 'relevance') {
         const aHasScore = typeof a.retrievalScore === 'number';
         const bHasScore = typeof b.retrievalScore === 'number';
@@ -113,12 +126,17 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
       onOpenPreview(
         ref.sourcePath,
         deriveSourceTitle(ref.sourcePath, ref.sourceTitle, ref.heading),
-        { char_offset: ref.charOffsetStart, snippet: ref.snippet }
+        shouldUsePrecisePreviewTarget(ref)
+          ? { char_offset: ref.charOffsetStart, snippet: ref.snippet }
+          : undefined
       );
     }
   };
 
   // 统计信息
+  const nativePreciseCount = normalizedReferences.filter(r => r.kind === 'precise' && r.provenance === 'native').length;
+  const syntheticPreciseCount = normalizedReferences.filter(r => r.kind === 'precise' && r.provenance === 'synthetic_read').length;
+  const fileLevelCount = normalizedReferences.filter(r => r.kind === 'file').length;
   const strongMatches = normalizedReferences.filter(r => r.retrievalScore !== undefined && r.retrievalScore < 0.8).length;
   const weakMatches = normalizedReferences.filter(r => r.retrievalScore !== undefined && r.retrievalScore >= 0.8).length;
   const unscored = normalizedReferences.filter(r => r.retrievalScore === undefined).length;
@@ -151,6 +169,15 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
       </div>
 
       <div className="quality-summary">
+        {nativePreciseCount > 0 && (
+          <span className="quality-badge precise-native">{nativePreciseCount} 条原生精准</span>
+        )}
+        {syntheticPreciseCount > 0 && (
+          <span className="quality-badge precise-synthetic">{syntheticPreciseCount} 条补偿定位</span>
+        )}
+        {fileLevelCount > 0 && (
+          <span className="quality-badge file-level">{fileLevelCount} 条文件级来源</span>
+        )}
         {strongMatches > 0 && (
           <span className="quality-badge strong">{strongMatches} 条高相关</span>
         )}
@@ -196,6 +223,8 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
                 const hasScore = ref.retrievalScore !== undefined;
                 const distanceLabel = formatRetrievalDistance(ref.retrievalScore);
                 const itemTitle = deriveSourceTitle(ref.sourcePath, ref.sourceTitle, ref.heading);
+                const kindLabel = getReferenceKindLabel(ref);
+                const isPrecise = ref.kind === 'precise';
 
                 return (
                   <div
@@ -206,6 +235,9 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
                       <span className="ref-index">{getCitationSuperscript(ref.id)}</span>
                       <span className="ref-title">
                         {itemTitle}
+                      </span>
+                      <span className={`ref-kind-badge ${ref.kind === 'precise' ? 'precise' : 'file'}`}>
+                        {kindLabel}
                       </span>
                       {ref.sourceDateLabel && (
                         <span className="ref-date">{ref.sourceDateLabel}</span>
@@ -238,7 +270,9 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
                         )}
                         {ref.snippet && (
                           <div className="ref-snippet">
-                            <div className="snippet-label">内容片段：</div>
+                            <div className="snippet-label">
+                              {isPrecise ? '支撑片段：' : '候选片段（非精确定位）：'}
+                            </div>
                             <blockquote>{ref.snippet}</blockquote>
                           </div>
                         )}
@@ -251,7 +285,7 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
                             <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                             <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                           </svg>
-                          查看原文
+                          {isPrecise ? '定位原文' : '查看文件'}
                         </button>
                       </div>
                     )}

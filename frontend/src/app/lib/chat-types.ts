@@ -1,4 +1,6 @@
 export type ChatRole = 'user' | 'assistant';
+export type CitationKind = 'precise' | 'file';
+export type CitationProvenance = 'native' | 'synthetic_read' | 'content_path';
 
 // ============================================================================
 // 证据可追溯性与过程透明度新增类型（2026-03-04）
@@ -16,6 +18,8 @@ export interface CitationRef {
   snippet?: string;
   retrievalScore?: number;
   weakMatch?: boolean;
+  kind?: CitationKind;
+  provenance?: CitationProvenance;
 }
 
 /** 过程步骤语义摘要 */
@@ -92,6 +96,8 @@ export interface EvidenceRef {
   snippet?: string;
   citationId?: string;      // 新增：引用标记 ID
   retrievalScore?: number;  // 新增：检索相关性分数
+  kind?: CitationKind;
+  provenance?: CitationProvenance;
 }
 
 /** 证据项：断言-来源映射 */

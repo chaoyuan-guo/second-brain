@@ -28,6 +28,7 @@
 
 ## Evaluation Guidelines
 - 评估采用 LLM-as-Judge 方法，使用 Azure 端点的 `gpt-5.4` 模型，围绕个性化命中、精准简洁、诚实性、可追溯性四个维度评分：`./.venv/bin/python eval/scripts/run_eval_stream.py --base-url http://127.0.0.1:9090 --concurrency 10 --report eval/reports/report.json`（默认写 `eval/reports/answers.json`）。
+- 判断 `9090` 是否可用时，不要把根路径非 2xx 误判成服务 down。`http://127.0.0.1:9090` 返回 `401/403/404/405` 说明 HTTP 服务已经有响应；应优先看容器端口映射、脚本预检输出，或直接运行 `run_eval_stream.py` 的连通性探测。
 
 ## Commit & Pull Request Guidelines
 - 仓库已初始化 Git，请继续遵循 Conventional Commits（如 `feat: add note upload validation`、`fix: guard empty filename`）保持可读性；单次提交聚焦单一功能或缺陷修复。 Commits should stay atomic on the `main` branch unless stated otherwise.

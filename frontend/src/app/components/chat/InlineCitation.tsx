@@ -5,10 +5,12 @@ import type { CitationRef } from '../../lib/chat-types';
 import {
   deriveSourceTitle,
   formatRetrievalDistance,
+  getReferenceKindLabel,
   getCitationSuperscript,
   isWeakRetrievalScore,
   normalizeCitationId,
   sanitizeCitationSnippet,
+  shouldUsePrecisePreviewTarget,
 } from '../../lib/citation-utils';
 
 interface InlineCitationProps {
@@ -35,7 +37,11 @@ export function InlineCitation({ citationId, citationMap, onOpenPreview }: Inlin
   const hasRef = !!ref;
   const isWeakMatch = isWeakRetrievalScore(ref?.retrievalScore);
   const sourceTitle = ref ? deriveSourceTitle(ref.sourcePath, ref.sourceTitle, ref.heading) : '';
-  const sourceMeta = [ref?.sourceDateLabel, isWeakMatch ? '弱匹配' : undefined].filter(Boolean).join(' · ');
+  const sourceMeta = [
+    ref ? getReferenceKindLabel(ref) : undefined,
+    ref?.sourceDateLabel,
+    isWeakMatch ? '弱匹配' : undefined,
+  ].filter(Boolean).join(' · ');
   const distanceLabel = formatRetrievalDistance(ref?.retrievalScore);
   
   const handleClick = () => {
@@ -43,7 +49,9 @@ export function InlineCitation({ citationId, citationMap, onOpenPreview }: Inlin
       onOpenPreview(
         ref.sourcePath,
         sourceTitle || '来源',
-        { char_offset: ref.charOffsetStart, snippet: ref.snippet }
+        shouldUsePrecisePreviewTarget(ref)
+          ? { char_offset: ref.charOffsetStart, snippet: ref.snippet }
+          : undefined
       );
     }
   };
@@ -85,7 +93,9 @@ export function InlineCitation({ citationId, citationMap, onOpenPreview }: Inlin
           {ref.snippet && (
             <div className="tooltip-snippet">{ref.snippet.substring(0, 100)}...</div>
           )}
-          <div className="tooltip-hint">点击查看详情</div>
+          <div className="tooltip-hint">
+            {ref.provenance === 'native' ? '点击定位支撑片段' : '点击查看补偿定位'}
+          </div>
         </div>
       )}
     </span>

@@ -10,6 +10,8 @@ import {
   deriveSourceTitle,
   extractFileLevelReferencesFromContent,
   inferSourceDateLabel,
+  isPreciseCitationRef,
+  normalizeCitationId,
   normalizeHonestySignalsWithReferences,
   sanitizeCitationSnippet,
 } from '../../lib/citation-utils';
@@ -68,16 +70,21 @@ const renderCitedContent = (
     }
     
     const citationId = match[1]; // 统一使用数字格式 "01"
+    const normalizedId = normalizeCitationId(citationId);
+    const ref = citationMap[citationId] || citationMap[normalizedId] || citationMap[`c${normalizedId}`];
     
-    // 使用 InlineCitation 组件
-    parts.push(
-      <InlineCitation
-        key={`citation-${match.index}`}
-        citationId={citationId}
-        citationMap={citationMap}
-        onOpenPreview={onOpenPreview}
-      />
-    );
+    if (isPreciseCitationRef(ref)) {
+      parts.push(
+        <InlineCitation
+          key={`citation-${match.index}`}
+          citationId={citationId}
+          citationMap={citationMap}
+          onOpenPreview={onOpenPreview}
+        />
+      );
+    } else {
+      parts.push(match[0]);
+    }
     
     lastIndex = match.index + match[0].length;
   }
@@ -108,6 +115,8 @@ const buildFallbackReferences = (message: ChatMessage): CitationRef[] | null => 
       .map((ref) => ({
         ...ref,
         snippet: sanitizeCitationSnippet(ref.snippet),
+        kind: ref.kind ?? 'file',
+        provenance: ref.provenance ?? 'content_path',
       }));
     return refs.length > 0 ? refs : null;
   }
@@ -119,7 +128,9 @@ const buildFallbackReferences = (message: ChatMessage): CitationRef[] | null => 
       sourceDateLabel: inferSourceDateLabel(ref.path, ref.heading),
       heading: ref.heading,
       snippet: sanitizeCitationSnippet(ref.snippet),
-      charOffsetStart: ref.char_offset,
+      charOffsetStart: undefined,
+      kind: 'file',
+      provenance: 'native',
     }));
   }
   return extractContentFallbackReferences(message);
@@ -163,6 +174,9 @@ export function AnswerPanel({
     const map: Record<string, CitationRef> = {};
     if (message.citationMap) {
       Object.entries(message.citationMap).forEach(([id, ref]) => {
+        if (!isPreciseCitationRef(ref)) {
+          return;
+        }
         const normalizedRef = {
           ...ref,
           snippet: sanitizeCitationSnippet(ref.snippet),
@@ -176,6 +190,9 @@ export function AnswerPanel({
     }
     if (message.references) {
       message.references.forEach(ref => {
+        if (!isPreciseCitationRef(ref)) {
+          return;
+        }
         const normalizedRef = {
           ...ref,
           snippet: sanitizeCitationSnippet(ref.snippet),

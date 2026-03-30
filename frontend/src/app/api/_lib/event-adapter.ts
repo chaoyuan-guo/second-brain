@@ -16,6 +16,7 @@ import type {
   HonestySignals,
 } from '../../lib/chat-types';
 import {
+  classifyEvidenceRef,
   deriveSourceTitle,
   extractFileLevelReferencesFromContent,
   inferSourceDateLabel,
@@ -356,6 +357,46 @@ const getStoredSourceRef = (
   return undefined;
 };
 
+const getReferencePriority = (
+  ref: Pick<EvidenceRef, 'kind' | 'provenance'>,
+): number => {
+  if (ref.kind === 'precise' && ref.provenance === 'native') {
+    return 50;
+  }
+  if (ref.kind === 'precise' && ref.provenance === 'synthetic_read') {
+    return 40;
+  }
+  if (ref.kind === 'file' && ref.provenance === 'native') {
+    return 30;
+  }
+  if (ref.kind === 'file' && ref.provenance === 'synthetic_read') {
+    return 20;
+  }
+  if (ref.kind === 'file' && ref.provenance === 'content_path') {
+    return 10;
+  }
+  return 0;
+};
+
+const resolveEvidenceSemantics = (
+  ref: Pick<EvidenceRef, 'citationId' | 'snippet' | 'charOffsetStart' | 'kind' | 'provenance'>,
+  fallbackProvenance: 'native' | 'synthetic_read' | 'content_path' = 'native',
+): Pick<EvidenceRef, 'kind' | 'provenance'> => {
+  const provenance = ref.provenance ?? fallbackProvenance;
+  const inferred = classifyEvidenceRef(
+    {
+      citationId: ref.citationId,
+      snippet: ref.snippet,
+      charOffsetStart: ref.charOffsetStart,
+    },
+    provenance,
+  );
+  return {
+    kind: ref.kind ?? inferred.kind,
+    provenance,
+  };
+};
+
 const chooseBetterSnippet = (
   currentSnippet?: string,
   nextSnippet?: string,
@@ -399,6 +440,10 @@ const deriveReferencesFromCalls = (calls: ToolCallRecord[]): CitationRef[] => {
       sourceDateLabel: inferSourceDateLabel(sourcePath),
       charOffsetStart,
       snippet: extractSnippetPreview(call.result),
+      kind: charOffsetStart !== undefined && Boolean(extractSnippetPreview(call.result))
+        ? 'precise'
+        : 'file',
+      provenance: 'synthetic_read',
     });
   });
 
@@ -418,6 +463,7 @@ const collapseReferencesToFileLevel = (references: CitationRef[]): CitationRef[]
       grouped.set(ref.sourcePath, {
         ...ref,
         charOffsetStart: undefined,
+        kind: 'file',
       });
       return;
     }
@@ -436,6 +482,75 @@ const collapseReferencesToFileLevel = (references: CitationRef[]): CitationRef[]
     ...ref,
     id: String(index + 1).padStart(2, '0'),
     charOffsetStart: undefined,
+    kind: 'file',
+  }));
+};
+
+const normalizeReferenceCollection = (sourceRefMap: Map<string, EvidenceRef>): CitationRef[] => {
+  const preciseRefs: CitationRef[] = [];
+  const fileRefs = new Map<string, CitationRef>();
+
+  for (const [, ref] of sourceRefMap) {
+    const semantics = resolveEvidenceSemantics(ref, ref.provenance ?? 'native');
+    const baseRef: CitationRef = {
+      id: normalizeCitationId(ref.citationId || '00'),
+      sourcePath: ref.sourcePath,
+      sourceTitle: ref.sourceTitle,
+      sourceDateLabel: ref.sourceDateLabel ?? inferSourceDateLabel(ref.sourcePath, ref.sourceTitle, ref.heading),
+      heading: ref.heading,
+      charOffsetStart: semantics.kind === 'precise' ? ref.charOffsetStart : undefined,
+      snippet: sanitizeCitationSnippet(ref.snippet),
+      retrievalScore: ref.retrievalScore,
+      weakMatch: isWeakRetrievalScore(ref.retrievalScore),
+      kind: semantics.kind,
+      provenance: semantics.provenance,
+    };
+
+    if (semantics.kind === 'precise') {
+      preciseRefs.push(baseRef);
+      continue;
+    }
+
+    const dedupeKey = `${semantics.provenance}|${ref.sourcePath}`;
+    const existing = fileRefs.get(dedupeKey);
+    if (!existing) {
+      fileRefs.set(dedupeKey, baseRef);
+      continue;
+    }
+
+    fileRefs.set(dedupeKey, {
+      ...existing,
+      snippet: chooseBetterSnippet(existing.snippet, baseRef.snippet),
+      retrievalScore:
+        typeof baseRef.retrievalScore === 'number'
+          ? typeof existing.retrievalScore === 'number'
+            ? Math.min(existing.retrievalScore, baseRef.retrievalScore)
+            : baseRef.retrievalScore
+          : existing.retrievalScore,
+    });
+  }
+
+  const orderedPrecise = preciseRefs.sort((a, b) => {
+    const priorityDiff = getReferencePriority(b) - getReferencePriority(a);
+    if (priorityDiff !== 0) {
+      return priorityDiff;
+    }
+    return Number.parseInt(normalizeCitationId(a.id), 10) - Number.parseInt(normalizeCitationId(b.id), 10);
+  });
+  const orderedFiles = Array.from(fileRefs.values()).sort((a, b) => {
+    const priorityDiff = getReferencePriority(b) - getReferencePriority(a);
+    if (priorityDiff !== 0) {
+      return priorityDiff;
+    }
+    return a.sourcePath.localeCompare(b.sourcePath);
+  });
+
+  return [...orderedPrecise, ...orderedFiles].map((ref, index) => ({
+    ...ref,
+    id:
+      ref.kind === 'precise'
+        ? normalizeCitationId(ref.id)
+        : String(index + 1).padStart(2, '0'),
   }));
 };
 
@@ -548,28 +663,42 @@ export const mergeSourceRefs = (acc: ProcessAccumulator, refs: EvidenceRef[]): v
     if (!ref.sourcePath) {
       return;
     }
+    const incomingRef: EvidenceRef = {
+      ...ref,
+      ...resolveEvidenceSemantics(ref, ref.provenance ?? 'native'),
+    };
 
-    const storedEntry = getStoredSourceRef(acc.sourceRefMap, ref);
+    const storedEntry = getStoredSourceRef(acc.sourceRefMap, incomingRef);
     if (storedEntry) {
       const [existingKey, existingRef] = storedEntry;
+      const preferredRef =
+        getReferencePriority(incomingRef) > getReferencePriority(existingRef)
+          ? incomingRef
+          : existingRef;
       const mergedRef: EvidenceRef = {
         ...existingRef,
-        ...ref,
-        citationId: existingRef.citationId || ref.citationId || getNextCitationId(acc.sourceRefMap),
-        sourceTitle: ref.sourceTitle || existingRef.sourceTitle,
+        ...incomingRef,
+        citationId:
+          preferredRef.citationId ||
+          existingRef.citationId ||
+          incomingRef.citationId ||
+          getNextCitationId(acc.sourceRefMap),
+        sourceTitle: incomingRef.sourceTitle || existingRef.sourceTitle,
         sourceDateLabel:
-          ref.sourceDateLabel ||
+          incomingRef.sourceDateLabel ||
           existingRef.sourceDateLabel ||
-          inferSourceDateLabel(ref.sourcePath, ref.sourceTitle, ref.heading),
-        heading: ref.heading || existingRef.heading,
-        charOffsetStart: ref.charOffsetStart ?? existingRef.charOffsetStart,
-        snippet: chooseBetterSnippet(existingRef.snippet, ref.snippet),
+          inferSourceDateLabel(incomingRef.sourcePath, incomingRef.sourceTitle, incomingRef.heading),
+        heading: incomingRef.heading || existingRef.heading,
+        charOffsetStart: incomingRef.charOffsetStart ?? existingRef.charOffsetStart,
+        snippet: chooseBetterSnippet(existingRef.snippet, incomingRef.snippet),
         retrievalScore:
-          typeof ref.retrievalScore === 'number'
+          typeof incomingRef.retrievalScore === 'number'
             ? typeof existingRef.retrievalScore === 'number'
-              ? Math.min(existingRef.retrievalScore, ref.retrievalScore)
-              : ref.retrievalScore
+              ? Math.min(existingRef.retrievalScore, incomingRef.retrievalScore)
+              : incomingRef.retrievalScore
             : existingRef.retrievalScore,
+        kind: preferredRef.kind || existingRef.kind || incomingRef.kind,
+        provenance: preferredRef.provenance || existingRef.provenance || incomingRef.provenance,
       };
       acc.sourceRefMap.delete(existingKey);
       acc.sourceRefMap.set(buildSourceRefIdentity(mergedRef), mergedRef);
@@ -577,13 +706,17 @@ export const mergeSourceRefs = (acc: ProcessAccumulator, refs: EvidenceRef[]): v
     }
 
     const normalizedRef: EvidenceRef = {
-      ...ref,
-      citationId: ref.citationId || getNextCitationId(acc.sourceRefMap),
-      sourceTitle: ref.sourceTitle || deriveSourceTitle(ref.sourcePath, ref.sourceTitle, ref.heading),
+      ...incomingRef,
+      citationId: incomingRef.citationId || getNextCitationId(acc.sourceRefMap),
+      sourceTitle:
+        incomingRef.sourceTitle ||
+        deriveSourceTitle(incomingRef.sourcePath, incomingRef.sourceTitle, incomingRef.heading),
       sourceDateLabel:
-        ref.sourceDateLabel ||
-        inferSourceDateLabel(ref.sourcePath, ref.sourceTitle, ref.heading),
-      snippet: chooseBetterSnippet(undefined, ref.snippet),
+        incomingRef.sourceDateLabel ||
+        inferSourceDateLabel(incomingRef.sourcePath, incomingRef.sourceTitle, incomingRef.heading),
+      snippet: chooseBetterSnippet(undefined, incomingRef.snippet),
+      kind: incomingRef.kind || 'file',
+      provenance: incomingRef.provenance || 'native',
     };
     acc.sourceRefMap.set(buildSourceRefIdentity(normalizedRef), normalizedRef);
   });
@@ -617,11 +750,20 @@ export const deriveSyntheticSourceRefsFromCall = (
     snippet,
   };
   const existing = getStoredSourceRef(sourceRefMap, baseRef);
+  const citationId = existing?.[1].citationId || getNextCitationId(sourceRefMap);
 
   return [
     {
       ...baseRef,
-      citationId: existing?.[1].citationId || getNextCitationId(sourceRefMap),
+      citationId,
+      ...resolveEvidenceSemantics(
+        {
+          citationId,
+          charOffsetStart,
+          snippet,
+        },
+        'synthetic_read',
+      ),
     },
   ];
 };
@@ -796,6 +938,10 @@ export const enrichCitationsWithEvidence = (
     
     for (const [, ref] of sourceRefMap) {
       if (ref.citationId === citationIdWithPrefix || ref.citationId === citationIdWithoutPrefix || ref.citationId === citation.id) {
+        const semantics = resolveEvidenceSemantics(ref, ref.provenance ?? 'native');
+        if (semantics.kind !== 'precise') {
+          return citation;
+        }
         return {
           ...citation,
           sourcePath: ref.sourcePath,
@@ -805,6 +951,9 @@ export const enrichCitationsWithEvidence = (
           snippet: sanitizeCitationSnippet(ref.snippet),
           retrievalScore: ref.retrievalScore,
           weakMatch: isWeakRetrievalScore(ref.retrievalScore),
+          kind: semantics.kind,
+          provenance: semantics.provenance,
+          charOffsetStart: ref.charOffsetStart,
         };
       }
     }
@@ -1045,39 +1194,53 @@ export const computeHonestySignals = (
   hasErrorCalls: boolean,
   errorCount: number
 ): HonestySignals => {
-  // 强匹配：retrievalScore < 0.8 的引用（L2 距离越小越相似）
-  const strongMatches = citations.filter(
-    (c) => c.retrievalScore !== undefined && c.retrievalScore < 0.8
+  const normalizedCitations = citations.map((citation) => ({
+    ...citation,
+    kind: citation.kind ?? 'precise',
+    provenance: citation.provenance ?? 'native',
+  }));
+  const nativePreciseRefs = normalizedCitations.filter(
+    (c) => c.kind === 'precise' && c.provenance === 'native',
   );
-
-  // 弱匹配：retrievalScore >= 0.8 的引用（距离大，相关性低）
-  const weakMatches = citations.filter(
-    (c) => c.retrievalScore !== undefined && c.retrievalScore >= 0.8
+  const syntheticPreciseRefs = normalizedCitations.filter(
+    (c) => c.kind === 'precise' && c.provenance === 'synthetic_read',
   );
+  const fileLevelRefs = normalizedCitations.filter((c) => c.kind === 'file');
+  const strongMatches = nativePreciseRefs.filter(
+    (c) => c.retrievalScore !== undefined && c.retrievalScore < 0.8,
+  );
+  const weakMatches = nativePreciseRefs.filter(
+    (c) => c.retrievalScore !== undefined && c.retrievalScore >= 0.8,
+  );
+  const unscoredMatches = nativePreciseRefs.filter((c) => c.retrievalScore === undefined);
 
-  // 无分数的引用（无法验证）
-  const unscoredMatches = citations.filter((c) => c.retrievalScore === undefined);
-
-  // 证据质量：基于强匹配比例
   let evidenceQuality: 'strong' | 'partial' | 'weak' | 'none' = 'none';
-  if (citations.length === 0) {
+  if (normalizedCitations.length === 0) {
     evidenceQuality = 'none';
+  } else if (nativePreciseRefs.length > 0) {
+    evidenceQuality = weakMatches.length === nativePreciseRefs.length && unscoredMatches.length === 0
+      ? 'weak'
+      : strongMatches.length >= 2
+        ? 'strong'
+        : 'partial';
+  } else if (syntheticPreciseRefs.length > 0) {
+    evidenceQuality = 'partial';
+  } else if (fileLevelRefs.length > 0) {
+    evidenceQuality = 'weak';
   } else if (strongMatches.length >= 3) {
     evidenceQuality = 'strong';
-  } else if (strongMatches.length >= 1) {
-    // 有强匹配但不足 3 个
-    evidenceQuality = 'partial';
-  } else if (weakMatches.length >= 1 || unscoredMatches.length >= 1) {
-    // 无强匹配，只有弱匹配或无分数
-    evidenceQuality = 'weak';
   }
 
-  const hasSufficientEvidence = strongMatches.length >= 2;
+  const hasSufficientEvidence =
+    nativePreciseRefs.length > 0 &&
+    !(weakMatches.length === nativePreciseRefs.length && unscoredMatches.length === 0);
 
   const reasonCodes: Array<'no_hit' | 'weak_match' | 'insufficient_hits'> = [];
-  if (citations.length === 0) {
+  if (normalizedCitations.length === 0) {
     reasonCodes.push('no_hit');
-  } else if (strongMatches.length === 0) {
+  } else if (nativePreciseRefs.length === 0) {
+    reasonCodes.push('insufficient_hits');
+  } else if (strongMatches.length === 0 && unscoredMatches.length === 0) {
     reasonCodes.push('weak_match');
   } else if (!hasSufficientEvidence) {
     reasonCodes.push('insufficient_hits');
@@ -1103,15 +1266,29 @@ export const computeHonestySignals = (
       `${errorCount} 个工具执行失败，可能影响答案完整性`
     );
   }
+  if (syntheticPreciseRefs.length > 0) {
+    honestyWarnings.push(
+      `${syntheticPreciseRefs.length} 条可点击定位来自读取补偿，当前还不属于原生稳定证据链`
+    );
+  }
+  if (fileLevelRefs.length > 0) {
+    honestyWarnings.push(
+      `${fileLevelRefs.length} 条来源仅能定位到文件级别，尚未拿到精确片段定位`
+    );
+  }
 
   // 局限性说明
   let limitationNote: string | undefined;
   if (reasonCodes.includes('no_hit')) {
     limitationNote = '笔记中没有检索到直接相关记录，回答只能基于有限线索推断。';
+  } else if (nativePreciseRefs.length === 0 && syntheticPreciseRefs.length > 0) {
+    limitationNote = '当前可点击定位主要来自读取补偿，不是上游稳定返回的原生证据链。';
+  } else if (nativePreciseRefs.length === 0 && fileLevelRefs.length > 0) {
+    limitationNote = '当前仅拿到文件级来源，还没有稳定的精准片段证据。';
   } else if (reasonCodes.includes('weak_match')) {
     limitationNote = '检索结果相关性偏弱，请优先核对原文后再采纳结论。';
   } else if (reasonCodes.includes('insufficient_hits')) {
-    limitationNote = '已命中部分证据，但数量不足以形成高置信结论。';
+    limitationNote = '已命中部分原生片段证据，但当前覆盖面仍有限。';
   } else if (weakMatches.length > strongMatches.length) {
     limitationNote = '主要引用来源相关性较低，请谨慎采纳。';
   }
@@ -1124,9 +1301,9 @@ export const computeHonestySignals = (
     honestyWarnings,
     limitationNote,
     hasSufficientEvidence,
-    hasDirectEvidence: strongMatches.length > 0,
-    retrievalHitCount: citations.length,
-    bestScore: citations
+    hasDirectEvidence: nativePreciseRefs.length > 0,
+    retrievalHitCount: normalizedCitations.length,
+    bestScore: normalizedCitations
       .map((c) => c.retrievalScore)
       .filter((v): v is number => typeof v === 'number')
       .sort((a, b) => a - b)[0],
@@ -1159,13 +1336,20 @@ export const synthesizeFinalEvent = (acc: ProcessAccumulator): FinalEventPayload
   // 丰富引用信息（关联 sourceRefMap 中的证据详情）
   const enrichedCitations = enrichCitationsWithEvidence(citations, acc.sourceRefMap)
     .filter((citation) => Boolean(citation.sourcePath));
-  const fallbackReferences = deriveReferencesFromCalls(acc.completedCalls);
+  const normalizedReferences = normalizeReferenceCollection(acc.sourceRefMap);
+  const callDerivedReferences =
+    normalizedReferences.length > 0 ? [] : deriveReferencesFromCalls(acc.completedCalls);
   const contentFallbackReferences = extractFileLevelReferencesFromContent(acc.assistantContent);
-  const references = enrichedCitations.length > 0
-    ? enrichedCitations
-    : fallbackReferences.length > 0
-      ? collapseReferencesToFileLevel(fallbackReferences)
-      : contentFallbackReferences;
+  const citedReferenceIds = new Set(enrichedCitations.map((ref) => normalizeCitationId(ref.id)));
+  const uncitedPreciseReferences = normalizedReferences.filter(
+    (ref) => ref.kind === 'precise' && !citedReferenceIds.has(normalizeCitationId(ref.id)),
+  );
+  const degradedReferences = normalizedReferences.filter((ref) => ref.kind !== 'precise');
+  const references = normalizedReferences.length > 0
+    ? [...enrichedCitations, ...uncitedPreciseReferences, ...degradedReferences]
+    : callDerivedReferences.length > 0
+      ? callDerivedReferences
+    : contentFallbackReferences;
 
   // 拆分直接回答和完整分析
   const { directAnswer, fullAnalysis } = splitDirectAnswer(acc.assistantContent);

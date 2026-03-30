@@ -149,6 +149,38 @@ def _request_json(
         return exc.code, parsed
 
 
+def probe_base_url(
+    base_url: str,
+    timeout: int = 5,
+) -> Tuple[bool, str]:
+    """Probe whether the endpoint is reachable via HTTP.
+
+    401/403/404/405 all count as "reachable": they indicate the server responded.
+    This avoids treating "auth required" or "wrong path" as "service down".
+    """
+    candidates = [base_url.rstrip("/"), base_url.rstrip("/") + "/session"]
+    tried: List[str] = []
+    for candidate in candidates:
+        if candidate in tried:
+            continue
+        tried.append(candidate)
+        req = _build_request(url=candidate, method="GET")
+        try:
+            with _DIRECT_OPENER.open(req, timeout=timeout) as resp:
+                status = getattr(resp, "status", 200)
+                return True, f"{candidate} -> HTTP {status}"
+        except urlerror.HTTPError as exc:
+            return True, f"{candidate} -> HTTP {exc.code}"
+        except urlerror.URLError as exc:
+            reason = exc.reason
+            if isinstance(reason, socket.timeout):
+                return False, f"{candidate} -> timeout"
+            continue
+        except Exception:
+            continue
+    return False, f"{base_url.rstrip('/')} -> no HTTP response"
+
+
 def stream_opencode(
     base_url: str,
     query: str,
@@ -207,7 +239,9 @@ def stream_opencode(
     answer_parts: List[str] = []
     tool_events: List[Dict[str, Any]] = []
     tool_status_by_call: Dict[str, str] = {}
-    assistant_message_id: Optional[str] = None
+    message_roles: Dict[str, str] = {}
+    known_parts: Dict[str, Dict[str, str]] = {}
+    current_step_message_id: Optional[str] = None
     saw_step_finish = False
     saw_first_chunk = False
 
@@ -282,6 +316,58 @@ def stream_opencode(
                         }
                     )
                 raise RuntimeError(f"session.error: {event}")
+
+            if event_type == "message.updated":
+                info = (event.get("properties") or {}).get("info") or {}
+                if isinstance(info, dict) and info.get("sessionID") == session_id:
+                    message_id = info.get("id")
+                    role = info.get("role")
+                    if isinstance(message_id, str) and isinstance(role, str):
+                        message_roles[message_id] = role
+                continue
+
+            if event_type == "message.part.delta":
+                properties = event.get("properties") or {}
+                if not isinstance(properties, dict):
+                    continue
+
+                part_id = properties.get("partID")
+                field = properties.get("field")
+                delta = properties.get("delta")
+                meta = known_parts.get(str(part_id), {}) if isinstance(part_id, str) else {}
+                part_message_id = properties.get("messageID") or meta.get("messageID")
+                part_session_id = properties.get("sessionID") or meta.get("sessionID")
+                part_type = meta.get("type")
+
+                if part_session_id != session_id:
+                    continue
+                if field != "text" or not isinstance(delta, str) or not delta:
+                    continue
+                if part_type != "text":
+                    continue
+                if not isinstance(part_message_id, str):
+                    continue
+                if message_roles.get(part_message_id) != "assistant":
+                    continue
+                if current_step_message_id and part_message_id != current_step_message_id:
+                    continue
+
+                if stage_cb and not saw_first_chunk:
+                    stage_cb("first_chunk")
+                    saw_first_chunk = True
+                answer_parts.append(delta)
+                if trace is not None:
+                    trace["timeline"].append(
+                        {
+                            "ts": datetime.utcnow().isoformat() + "Z",
+                            "kind": "part.delta",
+                            "part_type": "text",
+                            "message_id": part_message_id,
+                            "delta_len": len(delta),
+                        }
+                    )
+                continue
+
             if event_type != "message.part.updated":
                 continue
 
@@ -299,6 +385,17 @@ def stream_opencode(
 
             part_type = part.get("type")
             part_message_id = part.get("messageID")
+            part_id = part.get("id")
+            if (
+                isinstance(part_id, str)
+                and isinstance(part_type, str)
+                and isinstance(part_message_id, str)
+            ):
+                known_parts[part_id] = {
+                    "type": part_type,
+                    "messageID": part_message_id,
+                    "sessionID": session_id,
+                }
             if trace is not None:
                 trace["timeline"].append(
                     {
@@ -310,23 +407,27 @@ def stream_opencode(
                 )
 
             if part_type == "step-start":
-                if not assistant_message_id and isinstance(part_message_id, str) and part_message_id:
-                    assistant_message_id = part_message_id
+                if (
+                    isinstance(part_message_id, str)
+                    and part_message_id
+                    and message_roles.get(part_message_id) == "assistant"
+                ):
+                    current_step_message_id = part_message_id
                 continue
 
-            if assistant_message_id and part_message_id and part_message_id != assistant_message_id:
+            if not isinstance(part_message_id, str):
+                continue
+            if message_roles.get(part_message_id) != "assistant":
+                continue
+            if current_step_message_id and part_message_id != current_step_message_id:
                 continue
 
             if part_type == "text":
-                delta = properties.get("delta")
-                if isinstance(delta, str) and delta:
-                    answer_parts.append(delta)
-                    continue
                 text = part.get("text")
-                if isinstance(text, str) and text:
+                if isinstance(text, str):
                     if answer_parts:
-                        answer_parts[-1] = text
-                    else:
+                        answer_parts = [text]
+                    elif text:
                         answer_parts.append(text)
                 continue
 
@@ -417,15 +518,17 @@ def stream_opencode(
 
             if part_type == "step-finish":
                 saw_step_finish = True
+                reason = part.get("reason")
                 if trace is not None:
                     trace["timeline"].append(
                         {
                             "ts": datetime.utcnow().isoformat() + "Z",
                             "kind": "step-finish",
                             "message_id": part_message_id,
+                            "reason": reason,
                         }
                     )
-                if _active_tool_count() == 0:
+                if reason != "tool-calls" and _active_tool_count() == 0:
                     break
 
     if stage_cb:
@@ -570,7 +673,7 @@ def run_eval(
     total = len(queued)
     completed = 0
 
-    print(f"开始评估: 共 {total} 题，并发数 {worker_count}，模式 {mode}")
+    print(f"开始评估: 共 {total} 题，并发数 {worker_count}，base_url {base_url}")
 
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         futures = [executor.submit(_run_single, q) for q in queued]
@@ -632,6 +735,16 @@ def main() -> None:
     )
     parser.add_argument("--report", help="Optional report JSON path; runs grade_by_llm.py after answering")
     args = parser.parse_args()
+
+    reachable, probe_detail = probe_base_url(args.base_url)
+    if reachable:
+        print(
+            f"✓ OpenCode 连通性探测通过: {probe_detail} "
+            f"(注意：401/403/404/405 说明服务有响应，不等于 down)"
+        )
+    else:
+        print(f"✗ OpenCode 连通性探测失败: {probe_detail}", file=sys.stderr)
+        sys.exit(1)
 
     questions = load_testset(Path(args.testset))
     headers = parse_headers(args.header)

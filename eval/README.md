@@ -53,6 +53,14 @@ docker run -d --name second_brain_opencode --restart unless-stopped \
   2>&1 | tee eval/reports/eval.log
 ```
 
+补充说明：
+
+- `9090` 是 OpenCode 直连端口，判断它是否活着时，不要用 `curl -f http://127.0.0.1:9090` 这种“只认 2xx”的探测。
+- 根路径返回 `401/403/404/405` 也说明 HTTP 服务已经有响应，不等于 down。
+- 更可靠的判断方式：
+  - 看 `docker ps` 是否映射了 `9090->9090`
+  - 直接运行 `run_eval_stream.py`，脚本会在启动前打印连通性探测结果
+
 ### 只运行指定题目
 
 ```bash

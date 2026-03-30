@@ -287,6 +287,23 @@ def _extract_source_ref_scores(tool_trace: Optional[Dict[str, Any]]) -> List[flo
     return scores
 
 
+def _collect_source_refs(tool_trace: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not tool_trace:
+        return []
+    events = tool_trace if isinstance(tool_trace, list) else tool_trace.get("events", [])
+    if not isinstance(events, list):
+        return []
+    refs: List[Dict[str, Any]] = []
+    for event in events:
+        event_refs = event.get("source_refs", [])
+        if not isinstance(event_refs, list):
+          continue
+        for ref in event_refs:
+            if isinstance(ref, dict):
+                refs.append(ref)
+    return refs
+
+
 def compute_traceability_metrics(
     answer: str,
     question: Dict[str, Any],
@@ -305,9 +322,46 @@ def compute_traceability_metrics(
     has_inline_citation = total_citations > 0
     inline_citation_coverage = 1.0 if (coverage_eligible and has_inline_citation) else 0.0
 
+    source_refs = _collect_source_refs(tool_trace)
+    source_ref_count = len(source_refs)
+    path_count = sum(
+        1
+        for ref in source_refs
+        if isinstance(ref.get("path") or ref.get("source_path") or ref.get("sourcePath"), str)
+        and str(ref.get("path") or ref.get("source_path") or ref.get("sourcePath")).strip()
+    )
+    citation_id_count = sum(
+        1
+        for ref in source_refs
+        if isinstance(ref.get("citation_id"), str) and str(ref.get("citation_id")).strip()
+    )
+    snippet_count = sum(
+        1
+        for ref in source_refs
+        if isinstance(ref.get("snippet"), str) and str(ref.get("snippet")).strip()
+    )
+    char_offset_count = sum(
+        1
+        for ref in source_refs
+        if isinstance(ref.get("char_offset"), (int, float))
+    )
+    precise_source_ref_count = sum(
+        1
+        for ref in source_refs
+        if (
+            isinstance(ref.get("path") or ref.get("source_path") or ref.get("sourcePath"), str)
+            and str(ref.get("path") or ref.get("source_path") or ref.get("sourcePath")).strip()
+            and isinstance(ref.get("citation_id"), str)
+            and str(ref.get("citation_id")).strip()
+            and isinstance(ref.get("snippet"), str)
+            and str(ref.get("snippet")).strip()
+            and isinstance(ref.get("char_offset"), (int, float))
+        )
+    )
+
     scores = _extract_source_ref_scores(tool_trace)
     strong_hits = sum(1 for s in scores if s < 0.8)
-    should_trigger_honesty = len(scores) == 0 or strong_hits == 0 or strong_hits < 2
+    should_trigger_honesty = precise_source_ref_count == 0 or (len(scores) > 0 and strong_hits == 0)
     did_trigger_honesty = bool(HONESTY_CUE_RE.search(answer or ""))
 
     return {
@@ -318,6 +372,12 @@ def compute_traceability_metrics(
         "unique_cited_ids": unique_cited_ids,
         "valid_citation_count": valid_citation_count,
         "traceable_citation_ids": sorted(trace_ids),
+        "source_ref_count": source_ref_count,
+        "path_field_coverage": round(path_count / source_ref_count, 4) if source_ref_count else 0.0,
+        "citation_id_field_coverage": round(citation_id_count / source_ref_count, 4) if source_ref_count else 0.0,
+        "snippet_field_coverage": round(snippet_count / source_ref_count, 4) if source_ref_count else 0.0,
+        "char_offset_field_coverage": round(char_offset_count / source_ref_count, 4) if source_ref_count else 0.0,
+        "precise_source_ref_count": precise_source_ref_count,
         "should_trigger_honesty": should_trigger_honesty,
         "did_trigger_honesty": did_trigger_honesty,
     }
@@ -519,6 +579,27 @@ class LLMJudge:
         honesty_trigger_precision = (
             true_positive / len(predicted_positive) if predicted_positive else 0.0
         )
+        avg_path_coverage = (
+            sum(float(m.get("path_field_coverage", 0.0)) for m in metric_cases) / len(metric_cases)
+            if metric_cases
+            else 0.0
+        )
+        avg_citation_id_coverage = (
+            sum(float(m.get("citation_id_field_coverage", 0.0)) for m in metric_cases) / len(metric_cases)
+            if metric_cases
+            else 0.0
+        )
+        avg_snippet_coverage = (
+            sum(float(m.get("snippet_field_coverage", 0.0)) for m in metric_cases) / len(metric_cases)
+            if metric_cases
+            else 0.0
+        )
+        avg_char_offset_coverage = (
+            sum(float(m.get("char_offset_field_coverage", 0.0)) for m in metric_cases) / len(metric_cases)
+            if metric_cases
+            else 0.0
+        )
+        precise_source_ref_total = sum(int(m.get("precise_source_ref_count", 0)) for m in metric_cases)
 
         return {
             "meta": {
@@ -537,6 +618,11 @@ class LLMJudge:
                     "inline_citation_coverage": round(coverage, 4),
                     "citation_accuracy": round(citation_accuracy, 4),
                     "honesty_trigger_precision": round(honesty_trigger_precision, 4),
+                    "path_field_coverage": round(avg_path_coverage, 4),
+                    "citation_id_field_coverage": round(avg_citation_id_coverage, 4),
+                    "snippet_field_coverage": round(avg_snippet_coverage, 4),
+                    "char_offset_field_coverage": round(avg_char_offset_coverage, 4),
+                    "precise_source_ref_count": precise_source_ref_total,
                 },
             },
             "category_stats": category_stats,

@@ -22,6 +22,7 @@ import {
   type HonestySignals,
 } from '../lib/chat-types';
 import { createEmptySession, createId, deriveTitle } from '../lib/chat-helpers';
+import { isPreciseCitationRef, normalizeCitationId } from '../lib/citation-utils';
 
 interface UseChatSessionsResult {
   sessions: ChatSession[];
@@ -123,9 +124,21 @@ const parseReferences = (value: unknown): CitationRef[] | undefined => {
   if (!Array.isArray(value)) {
     return undefined;
   }
-  return value.filter((item): item is CitationRef => {
+  return value.flatMap((item) => {
     const record = asRecord(item);
-    return Boolean(record && typeof record.id === 'string' && typeof record.sourcePath === 'string');
+    if (!record || typeof record.id !== 'string' || typeof record.sourcePath !== 'string') {
+      return [];
+    }
+    return [{
+      ...(record as unknown as CitationRef),
+      kind: record.kind === 'precise' || record.kind === 'file' ? record.kind : 'file',
+      provenance:
+        record.provenance === 'native' ||
+        record.provenance === 'synthetic_read' ||
+        record.provenance === 'content_path'
+          ? record.provenance
+          : 'content_path',
+    }];
   });
 };
 
@@ -135,7 +148,13 @@ const parseProcessSummary = (value: unknown): ProcessStepSummary[] | undefined =
 const buildCitationMap = (references?: CitationRef[]): Record<string, CitationRef> => {
   const citationMap: Record<string, CitationRef> = {};
   references?.forEach((ref) => {
+    if (!isPreciseCitationRef(ref)) {
+      return;
+    }
     citationMap[ref.id] = ref;
+    const normalized = normalizeCitationId(ref.id);
+    citationMap[normalized] = ref;
+    citationMap[`c${normalized}`] = ref;
   });
   return citationMap;
 };

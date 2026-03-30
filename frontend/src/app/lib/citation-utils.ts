@@ -1,4 +1,10 @@
-import type { CitationRef, HonestySignals } from './chat-types';
+import type {
+  CitationKind,
+  CitationProvenance,
+  CitationRef,
+  EvidenceRef,
+  HonestySignals,
+} from './chat-types';
 
 const DATE_PATTERNS: RegExp[] = [
   /\b(20\d{2})[-_/\.](0[1-9]|1[0-2])[-_/\.](0[1-9]|[12]\d|3[01])\b/,
@@ -11,6 +17,46 @@ const DATE_PATTERNS: RegExp[] = [
 export const normalizeCitationId = (id: string): string => (
   id.startsWith('c') ? id.slice(1) : id
 );
+
+export const hasPreciseEvidenceFields = (
+  ref: Pick<EvidenceRef, 'citationId' | 'snippet' | 'charOffsetStart'>,
+): boolean => (
+  typeof ref.citationId === 'string' &&
+  ref.citationId.trim().length > 0 &&
+  typeof ref.charOffsetStart === 'number' &&
+  !Number.isNaN(ref.charOffsetStart) &&
+  typeof ref.snippet === 'string' &&
+  ref.snippet.trim().length > 0
+);
+
+export const classifyEvidenceRef = (
+  ref: Pick<EvidenceRef, 'citationId' | 'snippet' | 'charOffsetStart'>,
+  provenance: CitationProvenance,
+): { kind: CitationKind; provenance: CitationProvenance } => ({
+  kind: hasPreciseEvidenceFields(ref) ? 'precise' : 'file',
+  provenance,
+});
+
+export const isPreciseCitationRef = (
+  ref?: Pick<CitationRef, 'kind'> | null,
+): boolean => ref?.kind === 'precise';
+
+export const getReferenceKindLabel = (ref: Pick<CitationRef, 'kind' | 'provenance'>): string => {
+  if (ref.kind === 'precise' && ref.provenance === 'native') {
+    return '精准片段';
+  }
+  if (ref.kind === 'precise' && ref.provenance === 'synthetic_read') {
+    return '补偿定位';
+  }
+  if (ref.provenance === 'content_path') {
+    return '文件级来源';
+  }
+  return ref.kind === 'precise' ? '精准片段' : '文件级来源';
+};
+
+export const shouldUsePrecisePreviewTarget = (
+  ref?: Pick<CitationRef, 'kind'> | null,
+): boolean => ref?.kind === 'precise';
 
 export const isWeakRetrievalScore = (score?: number): boolean => (
   typeof score === 'number' && score >= 0.8
@@ -108,7 +154,9 @@ export const extractFileLevelReferencesFromContent = (content: string): Citation
       sourcePath,
       sourceTitle: deriveSourceTitle(sourcePath),
       sourceDateLabel: inferSourceDateLabel(sourcePath),
-      snippet: match[2] ? `回答正文引用了该文件的第 ${match[2]} 行附近内容。` : '回答正文引用了该文件中的内容。',
+      snippet: match[2] ? `回答正文提到了该文件的第 ${match[2]} 行附近内容。` : '回答正文提到了该文件中的相关内容。',
+      kind: 'file',
+      provenance: 'content_path',
     });
   }
 
@@ -123,37 +171,36 @@ export const normalizeHonestySignalsWithReferences = (
     return signals;
   }
 
-  const hasOnlyUnscoredReferences =
-    !signals.hasDirectEvidence &&
-    signals.unscoredMatches.length >= references.length &&
-    signals.reasonCodes.includes('weak_match');
-
-  const referencesHaveConcreteScores = references.some(
-    (ref) => typeof ref.retrievalScore === 'number',
+  const preciseNativeRefs = references.filter(
+    (ref) => ref.kind === 'precise' && ref.provenance === 'native',
   );
-
-  const hasOnlyFileLevelFallback =
-    !referencesHaveConcreteScores &&
-    (
-      hasOnlyUnscoredReferences ||
-      signals.reasonCodes.includes('no_hit')
-    );
-
-  if (hasOnlyFileLevelFallback) {
-    return undefined;
-  }
-
-  if (!signals.reasonCodes.includes('no_hit') && !hasOnlyUnscoredReferences) {
+  if (preciseNativeRefs.length > 0) {
     return signals;
   }
 
+  const preciseSyntheticRefs = references.filter(
+    (ref) => ref.kind === 'precise' && ref.provenance === 'synthetic_read',
+  );
+  const fileRefs = references.filter((ref) => ref.kind === 'file');
   const nextReasonCodes = signals.reasonCodes.filter((code) => code !== 'no_hit');
+  const limitationNote = preciseSyntheticRefs.length > 0
+    ? '当前可点击定位主要来自读取补偿，不是上游稳定返回的原生证据链。'
+    : fileRefs.length > 0
+      ? '当前仅拿到文件级来源，还没有稳定的精准片段证据。'
+      : signals.limitationNote;
+
   return {
     ...signals,
-    reasonCodes: nextReasonCodes.length > 0 ? nextReasonCodes : ['weak_match'],
-    evidenceQuality: signals.evidenceQuality === 'none' ? 'weak' : signals.evidenceQuality,
-    limitationNote: '回答正文已显式引用相关笔记文件，但上游事件未返回精确检索分数，请优先核对原文。',
-    hasDirectEvidence: true,
+    reasonCodes: nextReasonCodes.length > 0 ? nextReasonCodes : ['insufficient_hits'],
+    evidenceQuality:
+      preciseSyntheticRefs.length > 0
+        ? 'partial'
+        : fileRefs.length > 0
+          ? 'weak'
+          : signals.evidenceQuality,
+    limitationNote,
+    hasDirectEvidence: preciseSyntheticRefs.length > 0,
+    hasSufficientEvidence: false,
     retrievalHitCount: Math.max(signals.retrievalHitCount ?? 0, references.length),
     unscoredMatches: Array.from(new Set([...signals.unscoredMatches, ...references.map((ref) => ref.id)])),
   };

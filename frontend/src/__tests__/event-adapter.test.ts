@@ -86,6 +86,8 @@ describe('enrichCitationsWithEvidence', () => {
     expect(enriched[0].retrievalScore).toBe(0.85);
     expect(enriched[0].weakMatch).toBe(true);
     expect(enriched[0].snippet).toBe('内容片段1');
+    expect(enriched[0].kind).toBe('precise');
+    expect(enriched[0].provenance).toBe('native');
     expect(enriched[1].sourcePath).toBe(''); // 未找到匹配
   });
 
@@ -173,6 +175,8 @@ describe('deriveSyntheticSourceRefsFromCall', () => {
     expect(firstRefs[0].citationId).toBe('c01');
     expect(secondRefs[0].citationId).toBe('c02');
     expect(firstRefs[0].snippet).toContain('动态规划先定义状态');
+    expect(firstRefs[0].kind).toBe('precise');
+    expect(firstRefs[0].provenance).toBe('synthetic_read');
   });
 });
 
@@ -394,7 +398,7 @@ describe('computeHonestySignals', () => {
     
     expect(signals.evidenceQuality).toBe('partial');
     expect(signals.weakMatches).toContain('01'); // 0.85 >= 0.8 是弱匹配
-    expect(signals.reasonCodes).toContain('insufficient_hits');
+    expect(signals.reasonCodes).toEqual([]);
   });
 
   it('should handle error calls', () => {
@@ -415,9 +419,9 @@ describe('computeHonestySignals', () => {
 
     const signals = computeHonestySignals(citations, false, 0);
     
-    expect(signals.evidenceQuality).toBe('weak');
+    expect(signals.evidenceQuality).toBe('partial');
     expect(signals.unscoredMatches).toEqual(['01', '02']);
-    expect(signals.reasonCodes).toContain('weak_match');
+    expect(signals.reasonCodes).toEqual([]);
   });
 
   it('should emit no_hit reason when there are no citations', () => {
@@ -475,8 +479,10 @@ describe('synthesizeFinalEvent', () => {
 
     expect(finalEvent.references).toHaveLength(1);
     expect(finalEvent.references?.[0].sourcePath).toBe('/notes/dp_notes.md');
-    expect(finalEvent.references?.[0].charOffsetStart).toBeUndefined();
-    expect(finalEvent.honestySignals).toBeUndefined();
+    expect(finalEvent.references?.[0].kind).toBe('precise');
+    expect(finalEvent.references?.[0].provenance).toBe('synthetic_read');
+    expect(finalEvent.references?.[0].charOffsetStart).toBe(42);
+    expect(finalEvent.honestySignals?.reasonCodes).toContain('insufficient_hits');
   });
 
   it('should resolve inline citations through synthetic read refs when metadata source_refs are absent', () => {
@@ -518,9 +524,11 @@ describe('synthesizeFinalEvent', () => {
     expect(finalEvent.references?.[0].id).toBe('01');
     expect(finalEvent.references?.[0].sourcePath).toBe('/notes/dp_notes.md');
     expect(finalEvent.references?.[0].snippet).toContain('动态规划的核心');
+    expect(finalEvent.references?.[0].kind).toBe('precise');
+    expect(finalEvent.references?.[0].provenance).toBe('synthetic_read');
   });
 
-  it('should collapse repeated read calls from the same file into one file-level fallback reference', () => {
+  it('should keep read-call compensation refs as precise synthetic references when offsets are available', () => {
     const finalEvent = synthesizeFinalEvent({
       startTime: Date.now() - 1200,
       activeCalls: new Map(),
@@ -550,8 +558,10 @@ describe('synthesizeFinalEvent', () => {
       sourceRefMap: new Map(),
     });
 
-    expect(finalEvent.references).toHaveLength(1);
+    expect(finalEvent.references).toHaveLength(2);
     expect(finalEvent.references?.[0].sourcePath).toBe('/notes/dp_notes.md');
+    expect(finalEvent.references?.[0].kind).toBe('precise');
+    expect(finalEvent.references?.[0].provenance).toBe('synthetic_read');
     expect(finalEvent.references?.[0].snippet?.length ?? 0).toBeGreaterThan(0);
   });
 
@@ -570,7 +580,9 @@ describe('synthesizeFinalEvent', () => {
 
     expect(finalEvent.references).toHaveLength(2);
     expect(finalEvent.references?.[0].sourcePath).toBe('data/notes/my_markdowns/动态规划.md');
-    expect(finalEvent.honestySignals).toBeUndefined();
+    expect(finalEvent.references?.[0].kind).toBe('file');
+    expect(finalEvent.references?.[0].provenance).toBe('content_path');
+    expect(finalEvent.honestySignals?.reasonCodes).toContain('insufficient_hits');
   });
 
   it('should mark final process phase as completed', () => {

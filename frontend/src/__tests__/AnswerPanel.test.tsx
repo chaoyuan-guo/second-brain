@@ -101,8 +101,7 @@ describe('AnswerPanel', () => {
     expect(screen.getByText('引用来源')).toBeInTheDocument();
     expect(screen.getAllByText('动态规划.md').length).toBeGreaterThan(0);
     expect(screen.getAllByText('爬楼梯动态规划思路解析.md').length).toBeGreaterThan(0);
-    expect(screen.queryByText('笔记中没有检索到直接相关记录，回答只能基于有限线索推断。')).not.toBeInTheDocument();
-    expect(screen.queryByText('回答正文已显式引用相关笔记文件，但上游事件未返回精确检索分数，请优先核对原文。')).not.toBeInTheDocument();
+    expect(screen.getByText('当前仅拿到文件级来源，还没有稳定的精准片段证据。')).toBeInTheDocument();
   });
 
   it('does not fabricate inline citations from raw file paths in fallback mode', () => {
@@ -127,6 +126,31 @@ describe('AnswerPanel', () => {
 
     expect(screen.getByText(/结论如下。引用：data\/notes\/my_markdowns\/动态规划\.md:632/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /查看引用 02/ })).not.toBeInTheDocument();
+  });
+
+  it('does not bind inline citation tokens to file-level references', () => {
+    render(
+      <AnswerPanel
+        message={createMessage({
+          directAnswer: '这里只拿到了文件级来源 [c01]。',
+          references: [
+            {
+              id: '01',
+              sourcePath: '/app/data/notes/my_markdowns/动态规划.md',
+              sourceTitle: '动态规划.md',
+              snippet: '回答正文提到了该文件中的相关内容。',
+              kind: 'file',
+              provenance: 'content_path',
+            },
+          ],
+        })}
+        copiedKey={null}
+        onCopyCode={() => {}}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: /查看引用 01/ })).not.toBeInTheDocument();
+    expect(screen.getByText('这里只拿到了文件级来源 [c01]。')).toBeInTheDocument();
   });
 
   it('sanitizes raw snippet wrappers in references panel', () => {
@@ -154,6 +178,32 @@ describe('AnswerPanel', () => {
     expect(screen.queryByText(/<path>/)).not.toBeInTheDocument();
   });
 
+  it('shows provenance labels for synthetic precise references', () => {
+    render(
+      <AnswerPanel
+        message={createMessage({
+          directAnswer: '结论见 [c01]。',
+          references: [
+            {
+              id: '01',
+              sourcePath: '/app/data/notes/my_markdowns/动态规划.md',
+              sourceTitle: '动态规划.md',
+              snippet: '动态规划的核心是状态转移。',
+              charOffsetStart: 620,
+              kind: 'precise',
+              provenance: 'synthetic_read',
+            },
+          ],
+        })}
+        copiedKey={null}
+        onCopyCode={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /查看引用 01/ })).toBeInTheDocument();
+    expect(screen.getByText('1 条补偿定位')).toBeInTheDocument();
+  });
+
   it('renders inline citations inside markdown list items with mixed children', () => {
     render(
       <AnswerPanel
@@ -165,6 +215,9 @@ describe('AnswerPanel', () => {
               sourcePath: '/app/data/notes/my_markdowns/动态规划.md',
               sourceTitle: '动态规划.md',
               snippet: '动态规划要求问题具备最优子结构。',
+              charOffsetStart: 320,
+              kind: 'precise',
+              provenance: 'native',
             },
           ],
         })}

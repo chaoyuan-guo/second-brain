@@ -34,8 +34,10 @@ require_cmd() {
 
 wait_for_opencode() {
   local deadline=$((SECONDS + OPENCODE_SELF_CHECK_TIMEOUT))
+  local code
   while [ "$SECONDS" -lt "$deadline" ]; do
-    if curl -fsS "$OPENCODE_URL/session" >/dev/null 2>&1; then
+    code="$(curl -sS -o /tmp/opencode_probe.body -w '%{http_code}' "$OPENCODE_URL" || true)"
+    if [ "$code" != "000" ]; then
       return 0
     fi
     sleep 1
@@ -53,6 +55,7 @@ main() {
     log "opencode API not ready within ${OPENCODE_SELF_CHECK_TIMEOUT}s"
     exit 1
   fi
+  log "HTTP probe succeeded (401/403/404 on root still counts as reachable)"
 
   local session_json
   session_json="$(curl -fsS -X POST "$OPENCODE_URL/session" \

@@ -21,6 +21,11 @@ def test_compute_traceability_metrics_tracks_citation_accuracy_and_honesty_trigg
     assert metrics["citation_accuracy"] == 1.0
     assert metrics["total_citations"] == 1
     assert metrics["valid_citation_count"] == 1
+    assert metrics["path_field_coverage"] == 0.0
+    assert metrics["citation_id_field_coverage"] == 1.0
+    assert metrics["snippet_field_coverage"] == 0.0
+    assert metrics["char_offset_field_coverage"] == 0.0
+    assert metrics["precise_source_ref_count"] == 0
     assert metrics["should_trigger_honesty"] is True
     assert metrics["did_trigger_honesty"] is True
 
@@ -52,6 +57,11 @@ def test_build_report_aggregates_traceability_metrics():
                 "inline_citation_coverage": 1.0,
                 "total_citations": 2,
                 "valid_citation_count": 2,
+                "path_field_coverage": 1.0,
+                "citation_id_field_coverage": 1.0,
+                "snippet_field_coverage": 1.0,
+                "char_offset_field_coverage": 1.0,
+                "precise_source_ref_count": 2,
                 "did_trigger_honesty": True,
                 "should_trigger_honesty": True,
             },
@@ -71,6 +81,11 @@ def test_build_report_aggregates_traceability_metrics():
                 "inline_citation_coverage": 0.0,
                 "total_citations": 1,
                 "valid_citation_count": 0,
+                "path_field_coverage": 0.5,
+                "citation_id_field_coverage": 0.0,
+                "snippet_field_coverage": 0.0,
+                "char_offset_field_coverage": 0.0,
+                "precise_source_ref_count": 0,
                 "did_trigger_honesty": False,
                 "should_trigger_honesty": True,
             },
@@ -83,3 +98,8 @@ def test_build_report_aggregates_traceability_metrics():
     assert metrics["inline_citation_coverage"] == 0.5
     assert metrics["citation_accuracy"] == 0.6667
     assert metrics["honesty_trigger_precision"] == 1.0
+    assert metrics["path_field_coverage"] == 0.75
+    assert metrics["citation_id_field_coverage"] == 0.5
+    assert metrics["snippet_field_coverage"] == 0.5
+    assert metrics["char_offset_field_coverage"] == 0.5
+    assert metrics["precise_source_ref_count"] == 2

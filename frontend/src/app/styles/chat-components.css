@@ -821,6 +821,21 @@
   color: #15803d;
 }
 
+.quality-badge.precise-native {
+  background: rgba(79, 107, 255, 0.12);
+  color: var(--accent);
+}
+
+.quality-badge.precise-synthetic {
+  background: rgba(14, 165, 233, 0.14);
+  color: #0369a1;
+}
+
+.quality-badge.file-level {
+  background: rgba(148, 163, 184, 0.15);
+  color: #475569;
+}
+
 .quality-badge.weak {
   background: rgba(251, 191, 36, 0.15);
   color: #b45309;
@@ -929,6 +944,24 @@
   font-size: 0.78rem;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+.ref-kind-badge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.ref-kind-badge.precise {
+  background: rgba(79, 107, 255, 0.12);
+  color: var(--accent);
+}
+
+.ref-kind-badge.file {
+  background: rgba(148, 163, 184, 0.14);
+  color: #475569;
 }
 
 .ref-weak-badge {

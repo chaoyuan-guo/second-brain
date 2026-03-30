@@ -13,6 +13,7 @@ import {
   type ToolCallRecord,
 } from '../../_lib/event-adapter';
 import type { EvidenceRef } from '../../../lib/chat-types';
+import { classifyEvidenceRef } from '../../../lib/citation-utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -77,6 +78,14 @@ const extractSourceRefs = (metadata: unknown): EvidenceRef[] => {
       charOffsetStart: charOffset,
       retrievalScore: score,
       citationId,
+      ...classifyEvidenceRef(
+        {
+          citationId,
+          snippet,
+          charOffsetStart: charOffset,
+        },
+        'native',
+      ),
     });
   });
 

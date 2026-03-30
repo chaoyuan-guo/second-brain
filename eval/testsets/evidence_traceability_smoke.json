@@ -1,0 +1,146 @@
+{
+  "meta": {
+    "name": "evidence_traceability_smoke",
+    "version": "1.0",
+    "description": "证据可追溯性最小验收集",
+    "eval_method": "llm_judge"
+  },
+  "evaluation_dimensions": {
+    "personalization": { "name": "个性化命中", "weight": 0.25 },
+    "precision": { "name": "精准简洁", "weight": 0.2 },
+    "honesty": { "name": "诚实性", "weight": 0.25 },
+    "traceability": { "name": "可追溯性", "weight": 0.3 }
+  },
+  "questions": [
+    {
+      "id": "A01_backtrack_path_pop",
+      "category": "smoke_traceability",
+      "difficulty": "easy",
+      "query": "回溯算法中 path.pop() 的作用是什么？笔记里是怎么解释的？",
+      "expected_sources": ["回溯算法理解与子集问题本质.md"],
+      "reference_key_points": [
+        "path.pop() 就是回溯操作本身，表示撤销上一步的选择",
+        "笔记里用机器人从 [1,2,3] 退回到 [1,2] 再探索不要 3 的路径来解释",
+        "回答应能让用户点击 citation 后直接看到这段解释"
+      ],
+      "evaluation_criteria": {
+        "traceability": "回答中的关键事实句应带 citation，且应能回到笔记中的机器人退回示例",
+        "precision": "应聚焦 path.pop() 的作用，不要展开成整套回溯教程",
+        "honesty": "只使用笔记中实际出现过的解释"
+      },
+      "anti_patterns": [
+        "没有 citation",
+        "给出通用解释但不引用笔记",
+        "文件级来源冒充精准片段证据"
+      ],
+      "dimension_focus": ["traceability", "precision"]
+    },
+    {
+      "id": "A02_backtrack_param_design",
+      "category": "smoke_traceability",
+      "difficulty": "medium",
+      "query": "回溯函数的入参设计我一直搞不清楚，笔记里有讨论过吗？",
+      "expected_sources": ["回溯算法理解与子集问题本质.md"],
+      "reference_key_points": [
+        "笔记中有这类困惑记录",
+        "用户原始困惑是 backtrack 入参到底写什么",
+        "解释围绕 nums、start、path 以及决策树心智模型展开"
+      ],
+      "evaluation_criteria": {
+        "personalization": "应引用用户原始困惑，不要退化成通用教程",
+        "traceability": "应引用具体笔记内容",
+        "precision": "应聚焦入参设计这个点"
+      },
+      "anti_patterns": [
+        "不查笔记直接回答",
+        "没有证据引用"
+      ],
+      "dimension_focus": ["personalization", "traceability"]
+    },
+    {
+      "id": "A03_bfs_step_counting",
+      "category": "smoke_traceability",
+      "difficulty": "medium",
+      "query": "BFS 的两种计步方式有什么区别？我在哪道题里搞混过？",
+      "expected_sources": ["滑动谜题BFS解题思路.md", "BFS练习题 II.md"],
+      "reference_key_points": [
+        "两种计步方式分别是按层计步和状态携带步数",
+        "滑动谜题笔记里比较了两种写法",
+        "BFS练习题 II 里记录了用户在腐烂橘子题中搞混模板的经历"
+      ],
+      "evaluation_criteria": {
+        "traceability": "应至少涉及两个来源，且不同 citation 能回到不同文件",
+        "honesty": "只基于实际笔记记录的搞混场景回答"
+      },
+      "anti_patterns": [
+        "只引用一个来源",
+        "编造用户没写过的搞混经历"
+      ],
+      "dimension_focus": ["traceability", "honesty"]
+    },
+    {
+      "id": "A04_palindrome_subseq_submission_690994503",
+      "category": "smoke_traceability",
+      "difficulty": "easy",
+      "query": "我 2026-01-13 提交的最长回文子序列代码（提交 690994503）有什么 bug？",
+      "expected_sources": ["leetcode_submissions.md"],
+      "reference_key_points": [
+        "n 未定义",
+        "return dp[n][n-1] 越界，正确应为 dp[0][n-1]",
+        "回答应引用具体提交记录"
+      ],
+      "evaluation_criteria": {
+        "traceability": "应能回到对应提交内容附近",
+        "precision": "要准确指出两个 bug"
+      },
+      "anti_patterns": [
+        "不提提交 ID",
+        "漏掉 n 未定义"
+      ],
+      "dimension_focus": ["traceability", "precision"]
+    },
+    {
+      "id": "A05_coin_change_two_errors_0106",
+      "category": "smoke_traceability",
+      "difficulty": "hard",
+      "query": "2026-01-06 我在零钱兑换上连错两次，分别是什么问题？",
+      "expected_sources": ["leetcode_submissions.md"],
+      "reference_key_points": [
+        "实际不是两次，而是 4 次错误提交",
+        "回答应先纠正题设，再分析不同提交的错误",
+        "应引用对应提交记录作为证据"
+      ],
+      "evaluation_criteria": {
+        "honesty": "必须先纠正用户说法",
+        "traceability": "应引用具体提交记录"
+      },
+      "anti_patterns": [
+        "迎合用户说法只分析两次",
+        "不给出可追溯证据"
+      ],
+      "dimension_focus": ["honesty", "traceability"]
+    },
+    {
+      "id": "A06_fenwick_tree_no_hit",
+      "category": "smoke_traceability",
+      "difficulty": "easy",
+      "query": "我笔记里系统写过树状数组吗？",
+      "expected_sources": [],
+      "reference_key_points": [
+        "当前笔记里没有树状数组的系统性记录",
+        "回答应先明确没有相关记录",
+        "不能生成伪 citation 或把无关来源当成命中"
+      ],
+      "evaluation_criteria": {
+        "honesty": "应明确无记录，而不是强行推断",
+        "traceability": "no-hit 场景下不应制造 citation"
+      },
+      "anti_patterns": [
+        "生成伪 citation",
+        "误命中无关来源",
+        "不说明缺少记录"
+      ],
+      "dimension_focus": ["honesty", "traceability"]
+    }
+  ]
+}

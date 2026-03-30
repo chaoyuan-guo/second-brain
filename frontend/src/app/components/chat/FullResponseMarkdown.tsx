@@ -4,6 +4,7 @@ import { Children, cloneElement, isValidElement, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { CitationRef } from '../../lib/chat-types';
+import { isPreciseCitationRef, normalizeCitationId } from '../../lib/citation-utils';
 import { InlineCitation } from './InlineCitation';
 
 interface FullResponseMarkdownProps {
@@ -30,6 +31,13 @@ const renderTextWithCitations = (
   while ((match = CITE_RE.exec(text)) !== null) {
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index));
+    }
+    const normalizedId = normalizeCitationId(match[1]);
+    const ref = citationMap[match[1]] || citationMap[normalizedId] || citationMap[`c${normalizedId}`];
+    if (!isPreciseCitationRef(ref)) {
+      parts.push(match[0]);
+      lastIndex = match.index + match[0].length;
+      continue;
     }
     parts.push(
       <InlineCitation
