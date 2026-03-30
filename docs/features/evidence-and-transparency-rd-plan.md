@@ -9,7 +9,7 @@
 
 ## 1. 当前判断
 
-这项需求已经进入“应用层体验已收口，但原生证据链路仍未达标”的阶段。
+这项需求已经进入“原生证据链路已打通，当前重点转向稳定性守护与持续回归”的阶段。
 
 已经具备：
 
@@ -20,29 +20,32 @@
 - `kind / provenance` 语义区分与对应前端表达
 - A01-A06 固定 smoke 样本、评估报告与人工走查清单
 - 前端回归测试与评估侧字段覆盖率统计
+- OpenCode 原生 `read` 已能在 completed 事件中稳定返回 `path / citation_id / snippet / char_offset`
+- 命中类问答的 citation 主路径已切换到 `precise/native`
+- 单题、串行全量、并发全量 smoke 都已验证过 native 主链路
 
-还没收口：
+当前剩余事项：
 
-- OpenCode 原生 `source_refs` 仍未稳定返回 `path / citation_id / snippet / char_offset`
-- 当前 smoke 虽已通过，但精准回溯主路径仍主要依赖应用层适配，而不是 `precise/native`
-- A05 的诚实性还有提升空间，回答需要更稳定地先纠正“实际不止两次错误提交”
+- 继续观察批量运行下的回答收口稳定性，防止重新退回 `maximum steps` 类执行层输出
+- 继续把评估与人工走查对齐到“只认 `precise/native` 为精准达标”的口径
+- 保持 A05 先纠偏、A06 0 伪 citation 的行为在后续改动中不回退
 
 ---
 
 ## 2. 本轮目标
 
-本轮只做 4 件事：
+本轮目标已经基本完成，当前保留 3 个后续目标：
 
-1. 让有直接证据的回答，核心事实句旁稳定出现可点击 citation
-2. 让用户点击 citation 后，能直接看到支撑片段，并立即知道它为什么支撑当前回答
-3. 让精准片段级引用与文件级兜底引用在前端表达上明确区分，不制造虚假精确感
-4. 建立一组固定样本，作为后续迭代的最小验收闭环
+1. 保持有直接证据的回答，核心事实句旁稳定出现可点击 native citation
+2. 保持用户点击 citation 后，能直接看到支撑片段，并立即知道它为什么支撑当前回答
+3. 保持固定样本 A01-A06 的回归闭环，及时发现 native 主链路退化
 
 非目标：
 
 - 不追求这一轮升级成严格行号级定位
 - 不重做整套评估体系
 - 不继续扩展更多展示组件
+- 不把应用层 fallback 重新包装成 native 主链路
 
 ---
 
@@ -53,10 +56,11 @@
 1. 优先把精准回溯建立在 OpenCode 原生 `source_refs` 上
 2. 前端补偿只用于避免体验断裂，不升级成默认主路径
 
-执行约束：
+当前实施结论：
 
-- 如果高频命中问题长期拿不到稳定 `source_refs`，应明确标记为上游 blocker
-- 进入下一步之前，必须先有可观察结果，而不是“方向基本正确”
+- OpenCode 原生能力已通过项目级插件扩展打通 `read -> completed event metadata.source_refs`
+- 不需要引入 MCP，也不需要把证据主链路迁移到前端或自建后端
+- 后续优化优先落在 OpenCode prompt、工具使用策略、步数预算与 smoke 守护上
 
 ---
 
@@ -71,31 +75,37 @@
 | 状态 | 任务 | 当前结果 / 下一步 | 完成标志 |
 |---|---|---|---|
 | 已完成 | 补一份 `source_refs` 最小字段契约说明 | 已产出 `source-refs-contract.md`，字段要求与降级语义已书面化 | 团队对原生证据链路的最低要求形成书面共识 |
-| 已验证，但仍阻塞 | 确认原生 `source_refs` 在常见命中类问答中的稳定性 | smoke 报告已补字段覆盖率统计；当前 `path / citation_id / snippet / char_offset` 覆盖率仍为 0，需要继续追上游原生返回 | 能明确回答哪些问题已稳定返回 `path / citation_id / snippet / char_offset`，哪些还不行 |
+| 已完成 | 确认原生 `source_refs` 在常见命中类问答中的稳定性 | 已通过 OpenCode 原生 `read` 插件把 `path / citation_id / snippet / char_offset` 写回 completed 事件；命中类问题已出现稳定 `precise/native` | 能在 tool trace 中直接看到 completed 事件携带四字段 `source_refs` |
 | 已完成 | 运行固定样本并产出首版基线结果 | A01-A06 已跑通，当前基线为 6/6 通过，平均分 0.867 | 已有一版可复查的样本结果，可用于后续回归对比 |
 | 已完成 | 收紧“精准片段级引用”和“文件级兜底引用”的前端语义边界 | 已引入 `kind / provenance`，inline citation 只绑定 `precise`，no-hit 不再伪造引用 | 前端不再把文件级来源误读成精准片段证据 |
 | 已完成 | 补齐引用定位与降级语义的前端回归测试 | 单文件命中、多来源命中、文件级 fallback、no-hit 已补回归保护 | 关键样本的交互与降级场景有回归保护 |
 | 已完成 | 增加人工走查清单 | 已产出 smoke checklist，可按同一套步骤重复验收 | 可以用同一套清单重复验收 |
-| 下一阶段主任务 | 推进原生 `source_refs` 达标 | 聚焦 OpenCode 原生链路，优先让命中类问答稳定返回 `precise/native` | smoke 中命中类问题不再主要依赖 synthetic / file 级降级路径 |
+| 已完成 | 推进原生 `source_refs` 达标 | 命中类问答的 citation 主路径已切到 `precise/native`，synthetic / file 级来源仅保留为降级体验 | smoke 中命中类问题不再主要依赖 synthetic / file 级降级路径 |
+| 下一阶段主任务 | 稳定性守护与持续回归 | 继续监控批量运行、容器升级、prompt 调整后的收口稳定性，防止 native 主链路回退 | A01-A06 在单题、串行、并发回归中都能持续保持预期行为 |
 
 风险与阻塞：
 
-- 上游若不能稳定返回 `citation_id + snippet + char_offset`，精准回溯会停留在“部分可用”
-- 当前 smoke 报告中 `path_field_coverage / citation_id_field_coverage / snippet_field_coverage / char_offset_field_coverage / precise_source_ref_count` 仍为 0，说明 blocker 仍在原生链路
-- 如果继续把 file-level fallback 也算作“引用成功”，会导致项目误判已完成
-- snippet 清洗、截断、格式归一化可能导致点击后只能落到宽泛区域
+- 后续如果 OpenCode 升级、prompt 调整或容器重构影响事件结构，`completed` 事件里的 `source_refs` 可能回退
+- 如果重新把 file-level fallback 也算作“引用成功”，会导致项目误判 native 主链路仍然健康
+- snippet 清洗、截断、格式归一化仍可能让点击落点变宽，需要用 smoke 持续盯
+- 批量运行时若再次出现过度检索或多余脚本辅助定位，仍可能影响回答收口稳定性
 
 ---
 
 ## 5. 阶段验收口径
 
-满足以下条件，才算这一轮基本完成：
+当前阶段满足以下条件，视为本轮已基本完成：
 
 1. 常见命中类问答中，核心事实句能稳定出现可点击 citation
 2. 在固定样本 A01-A06 中，命中类问题的 citation 主路径以原生 `source_refs` 为主，而不是前端 synthetic 补偿
 3. 用户点击 citation 后，默认能直接看到支撑片段，并能立即识别其与当前回答的关系
 4. file-level fallback 被清晰视为降级路径，而不是精准回溯达标表现
 5. 固定样本 A01-A06 已有首版基线结果，后续改动可以用同一套样本复跑对比
+
+当前状态：
+
+- 上述 5 条已在最近一轮 native smoke 中基本满足
+- 后续验收重点从“是否能打通”转为“是否持续稳定”
 
 ---
 
@@ -125,6 +135,7 @@
 - 是否有 `path / citation_id / snippet / char_offset`
 - 点击后是否能直接看到支撑片段
 - 是否出现伪 citation、错链或宽泛落点
+- 批量运行时是否出现 `maximum steps`、执行层模板、或证据已足够却继续过度检索
 
 ---
 
@@ -137,3 +148,4 @@
 - 只在任务状态、验收口径、样本列表发生变化时更新
 - 新失败模式出现时，优先替换样本，不轻易扩表
 - 如果文档再次变长，优先删背景说明，保留任务、验收、样本
+- 如果 native 主链路的实现落点发生变化，要同步更新这里对“当前判断”和“实施策略”的描述
