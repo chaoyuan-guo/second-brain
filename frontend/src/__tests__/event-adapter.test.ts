@@ -180,6 +180,46 @@ describe('deriveSyntheticSourceRefsFromCall', () => {
   });
 });
 
+describe('mergeSourceRefs', () => {
+  it('prefers native precise refs over synthetic precise refs for the same citation', () => {
+    const acc = createProcessAccumulator();
+
+    mergeSourceRefs(acc, [
+      {
+        sourcePath: '/notes/dp_notes.md',
+        sourceTitle: '动态规划',
+        citationId: 'c01',
+        charOffsetStart: 42,
+        snippet: '补偿定位：动态规划先定义状态。',
+        kind: 'precise',
+        provenance: 'synthetic_read',
+      },
+    ]);
+
+    mergeSourceRefs(acc, [
+      {
+        sourcePath: '/notes/dp_notes.md',
+        sourceTitle: '动态规划',
+        citationId: 'c01',
+        charOffsetStart: 120,
+        snippet: '原生证据：动态规划先定义状态，再写状态转移。',
+        kind: 'precise',
+        provenance: 'native',
+      },
+    ]);
+
+    const finalEvent = synthesizeFinalEvent({
+      ...acc,
+      assistantContent: '动态规划的核心是先定义状态，再写状态转移。[c01]',
+    });
+
+    expect(finalEvent.references).toHaveLength(1);
+    expect(finalEvent.references?.[0].provenance).toBe('native');
+    expect(finalEvent.references?.[0].charOffsetStart).toBe(120);
+    expect(finalEvent.references?.[0].snippet).toContain('原生证据');
+  });
+});
+
 // ============================================================================
 // splitDirectAnswer 测试
 // ============================================================================

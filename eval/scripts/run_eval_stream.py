@@ -181,6 +181,43 @@ def probe_base_url(
     return False, f"{base_url.rstrip('/')} -> no HTTP response"
 
 
+def _get_source_ref_path(ref: Dict[str, Any]) -> str:
+    value = ref.get("path") or ref.get("source_path") or ref.get("sourcePath") or ""
+    return str(value).strip()
+
+
+def _summarize_source_refs(source_refs: Any) -> Dict[str, int]:
+    refs = source_refs if isinstance(source_refs, list) else []
+    path_count = 0
+    citation_id_count = 0
+    snippet_count = 0
+    char_offset_count = 0
+    precise_count = 0
+
+    for ref in refs:
+        if not isinstance(ref, dict):
+            continue
+        has_path = bool(_get_source_ref_path(ref))
+        has_citation_id = isinstance(ref.get("citation_id"), str) and bool(str(ref.get("citation_id")).strip())
+        has_snippet = isinstance(ref.get("snippet"), str) and bool(str(ref.get("snippet")).strip())
+        has_char_offset = isinstance(ref.get("char_offset"), (int, float))
+
+        path_count += int(has_path)
+        citation_id_count += int(has_citation_id)
+        snippet_count += int(has_snippet)
+        char_offset_count += int(has_char_offset)
+        precise_count += int(has_path and has_citation_id and has_snippet and has_char_offset)
+
+    return {
+        "source_ref_count": len(refs),
+        "path_count": path_count,
+        "citation_id_count": citation_id_count,
+        "snippet_count": snippet_count,
+        "char_offset_count": char_offset_count,
+        "precise_source_ref_count": precise_count,
+    }
+
+
 def stream_opencode(
     base_url: str,
     query: str,
@@ -490,6 +527,9 @@ def stream_opencode(
                     metadata = state.get("metadata")
                     if isinstance(metadata, dict):
                         tool_event["source_refs"] = metadata.get("source_refs", [])
+                    else:
+                        tool_event["source_refs"] = []
+                    tool_event["source_ref_stats"] = _summarize_source_refs(tool_event.get("source_refs"))
                     tool_events.append(tool_event)
                     continue
 

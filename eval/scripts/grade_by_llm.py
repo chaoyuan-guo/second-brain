@@ -267,6 +267,22 @@ def _extract_source_ref_citation_ids(tool_trace: Optional[Dict[str, Any]]) -> Li
     return collected
 
 
+def _get_source_ref_path(ref: Dict[str, Any]) -> str:
+    value = ref.get("path") or ref.get("source_path") or ref.get("sourcePath") or ""
+    return str(value).strip()
+
+
+def _is_precise_source_ref(ref: Dict[str, Any]) -> bool:
+    return (
+        bool(_get_source_ref_path(ref))
+        and isinstance(ref.get("citation_id"), str)
+        and str(ref.get("citation_id")).strip() != ""
+        and isinstance(ref.get("snippet"), str)
+        and str(ref.get("snippet")).strip() != ""
+        and isinstance(ref.get("char_offset"), (int, float))
+    )
+
+
 def _extract_source_ref_scores(tool_trace: Optional[Dict[str, Any]]) -> List[float]:
     if not tool_trace:
         return []
@@ -304,6 +320,56 @@ def _collect_source_refs(tool_trace: Optional[Dict[str, Any]]) -> List[Dict[str,
     return refs
 
 
+def _build_native_hit_matrix(tool_trace: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not tool_trace:
+        return []
+    events = tool_trace if isinstance(tool_trace, list) else tool_trace.get("events", [])
+    if not isinstance(events, list):
+        return []
+
+    matrix: List[Dict[str, Any]] = []
+    for index, event in enumerate(events, start=1):
+        refs = event.get("source_refs", [])
+        if not isinstance(refs, list):
+            refs = []
+
+        path_count = 0
+        citation_id_count = 0
+        snippet_count = 0
+        char_offset_count = 0
+        precise_count = 0
+
+        for ref in refs:
+            if not isinstance(ref, dict):
+                continue
+            has_path = bool(_get_source_ref_path(ref))
+            has_citation_id = isinstance(ref.get("citation_id"), str) and bool(str(ref.get("citation_id")).strip())
+            has_snippet = isinstance(ref.get("snippet"), str) and bool(str(ref.get("snippet")).strip())
+            has_char_offset = isinstance(ref.get("char_offset"), (int, float))
+            path_count += int(has_path)
+            citation_id_count += int(has_citation_id)
+            snippet_count += int(has_snippet)
+            char_offset_count += int(has_char_offset)
+            precise_count += int(has_path and has_citation_id and has_snippet and has_char_offset)
+
+        matrix.append(
+            {
+                "event_index": index,
+                "tool_name": event.get("tool_name"),
+                "tool_call_id": event.get("tool_call_id"),
+                "source_ref_count": len(refs),
+                "path_count": path_count,
+                "citation_id_count": citation_id_count,
+                "snippet_count": snippet_count,
+                "char_offset_count": char_offset_count,
+                "precise_source_ref_count": precise_count,
+                "has_precise_native": precise_count > 0,
+            }
+        )
+
+    return matrix
+
+
 def compute_traceability_metrics(
     answer: str,
     question: Dict[str, Any],
@@ -313,8 +379,15 @@ def compute_traceability_metrics(
     total_citations = len(cited_ids)
     unique_cited_ids = sorted(set(cited_ids))
 
+    source_refs = _collect_source_refs(tool_trace)
+    precise_trace_ids = {
+        _normalize_citation_id(ref.get("citation_id"))
+        for ref in source_refs
+        if isinstance(ref, dict) and _is_precise_source_ref(ref)
+    }
+    precise_trace_ids.discard("")
     trace_ids = set(_extract_source_ref_citation_ids(tool_trace))
-    valid_citation_count = sum(1 for cid in cited_ids if cid in trace_ids)
+    valid_citation_count = sum(1 for cid in cited_ids if cid in precise_trace_ids)
     citation_accuracy = (valid_citation_count / total_citations) if total_citations > 0 else 0.0
 
     expected_sources = question.get("expected_sources", [])
@@ -322,13 +395,11 @@ def compute_traceability_metrics(
     has_inline_citation = total_citations > 0
     inline_citation_coverage = 1.0 if (coverage_eligible and has_inline_citation) else 0.0
 
-    source_refs = _collect_source_refs(tool_trace)
     source_ref_count = len(source_refs)
     path_count = sum(
         1
         for ref in source_refs
-        if isinstance(ref.get("path") or ref.get("source_path") or ref.get("sourcePath"), str)
-        and str(ref.get("path") or ref.get("source_path") or ref.get("sourcePath")).strip()
+        if _get_source_ref_path(ref)
     )
     citation_id_count = sum(
         1
@@ -345,39 +416,37 @@ def compute_traceability_metrics(
         for ref in source_refs
         if isinstance(ref.get("char_offset"), (int, float))
     )
-    precise_source_ref_count = sum(
-        1
-        for ref in source_refs
-        if (
-            isinstance(ref.get("path") or ref.get("source_path") or ref.get("sourcePath"), str)
-            and str(ref.get("path") or ref.get("source_path") or ref.get("sourcePath")).strip()
-            and isinstance(ref.get("citation_id"), str)
-            and str(ref.get("citation_id")).strip()
-            and isinstance(ref.get("snippet"), str)
-            and str(ref.get("snippet")).strip()
-            and isinstance(ref.get("char_offset"), (int, float))
-        )
-    )
+    precise_source_ref_count = sum(1 for ref in source_refs if _is_precise_source_ref(ref))
+    degraded_source_ref_count = source_ref_count - precise_source_ref_count
 
     scores = _extract_source_ref_scores(tool_trace)
     strong_hits = sum(1 for s in scores if s < 0.8)
     should_trigger_honesty = precise_source_ref_count == 0 or (len(scores) > 0 and strong_hits == 0)
     did_trigger_honesty = bool(HONESTY_CUE_RE.search(answer or ""))
+    precise_native_citation_coverage = (
+        1.0 if (coverage_eligible and total_citations > 0 and valid_citation_count > 0) else 0.0
+    )
+    native_hit_matrix = _build_native_hit_matrix(tool_trace)
 
     return {
         "inline_citation_coverage": round(inline_citation_coverage, 4),
+        "precise_native_citation_coverage": round(precise_native_citation_coverage, 4),
         "coverage_eligible": coverage_eligible,
         "citation_accuracy": round(citation_accuracy, 4),
         "total_citations": total_citations,
         "unique_cited_ids": unique_cited_ids,
         "valid_citation_count": valid_citation_count,
-        "traceable_citation_ids": sorted(trace_ids),
+        "traceable_citation_ids": sorted(precise_trace_ids),
+        "raw_traceable_citation_ids": sorted(trace_ids),
         "source_ref_count": source_ref_count,
         "path_field_coverage": round(path_count / source_ref_count, 4) if source_ref_count else 0.0,
         "citation_id_field_coverage": round(citation_id_count / source_ref_count, 4) if source_ref_count else 0.0,
         "snippet_field_coverage": round(snippet_count / source_ref_count, 4) if source_ref_count else 0.0,
         "char_offset_field_coverage": round(char_offset_count / source_ref_count, 4) if source_ref_count else 0.0,
         "precise_source_ref_count": precise_source_ref_count,
+        "degraded_source_ref_count": degraded_source_ref_count,
+        "has_precise_native_path": precise_source_ref_count > 0 and valid_citation_count > 0,
+        "native_hit_matrix": native_hit_matrix,
         "should_trigger_honesty": should_trigger_honesty,
         "did_trigger_honesty": did_trigger_honesty,
     }
@@ -567,6 +636,11 @@ class LLMJudge:
             if coverage_cases
             else 0.0
         )
+        precise_native_coverage = (
+            sum(float(m.get("precise_native_citation_coverage", 0.0)) for m in coverage_cases) / len(coverage_cases)
+            if coverage_cases
+            else 0.0
+        )
 
         total_citations = sum(int(m.get("total_citations", 0)) for m in metric_cases)
         total_valid_citations = sum(int(m.get("valid_citation_count", 0)) for m in metric_cases)
@@ -600,6 +674,8 @@ class LLMJudge:
             else 0.0
         )
         precise_source_ref_total = sum(int(m.get("precise_source_ref_count", 0)) for m in metric_cases)
+        degraded_source_ref_total = sum(int(m.get("degraded_source_ref_count", 0)) for m in metric_cases)
+        native_main_path_hits = sum(1 for m in metric_cases if m.get("has_precise_native_path"))
 
         return {
             "meta": {
@@ -616,6 +692,7 @@ class LLMJudge:
                 "dimension_averages": dim_averages,
                 "metrics": {
                     "inline_citation_coverage": round(coverage, 4),
+                    "precise_native_citation_coverage": round(precise_native_coverage, 4),
                     "citation_accuracy": round(citation_accuracy, 4),
                     "honesty_trigger_precision": round(honesty_trigger_precision, 4),
                     "path_field_coverage": round(avg_path_coverage, 4),
@@ -623,6 +700,8 @@ class LLMJudge:
                     "snippet_field_coverage": round(avg_snippet_coverage, 4),
                     "char_offset_field_coverage": round(avg_char_offset_coverage, 4),
                     "precise_source_ref_count": precise_source_ref_total,
+                    "degraded_source_ref_count": degraded_source_ref_total,
+                    "precise_native_main_path_hits": native_main_path_hits,
                 },
             },
             "category_stats": category_stats,

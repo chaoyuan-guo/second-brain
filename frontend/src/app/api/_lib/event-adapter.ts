@@ -378,6 +378,40 @@ const getReferencePriority = (
   return 0;
 };
 
+const compareReferencePriority = (
+  left: Pick<EvidenceRef, 'kind' | 'provenance'>,
+  right: Pick<EvidenceRef, 'kind' | 'provenance'>,
+): number => getReferencePriority(left) - getReferencePriority(right);
+
+const choosePreferredRef = <T extends Pick<EvidenceRef, 'kind' | 'provenance'>>(
+  left: T,
+  right: T,
+): T => {
+  const priorityDiff = compareReferencePriority(left, right);
+  if (priorityDiff === 0) {
+    return left;
+  }
+  return priorityDiff > 0 ? left : right;
+};
+
+const chooseDefinedValue = <T,>(
+  preferredValue: T | undefined,
+  alternateValue: T | undefined,
+): T | undefined => preferredValue ?? alternateValue;
+
+const chooseDefinedText = (
+  preferredValue?: string,
+  alternateValue?: string,
+): string | undefined => {
+  if (preferredValue && preferredValue.trim()) {
+    return preferredValue.trim();
+  }
+  if (alternateValue && alternateValue.trim()) {
+    return alternateValue.trim();
+  }
+  return undefined;
+};
+
 const resolveEvidenceSemantics = (
   ref: Pick<EvidenceRef, 'citationId' | 'snippet' | 'charOffsetStart' | 'kind' | 'provenance'>,
   fallbackProvenance: 'native' | 'synthetic_read' | 'content_path' = 'native',
@@ -410,6 +444,21 @@ const chooseBetterSnippet = (
     return current;
   }
   return next.length > current.length ? next : current;
+};
+
+const chooseMergedSnippet = (
+  preferredRef: Pick<EvidenceRef, 'snippet' | 'kind' | 'provenance'>,
+  alternateRef: Pick<EvidenceRef, 'snippet' | 'kind' | 'provenance'>,
+): string | undefined => {
+  const preferred = sanitizeCitationSnippet(preferredRef.snippet);
+  const alternate = sanitizeCitationSnippet(alternateRef.snippet);
+  if (preferred && alternate) {
+    if (compareReferencePriority(preferredRef, alternateRef) === 0) {
+      return preferred.length >= alternate.length ? preferred : alternate;
+    }
+    return preferred;
+  }
+  return preferred ?? alternate;
 };
 
 const deriveReferencesFromCalls = (calls: ToolCallRecord[]): CitationRef[] => {
@@ -487,7 +536,7 @@ const collapseReferencesToFileLevel = (references: CitationRef[]): CitationRef[]
 };
 
 const normalizeReferenceCollection = (sourceRefMap: Map<string, EvidenceRef>): CitationRef[] => {
-  const preciseRefs: CitationRef[] = [];
+  const preciseRefs = new Map<string, CitationRef>();
   const fileRefs = new Map<string, CitationRef>();
 
   for (const [, ref] of sourceRefMap) {
@@ -507,7 +556,27 @@ const normalizeReferenceCollection = (sourceRefMap: Map<string, EvidenceRef>): C
     };
 
     if (semantics.kind === 'precise') {
-      preciseRefs.push(baseRef);
+      const dedupeKey = normalizeCitationId(baseRef.id);
+      const existing = preciseRefs.get(dedupeKey);
+      if (!existing) {
+        preciseRefs.set(dedupeKey, baseRef);
+        continue;
+      }
+      const preferredRef = choosePreferredRef(existing, baseRef);
+      const alternateRef = preferredRef === existing ? baseRef : existing;
+      preciseRefs.set(dedupeKey, {
+        ...alternateRef,
+        ...preferredRef,
+        snippet: chooseMergedSnippet(preferredRef, alternateRef),
+        charOffsetStart: chooseDefinedValue(preferredRef.charOffsetStart, alternateRef.charOffsetStart),
+        retrievalScore:
+          typeof preferredRef.retrievalScore === 'number'
+            ? typeof alternateRef.retrievalScore === 'number' &&
+              compareReferencePriority(preferredRef, alternateRef) === 0
+              ? Math.min(preferredRef.retrievalScore, alternateRef.retrievalScore)
+              : preferredRef.retrievalScore
+            : alternateRef.retrievalScore,
+      });
       continue;
     }
 
@@ -530,7 +599,7 @@ const normalizeReferenceCollection = (sourceRefMap: Map<string, EvidenceRef>): C
     });
   }
 
-  const orderedPrecise = preciseRefs.sort((a, b) => {
+  const orderedPrecise = Array.from(preciseRefs.values()).sort((a, b) => {
     const priorityDiff = getReferencePriority(b) - getReferencePriority(a);
     if (priorityDiff !== 0) {
       return priorityDiff;
@@ -671,32 +740,40 @@ export const mergeSourceRefs = (acc: ProcessAccumulator, refs: EvidenceRef[]): v
     const storedEntry = getStoredSourceRef(acc.sourceRefMap, incomingRef);
     if (storedEntry) {
       const [existingKey, existingRef] = storedEntry;
-      const preferredRef =
-        getReferencePriority(incomingRef) > getReferencePriority(existingRef)
-          ? incomingRef
-          : existingRef;
+      const preferredRef = choosePreferredRef(existingRef, incomingRef);
+      const alternateRef = preferredRef === existingRef ? incomingRef : existingRef;
       const mergedRef: EvidenceRef = {
-        ...existingRef,
-        ...incomingRef,
+        ...alternateRef,
+        ...preferredRef,
         citationId:
           preferredRef.citationId ||
           existingRef.citationId ||
           incomingRef.citationId ||
           getNextCitationId(acc.sourceRefMap),
-        sourceTitle: incomingRef.sourceTitle || existingRef.sourceTitle,
+        sourceTitle:
+          chooseDefinedText(preferredRef.sourceTitle, alternateRef.sourceTitle) ||
+          deriveSourceTitle(
+            preferredRef.sourcePath,
+            preferredRef.sourceTitle,
+            preferredRef.heading ?? alternateRef.heading,
+          ),
         sourceDateLabel:
-          incomingRef.sourceDateLabel ||
-          existingRef.sourceDateLabel ||
-          inferSourceDateLabel(incomingRef.sourcePath, incomingRef.sourceTitle, incomingRef.heading),
-        heading: incomingRef.heading || existingRef.heading,
-        charOffsetStart: incomingRef.charOffsetStart ?? existingRef.charOffsetStart,
-        snippet: chooseBetterSnippet(existingRef.snippet, incomingRef.snippet),
+          chooseDefinedText(preferredRef.sourceDateLabel, alternateRef.sourceDateLabel) ||
+          inferSourceDateLabel(
+            preferredRef.sourcePath,
+            preferredRef.sourceTitle,
+            preferredRef.heading ?? alternateRef.heading,
+          ),
+        heading: chooseDefinedText(preferredRef.heading, alternateRef.heading),
+        charOffsetStart: chooseDefinedValue(preferredRef.charOffsetStart, alternateRef.charOffsetStart),
+        snippet: chooseMergedSnippet(preferredRef, alternateRef),
         retrievalScore:
-          typeof incomingRef.retrievalScore === 'number'
-            ? typeof existingRef.retrievalScore === 'number'
-              ? Math.min(existingRef.retrievalScore, incomingRef.retrievalScore)
-              : incomingRef.retrievalScore
-            : existingRef.retrievalScore,
+          typeof preferredRef.retrievalScore === 'number'
+            ? typeof alternateRef.retrievalScore === 'number' &&
+              compareReferencePriority(preferredRef, alternateRef) === 0
+              ? Math.min(preferredRef.retrievalScore, alternateRef.retrievalScore)
+              : preferredRef.retrievalScore
+            : alternateRef.retrievalScore,
         kind: preferredRef.kind || existingRef.kind || incomingRef.kind,
         provenance: preferredRef.provenance || existingRef.provenance || incomingRef.provenance,
       };
