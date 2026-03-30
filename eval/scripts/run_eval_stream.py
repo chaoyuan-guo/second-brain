@@ -58,14 +58,16 @@ def _is_failure_answer(answer: str) -> bool:
 
 def _write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
 
 
 def _write_jsonl(path: Path, rows: List[Dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False))
+            # Raw SSE payloads may contain lone surrogate code points from upstream streams.
+            # Keep trace writing resilient by escaping non-ASCII and surrogates.
+            f.write(json.dumps(row, ensure_ascii=True))
             f.write("\n")
 
 
@@ -817,11 +819,11 @@ def main() -> None:
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(answers, ensure_ascii=False, indent=2), encoding="utf-8")
+    _write_json(out_path, answers)
     print(f"✓ 答案已保存至: {out_path}")
 
     tool_traces_path = out_path.parent / (out_path.stem + "_tool_traces.json")
-    tool_traces_path.write_text(json.dumps(tool_traces, ensure_ascii=False, indent=2), encoding="utf-8")
+    _write_json(tool_traces_path, tool_traces)
     print(f"✓ 工具追踪已保存至: {tool_traces_path}")
 
     if effective_trace_dir is not None:
@@ -831,7 +833,7 @@ def main() -> None:
             "cases": trace_summaries,
         }
         trace_index_path = out_path.parent / (out_path.stem + "_trace_index.json")
-        trace_index_path.write_text(json.dumps(trace_index, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_json(trace_index_path, trace_index)
         print(f"✓ 追踪索引已保存至: {trace_index_path}")
 
     os.sync()
