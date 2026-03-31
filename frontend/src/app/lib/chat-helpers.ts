@@ -23,6 +23,17 @@ export const deriveTitle = (text: string) => {
   return sanitized.length > 24 ? `${sanitized.slice(0, 24)}...` : sanitized;
 };
 
+export const shouldIgnoreComposerSubmitAfterAbort = (
+  lastAbortAt: number,
+  now = Date.now(),
+  cooldownMs = 400,
+) => {
+  if (!lastAbortAt) {
+    return false;
+  }
+  return now - lastAbortAt < cooldownMs;
+};
+
 export const formatTimestamp = (timestamp?: number) => {
   if (!timestamp) {
     return '';

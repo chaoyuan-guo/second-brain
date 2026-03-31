@@ -22,7 +22,12 @@ import {
   // 证据与透明性新增类型
   type HonestySignals,
 } from '../lib/chat-types';
-import { createEmptySession, createId, deriveTitle } from '../lib/chat-helpers';
+import {
+  createEmptySession,
+  createId,
+  deriveTitle,
+  shouldIgnoreComposerSubmitAfterAbort,
+} from '../lib/chat-helpers';
 import { isPreciseCitationRef, normalizeCitationId } from '../lib/citation-utils';
 
 interface UseChatSessionsResult {
@@ -227,6 +232,7 @@ export function useChatSessions(): UseChatSessionsResult {
   const sessionsRef = useRef<ChatSession[]>([defaultSession]);
   const streamControllersRef = useRef(new Map<string, AbortController>());
   const apiBaseUrlRef = useRef<string>(typeof window === 'undefined' ? '' : getApiBaseUrl());
+  const lastAbortAtRef = useRef(0);
 
   const activeSession =
     sessions.find((session) => session.id === activeSessionId) ?? sessions[0] ?? defaultSession;
@@ -254,6 +260,7 @@ export function useChatSessions(): UseChatSessionsResult {
 
   const abortSessionRequest = useCallback(
     (sessionId: string) => {
+      lastAbortAtRef.current = Date.now();
       const controller = streamControllersRef.current.get(sessionId);
       if (controller) {
         controller.abort();
@@ -489,6 +496,9 @@ export function useChatSessions(): UseChatSessionsResult {
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
+      if (shouldIgnoreComposerSubmitAfterAbort(lastAbortAtRef.current)) {
+        return;
+      }
       const content = inputValue.trim();
       if (!content || !activeSession) {
         return;
