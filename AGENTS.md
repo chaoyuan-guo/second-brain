@@ -61,3 +61,5 @@
 - 服务运行统一通过 Docker 容器管理：修改后请按需重建镜像并重启容器。
 - 推荐重启流程：`docker rm -f second_brain_opencode 2>/dev/null || true && docker build -t second_brain:opencode -f docker/Dockerfile.opencode . && docker run -d --name second_brain_opencode --restart unless-stopped -p 9080:9080 --env-file .env.docker -v "$PWD/data:/app/data" second_brain:opencode`
 - 调试场景需要直连 OpenCode/RAG 时，使用调试端口映射 `-p 9080:9080 -p 9090:9090 -p 9070:9070`。
+- 容器 `9080` 是产品回归真源；`next dev`、假数据注入、宿主机直连调试端口仅用于开发内循环。
+- 任何“产品可用性/链路异常”结论都必须先在 `9080` 复核；非容器路径的异常必须带环境前缀，不得直接表述为产品故障。
