@@ -67,10 +67,8 @@ runtime/mcp_workspace/
 docs/refer
 docs/features/*
 !docs/features/
-!docs/features/evidence-and-transparency-rd-plan.md
-!docs/features/evidence-and-transparency-redesign.md
-!docs/features/evidence-and-transparency-source-refs-contract.md
-!docs/features/evidence-and-transparency-smoke-checklist.md
+!docs/features/**/
+!docs/features/**/*.md
 
 .codex
 

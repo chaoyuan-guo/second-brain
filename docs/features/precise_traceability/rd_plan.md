@@ -1,9 +1,9 @@
 # 证据可追溯性与过程透明度研发计划
 
 > 用途：执行文档
-> 关联：`docs/features/evidence-and-transparency-redesign.md`
-> 契约：`docs/features/evidence-and-transparency-source-refs-contract.md`
-> 验收：`docs/features/evidence-and-transparency-smoke-checklist.md`
+> 关联：`docs/features/precise_traceability/redesign.md`
+> 契约：`docs/features/precise_traceability/source_refs_contract.md`
+> 验收：`docs/features/precise_traceability/smoke_checklist.md`
 
 ---
 

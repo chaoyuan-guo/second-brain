@@ -2,7 +2,7 @@
 
 > 用途：A01-A06 最小闭环验收
 > 对应测试集：`eval/testsets/evidence_traceability_smoke.json`
-> 关联契约：`docs/features/evidence-and-transparency-source-refs-contract.md`
+> 关联契约：`docs/features/precise_traceability/source_refs_contract.md`
 
 ## 1. 执行命令
 

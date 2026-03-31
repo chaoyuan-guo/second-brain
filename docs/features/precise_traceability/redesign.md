@@ -1,8 +1,8 @@
 # 精准回溯原文产品判断
 
 > 当前范围：只讨论“精准回溯原文”
-> 关联执行：`docs/features/evidence-and-transparency-rd-plan.md`
-> 关联契约：`docs/features/evidence-and-transparency-source-refs-contract.md`
+> 关联执行：`docs/features/precise_traceability/rd_plan.md`
+> 关联契约：`docs/features/precise_traceability/source_refs_contract.md`
 
 ---
 
