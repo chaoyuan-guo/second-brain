@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { tool } from "@opencode-ai/plugin";
+import { extractEvidenceAnchor } from "./native-evidence-snippet.js";
 
 const sessionState = new Map();
 
@@ -59,19 +60,18 @@ const escapeXml = (value) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
 
-const normalizeSnippet = (value) =>
-  value
-    .replace(/\r\n?/g, "\n")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 280);
-
-const detectHeading = (content, offset) => {
+const detectHeadingInfo = (content, offset) => {
   const prefix = content.slice(0, Math.min(offset, content.length));
   const matches = Array.from(prefix.matchAll(/^#{1,6}\s+(.+)$/gm));
   const last = matches.at(-1);
   const heading = last?.[1]?.trim();
-  return heading || undefined;
+  if (!heading) {
+    return undefined;
+  }
+  return {
+    text: heading,
+    offset: Number.isFinite(last?.index) ? last.index : undefined,
+  };
 };
 
 const deriveSourceTitle = (resolvedPath) => path.basename(resolvedPath).replace(/\.[^.]+$/, "");
@@ -95,7 +95,25 @@ const buildCompletedMetadata = ({ output, existingMetadata }) => {
   const heading = decodeXml(extractTagValue(output, "heading"));
   const content = decodeXml(extractTagValue(output, "content"));
   const charOffset = Number.parseInt(extractTagValue(output, "char_offset"), 10);
-  const snippet = normalizeSnippet(content);
+  const existingSourceRef = Array.isArray(existingMetadata?.source_refs)
+    ? existingMetadata.source_refs[0]
+    : undefined;
+  const existingLoaded = Array.isArray(existingMetadata?.loaded)
+    ? existingMetadata.loaded
+    : undefined;
+
+  const anchor = extractEvidenceAnchor(content, 0);
+  const snippet = typeof existingSourceRef?.snippet === "string"
+    ? existingSourceRef.snippet
+    : anchor.snippet;
+  const sourceCharOffset = Number.isFinite(existingSourceRef?.char_offset)
+    ? existingSourceRef.char_offset
+    : Number.isFinite(charOffset)
+      ? charOffset
+      : anchor.charOffset;
+  const loadedOffset = Number.isFinite(existingLoaded?.[0]?.offset)
+    ? existingLoaded[0].offset
+    : sourceCharOffset;
 
   if (!citationId || !resolvedPath || !Number.isFinite(charOffset)) {
     return existingMetadata || {};
@@ -104,24 +122,28 @@ const buildCompletedMetadata = ({ output, existingMetadata }) => {
   const merged = {
     ...(existingMetadata || {}),
     preview: content.slice(0, 240),
-    loaded: [
-      {
-        path: resolvedPath,
-        offset: charOffset,
-        limit: content.length,
-        citation_id: citationId,
-      },
-    ],
-    source_refs: [
-      {
-        path: resolvedPath,
-        citation_id: citationId,
-        snippet,
-        char_offset: charOffset,
-        heading: heading || undefined,
-        source_title: deriveSourceTitle(resolvedPath),
-      },
-    ],
+    loaded: existingLoaded?.length
+      ? existingLoaded
+      : [
+          {
+            path: resolvedPath,
+            offset: loadedOffset,
+            limit: content.length,
+            citation_id: citationId,
+          },
+        ],
+    source_refs: Array.isArray(existingMetadata?.source_refs) && existingMetadata.source_refs.length > 0
+      ? existingMetadata.source_refs
+      : [
+          {
+            path: resolvedPath,
+            citation_id: citationId,
+            snippet,
+            char_offset: sourceCharOffset,
+            heading: heading || undefined,
+            source_title: deriveSourceTitle(resolvedPath),
+          },
+        ],
   };
 
   if (typeof merged.truncated !== "boolean") {
@@ -180,8 +202,15 @@ export const NativeEvidenceReadPlugin = async () => {
           const limit = clampLimit(args.limit);
           const raw = await readFile(resolvedPath, "utf8");
           const content = raw.slice(charOffset, charOffset + limit);
-          const snippet = normalizeSnippet(content);
-          const heading = detectHeading(raw, charOffset);
+          const headingInfo = detectHeadingInfo(raw, charOffset);
+          const anchor = extractEvidenceAnchor(content, charOffset, {
+            startedMidLine: charOffset > 0 && raw[charOffset - 1] !== "\n",
+            currentHeading: headingInfo?.text,
+            currentHeadingDistance: Number.isFinite(headingInfo?.offset) ? charOffset - headingInfo.offset : undefined,
+          });
+          const snippet = anchor.snippet;
+          const sourceCharOffset = Number.isFinite(anchor.charOffset) ? anchor.charOffset : charOffset;
+          const heading = detectHeadingInfo(raw, sourceCharOffset)?.text;
           const evidenceKey = `${resolvedPath}::${charOffset}`;
           const citationId = assignCitationId(context.sessionID, evidenceKey);
 
@@ -203,7 +232,7 @@ export const NativeEvidenceReadPlugin = async () => {
                   path: resolvedPath,
                   citation_id: citationId,
                   snippet,
-                  char_offset: charOffset,
+                  char_offset: sourceCharOffset,
                   heading,
                   source_title: deriveSourceTitle(resolvedPath),
                 },
@@ -214,7 +243,7 @@ export const NativeEvidenceReadPlugin = async () => {
           return buildReadOutput({
             citationId,
             resolvedPath,
-            charOffset,
+            charOffset: sourceCharOffset,
             heading,
             content,
           });

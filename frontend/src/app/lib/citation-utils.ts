@@ -116,17 +116,68 @@ export const deriveSourceTitle = (
   return fallback.trim();
 };
 
+const stripHeadingMarkers = (value: string): string => value.replace(/^#{1,6}\s+/, '').trim();
+
+const isConversationMarkerLine = (value: string): boolean => {
+  const normalized = stripHeadingMarkers(value)
+    .replace(/^[>*\-\s]+/, '')
+    .trim();
+  return /^(?:🤖\s*)?assistant[:：]?$/i.test(normalized)
+    || /^(?:🧑‍💻\s*)?user[:：]?$/i.test(normalized)
+    || /^(?:assistant|user)[:：]?$/i.test(normalized);
+};
+
+const isNoiseSnippetLine = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return true;
+  }
+  if (trimmed === '-' || /^[-*_]{3,}$/.test(trimmed)) {
+    return true;
+  }
+  if (isConversationMarkerLine(trimmed)) {
+    return true;
+  }
+  if (/^when citing facts from this read result/i.test(trimmed)) {
+    return true;
+  }
+  if (/^(?:citation_id|path|type|char_offset|instruction|heading)\s*:/i.test(trimmed)) {
+    return true;
+  }
+  return false;
+};
+
 export const sanitizeCitationSnippet = (snippet?: string): string | undefined => {
   if (!snippet || !snippet.trim()) {
     return undefined;
   }
 
-  const contentMatch = snippet.match(/<content>([\s\S]*?)<\/content>/i);
-  const extracted = contentMatch?.[1] ?? snippet;
-  const normalized = extracted
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\b\d+:\s*/g, '')
-    .replace(/\s+/g, ' ')
+  const extracted = snippet
+    .replace(/\r\n?/g, '\n')
+    .replace(/<(citation_id|path|type|char_offset|instruction|heading)>[\s\S]*?<\/\1>/gi, '\n')
+    .replace(/<content>([\s\S]*?)<\/content>/gi, '$1')
+    .replace(/<\/?[^>]+>/g, ' ')
+    .trim();
+
+  if (!extracted) {
+    return undefined;
+  }
+
+  const lines = extracted
+    .split('\n')
+    .map((line) => line.replace(/\s+$/g, ''))
+    .filter((line) => !isNoiseSnippetLine(line));
+
+  if (lines.length === 0) {
+    return undefined;
+  }
+
+  const normalized = lines
+    .join('\n')
+    .replace(/^\d+:\s*/, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim();
 
   return normalized || undefined;

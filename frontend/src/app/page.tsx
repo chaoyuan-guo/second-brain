@@ -44,6 +44,11 @@ import {
   type ChatSession,
   type SourceRef,
 } from './lib/chat-types';
+import {
+  findPreviewHighlightRange,
+  getPreviewLoadOffset,
+  type PreviewScrollTarget,
+} from './lib/preview-utils';
 
 // Feature Flag: Answer-first 重构开关（默认开启，可通过环境变量关闭）
 const parseFeatureFlag = (value: string | undefined, defaultValue = true): boolean => {
@@ -87,7 +92,7 @@ type PreviewCacheEntry = {
 type PreviewState = PreviewCacheEntry & {
   path: string;
   title: string;
-  scrollTarget?: { charOffset: number; snippet?: string };
+  scrollTarget?: PreviewScrollTarget;
 };
 
 type SourceGroup = {
@@ -109,45 +114,6 @@ const formatSourcePath = (path: string): string => {
   return path;
 };
 
-const normalizeWhitespace = (input: string): string => {
-  let result = '';
-  let lastWasSpace = false;
-  for (let i = 0; i < input.length; i += 1) {
-    const ch = input[i];
-    if (/\s/.test(ch)) {
-      if (!lastWasSpace) {
-        result += ' ';
-        lastWasSpace = true;
-      }
-    } else {
-      result += ch;
-      lastWasSpace = false;
-    }
-  }
-  return result.trim();
-};
-
-const normalizeWhitespaceForSearch = (input: string): { normalized: string; map: number[] } => {
-  let normalized = '';
-  const map: number[] = [];
-  let lastWasSpace = false;
-  for (let i = 0; i < input.length; i += 1) {
-    const ch = input[i];
-    if (/\s/.test(ch)) {
-      if (!lastWasSpace) {
-        normalized += ' ';
-        map.push(i);
-        lastWasSpace = true;
-      }
-    } else {
-      normalized += ch;
-      map.push(i);
-      lastWasSpace = false;
-    }
-  }
-  return { normalized, map };
-};
-
 const PreviewContent = ({
   content,
   loadedOffset,
@@ -155,48 +121,12 @@ const PreviewContent = ({
 }: {
   content: string;
   loadedOffset: number;
-  scrollTarget?: { charOffset: number; snippet?: string };
+  scrollTarget?: PreviewScrollTarget;
 }) => {
   const highlightRef = useRef<HTMLElement | null>(null);
 
   const highlightRange = useMemo(() => {
-    if (!scrollTarget) {
-      return null;
-    }
-
-    const snippet = scrollTarget.snippet?.trim();
-    if (snippet) {
-      const searchKey = snippet.slice(0, 120);
-      const directIndex = content.indexOf(searchKey);
-      if (directIndex !== -1) {
-        return {
-          start: directIndex,
-          end: Math.min(content.length, directIndex + searchKey.length),
-        };
-      }
-
-      const normalizedKey = normalizeWhitespace(searchKey);
-      if (normalizedKey) {
-        const { normalized, map } = normalizeWhitespaceForSearch(content);
-        const normalizedIndex = normalized.indexOf(normalizedKey);
-        if (normalizedIndex !== -1) {
-          const start = map[normalizedIndex] ?? 0;
-          const endIndex = normalizedIndex + normalizedKey.length - 1;
-          const end =
-            endIndex >= 0 && endIndex < map.length ? map[endIndex] + 1 : start + normalizedKey.length;
-          return { start, end: Math.min(content.length, end) };
-        }
-      }
-    }
-
-    const relativeOffset = scrollTarget.charOffset - loadedOffset;
-    if (relativeOffset >= 0 && relativeOffset < content.length) {
-      const lineStart = content.lastIndexOf('\n', relativeOffset) + 1;
-      const lineEnd = content.indexOf('\n', relativeOffset);
-      return { start: lineStart, end: lineEnd === -1 ? content.length : lineEnd };
-    }
-
-    return null;
+    return findPreviewHighlightRange(content, loadedOffset, scrollTarget);
   }, [content, loadedOffset, scrollTarget]);
 
   useEffect(() => {
@@ -474,7 +404,7 @@ export default function HomePage() {
       const scrollTarget = hasOffset
         ? { charOffset: ref?.char_offset ?? 0, snippet: ref?.snippet }
         : undefined;
-      const loadOffset = hasOffset ? Math.max(0, (ref?.char_offset ?? 0) - 300) : 0;
+      const loadOffset = hasOffset ? getPreviewLoadOffset(ref?.char_offset) : 0;
 
       const cached = previewCacheRef.current.get(filePath);
       if (cached) {
