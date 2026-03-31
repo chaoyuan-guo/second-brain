@@ -71,6 +71,15 @@ const FEATURE_ANSWER_FIRST_REDESIGN = parseFeatureFlag(
   true,
 );
 
+const EXAMPLE_PROMPTS = [
+  { icon: '⚡', text: 'Quick Sort 和 Merge Sort 在什么场景下各自更优？' },
+  { icon: '🌲', text: '我的笔记里有哪些关于平衡二叉树的内容？' },
+  { icon: '🔗', text: '动态规划和贪心算法的本质区别是什么？' },
+  { icon: '📊', text: 'Dijkstra 和 Bellman-Ford 的复杂度对比' },
+  { icon: '🧩', text: '回溯法解决 N-Queens 的核心剪枝思路' },
+  { icon: '💡', text: '滑动窗口模板适用于哪类子数组/子串问题？' },
+];
+
 type NoteContentResponse = {
   content: string;
   source_file?: string;
@@ -927,10 +936,31 @@ export default function HomePage() {
                   })
                 ) : (
                   <div className="empty-state">
-                    <p>提出你的第一个问题，让 Second Brain 协助你梳理想法。</p>
-                    <button className="text-btn" type="button" onClick={createNewSession}>
-                      <SparklesIcon /> 发起对话
-                    </button>
+                    <div className="empty-state-hero">
+                      <div className="empty-state-icon">
+                        <SparklesIcon />
+                      </div>
+                      <h2 className="empty-state-title">Second Brain</h2>
+                      <p className="empty-state-subtitle">
+                        你的算法笔记知识库。提出问题，AI 从你的笔记中找到答案。
+                      </p>
+                    </div>
+                    <div className="empty-state-prompts">
+                      <p className="empty-state-prompts-label">试试问这些</p>
+                      <div className="empty-state-grid">
+                        {EXAMPLE_PROMPTS.map((prompt) => (
+                          <button
+                            key={prompt.text}
+                            className="prompt-card"
+                            type="button"
+                            onClick={() => setInputValue(prompt.text)}
+                          >
+                            <span className="prompt-card-icon">{prompt.icon}</span>
+                            <span className="prompt-card-text">{prompt.text}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 )}
                 <div ref={historyEndRef} />
