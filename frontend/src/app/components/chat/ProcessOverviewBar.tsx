@@ -11,15 +11,15 @@ interface ProcessOverviewBarProps {
 }
 
 const phaseLabels: Record<RunPhase, string> = {
-  retrieving: '正在检索相关信息',
-  validating: '正在验证关键证据',
-  synthesizing: '正在生成最终结论',
+  retrieving: '正在整理依据',
+  validating: '正在核对依据',
+  synthesizing: '正在补全回答',
   completed: '已完成',
 };
 
 /**
  * ProcessOverviewBar - 过程摘要条
- * 默认折叠态，展示阶段、耗时、异常数
+ * 默认折叠态，只展示当前状态与展开入口
  */
 export function ProcessOverviewBar({
   processOverview,
@@ -44,16 +44,8 @@ export function ProcessOverviewBar({
         ? 'synthesizing'
         : 'completed';
 
-  // 计算耗时
-  const durationMs = processOverview?.durationMs || 0;
-  const durationSec = (durationMs / 1000).toFixed(1);
-
-  // 异常数量
-  const warningCount = processOverview?.warningCount || errorCount;
   const blockingErrorCount = processOverview?.blockingErrorCount || 0;
-
-  // 影响判定
-  const impact = processOverview?.impact || (blockingErrorCount > 0 ? 'blocking' : warningCount > 0 ? 'partial' : 'none');
+  const impact = processOverview?.impact || (blockingErrorCount > 0 ? 'blocking' : errorCount > 0 ? 'partial' : 'none');
 
   return (
     <div className="process-overview-bar">
@@ -65,19 +57,6 @@ export function ProcessOverviewBar({
         aria-label={isExpanded ? '收起过程详情' : '展开过程详情'}
       >
         <span className="process-phase-label">{phaseLabels[phase]}</span>
-        <span className="process-meta">
-          {durationMs > 0 && <span className="process-duration">{durationSec}s</span>}
-          {warningCount > 0 && (
-            <span className="process-warning" title={`${warningCount} 个警告`}>
-              ⚠ {warningCount}
-            </span>
-          )}
-          {blockingErrorCount > 0 && (
-            <span className="process-error" title={`${blockingErrorCount} 个阻断性错误`}>
-              ✕ {blockingErrorCount}
-            </span>
-          )}
-        </span>
         <span className={`process-chevron ${isExpanded ? 'expanded' : ''}`}>›</span>
       </button>
 

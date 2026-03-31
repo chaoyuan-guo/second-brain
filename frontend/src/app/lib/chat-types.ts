@@ -81,6 +81,7 @@ export type RunPhase = 'retrieving' | 'validating' | 'synthesizing' | 'completed
 
 /** 完成状态 */
 export type CompletionState = 'completed' | 'partial_completed' | 'failed';
+export type DisplayState = 'running' | 'long_running' | 'completed' | 'partial_completed' | 'failed';
 
 /** 置信度等级 */
 export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'unknown';
@@ -177,6 +178,7 @@ export interface ChatMessage {
   decisionSummary?: DecisionSummary;
   processOverview?: ProcessOverview;
   completionState?: CompletionState;
+  displayState?: DisplayState;
   evidence?: EvidenceItem[];
   finalizedEventVersion?: number;
   directAnswer?: string;

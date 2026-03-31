@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 import { ProcessPanel } from '../app/components/chat/ProcessPanel';
 import type { ChatMessage } from '../app/lib/chat-types';
@@ -11,7 +11,7 @@ const createMessage = (overrides: Partial<ChatMessage> = {}): ChatMessage => ({
 });
 
 describe('ProcessPanel', () => {
-  it('renders live semantic process summary while message is still thinking', () => {
+  it('stays collapsed by default while message is still thinking', () => {
     render(
       <ProcessPanel
         message={createMessage({
@@ -40,9 +40,13 @@ describe('ProcessPanel', () => {
       />,
     );
 
-    expect(screen.getByText('正在检索相关信息')).toBeInTheDocument();
+    expect(screen.getByText('正在整理依据')).toBeInTheDocument();
+    expect(screen.queryByText(/搜索文件内容 "动态规划"/)).not.toBeInTheDocument();
+    expect(screen.queryByText('进行中')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '展开过程详情' }));
+
     expect(screen.getByText(/搜索文件内容 "动态规划"/)).toBeInTheDocument();
     expect(screen.getByText('进行中')).toBeInTheDocument();
-    expect(screen.queryByText(/^grep$/)).not.toBeInTheDocument();
   });
 });

@@ -3,13 +3,10 @@
 import { useState, useMemo, type ReactNode } from 'react';
 import type { ChatMessage, CitationRef } from '../../lib/chat-types';
 import { FullResponseMarkdown } from './FullResponseMarkdown';
-import { ReferencesPanel } from './ReferencesPanel';
 import { HonestyBanner } from './HonestyBanner';
 import { InlineCitation } from './InlineCitation';
 import {
-  deriveSourceTitle,
-  extractFileLevelReferencesFromContent,
-  inferSourceDateLabel,
+  buildDisplayReferences,
   isPreciseCitationRef,
   normalizeCitationId,
   normalizeHonestySignalsWithReferences,
@@ -97,45 +94,6 @@ const renderCitedContent = (
   return parts;
 };
 
-const extractContentFallbackReferences = (message: ChatMessage): CitationRef[] | null => {
-  const contentPool = [message.directAnswer, message.fullAnalysis, message.content]
-    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    .join('\n');
-  if (!contentPool) {
-    return null;
-  }
-  const refs = extractFileLevelReferencesFromContent(contentPool);
-  return refs.length > 0 ? refs : null;
-};
-
-const buildFallbackReferences = (message: ChatMessage): CitationRef[] | null => {
-  if (message.references && message.references.length > 0) {
-    const refs = message.references
-      .filter((ref) => Boolean(ref.sourcePath && ref.sourcePath.trim()))
-      .map((ref) => ({
-        ...ref,
-        snippet: sanitizeCitationSnippet(ref.snippet),
-        kind: ref.kind ?? 'file',
-        provenance: ref.provenance ?? 'content_path',
-      }));
-    return refs.length > 0 ? refs : null;
-  }
-  if (message.sourceRefs && message.sourceRefs.length > 0) {
-    return message.sourceRefs.map((ref, idx) => ({
-      id: String(idx + 1).padStart(2, '0'),
-      sourcePath: ref.path,
-      sourceTitle: deriveSourceTitle(ref.path, undefined, ref.heading),
-      sourceDateLabel: inferSourceDateLabel(ref.path, ref.heading),
-      heading: ref.heading,
-      snippet: sanitizeCitationSnippet(ref.snippet),
-      charOffsetStart: undefined,
-      kind: 'file',
-      provenance: 'native',
-    }));
-  }
-  return extractContentFallbackReferences(message);
-};
-
 // ============================================================================
 // 组件 Props
 // ============================================================================
@@ -156,8 +114,7 @@ interface AnswerPanelProps {
  * 
  * 布局结构：
  * 1. 直接回答（Direct Answer）- 最优先展示
- * 2. 来自你的笔记（References Panel）- 展示引用来源
- * 3. 完整分析（Full Analysis）- 可折叠的详细分析
+ * 2. 完整分析（Full Analysis）- 可折叠的详细分析
  * 
  * 诚实性原则：当证据不足时，显式展示 HonestyBanner
  */
@@ -210,7 +167,7 @@ export function AnswerPanel({
     () => hasAnswerFirstPayload(message) || hasLegacyStructuredData(message),
     [message],
   );
-  const displayReferences = useMemo(() => buildFallbackReferences(message), [message]);
+  const displayReferences = useMemo(() => buildDisplayReferences(message), [message]);
   const effectiveHonestySignals = useMemo(
     () => normalizeHonestySignalsWithReferences(message.honestySignals, displayReferences),
     [displayReferences, message.honestySignals],
@@ -224,7 +181,7 @@ export function AnswerPanel({
           <HonestyBanner signals={effectiveHonestySignals} />
         )}
         <section className="answer-section direct-answer-section fallback-answer-section">
-          <h2 className="section-title">完整回答</h2>
+          <h2 className="section-title">回答</h2>
           <FullResponseMarkdown
             content={message.content}
             messageId={message.id}
@@ -235,11 +192,6 @@ export function AnswerPanel({
             title={null}
           />
         </section>
-        {displayReferences && displayReferences.length > 0 && (
-          <section className="answer-section references-section">
-            <ReferencesPanel references={displayReferences} onOpenPreview={onOpenPreview} />
-          </section>
-        )}
       </div>
     );
   }
@@ -298,17 +250,7 @@ export function AnswerPanel({
         </div>
       </section>
 
-      {/* 3. 来自你的笔记（References Panel）- 支持 sourceRefs 降级 */}
-      {displayReferences && displayReferences.length > 0 && (
-        <section className="answer-section references-section">
-          <ReferencesPanel 
-            references={displayReferences} 
-            onOpenPreview={onOpenPreview}
-          />
-        </section>
-      )}
-
-      {/* 4. 完整分析（Full Analysis）- 可折叠 */}
+      {/* 3. 完整分析（Full Analysis）- 可折叠 */}
       {hasDistinctAnalysis && (
         <section className="answer-section analysis-section">
           <button
@@ -343,7 +285,7 @@ export function AnswerPanel({
         </section>
       )}
 
-      {/* 5. 旧版兼容：证据面板（如果存在 legacy evidence 数据） */}
+      {/* 4. 旧版兼容：证据面板（如果存在 legacy evidence 数据） */}
       {message.evidence && message.evidence.length > 0 && !message.references?.length && (
         <section className="answer-section legacy-evidence">
           <div className="legacy-notice">以下是旧版证据展示</div>

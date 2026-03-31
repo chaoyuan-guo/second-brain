@@ -14,6 +14,7 @@ import {
   type DecisionSummary,
   type ProcessOverview,
   type CompletionState,
+  type DisplayState,
   type EvidenceItem,
   type RunPhase,
   type CitationRef,
@@ -52,6 +53,7 @@ const LEGACY_STORAGE_KEY = 'second_brain_sessions_v1';
 const DEFAULT_OPENCODE_SESSION_PATH =
   process.env.NEXT_PUBLIC_OPENCODE_SESSION_PATH?.trim() || '/app';
 const FINAL_EVENT_ABORT_DELAY_MS = 3500;
+const LONG_RUNNING_THRESHOLD_MS = 5000;
 
 const asRecord = (value: unknown): JsonRecord | undefined =>
   value && typeof value === 'object' ? (value as JsonRecord) : undefined;
@@ -509,7 +511,8 @@ export function useChatSessions(): UseChatSessionsResult {
         role: 'assistant',
         content: '',
         isThinking: true,
-        statusText: '准备连接 OpenCode...',
+        statusText: '正在准备回答',
+        displayState: 'running',
         timestamp: Date.now(),
       };
 
@@ -526,12 +529,14 @@ export function useChatSessions(): UseChatSessionsResult {
       streamControllersRef.current.set(targetSessionId, controller);
 
       let completionTimer: number | undefined;
+      let longRunningTimer: number | undefined;
       let timeoutTimer: number | undefined;
       let autoCompletedAbort = false;
       let timeoutAbort = false;
       let sawStepStart = false;
       let currentStepMessageId: string | undefined;
       let assistantContent = '';
+      let displayState: DisplayState = 'running';
 
       const sourceRefMap = new Map<string, SourceRef>();
       const toolStatusByCall = new Map<string, ToolStatus>();
@@ -573,6 +578,13 @@ export function useChatSessions(): UseChatSessionsResult {
         }
       };
 
+      const clearLongRunningTimer = () => {
+        if (longRunningTimer) {
+          window.clearTimeout(longRunningTimer);
+          longRunningTimer = undefined;
+        }
+      };
+
       const activeToolCount = (): number => {
         let count = 0;
         toolStatusByCall.forEach((status) => {
@@ -602,10 +614,38 @@ export function useChatSessions(): UseChatSessionsResult {
         }, FINAL_EVENT_ABORT_DELAY_MS);
       };
 
+      const getUserFacingStatusText = (options?: {
+        forceLongRunning?: boolean;
+        isToolWork?: boolean;
+      }): string => {
+        if (options?.forceLongRunning || displayState === 'long_running') {
+          return assistantContent.trim() ? '正在继续整理依据' : '正在整理依据';
+        }
+        if (options?.isToolWork) {
+          return '正在整理依据';
+        }
+        if (!assistantContent.trim()) {
+          return '正在整理回答';
+        }
+        return '';
+      };
+
+      const scheduleLongRunningState = () => {
+        clearLongRunningTimer();
+        longRunningTimer = window.setTimeout(() => {
+          displayState = 'long_running';
+          updateAssistantState({
+            displayState,
+            statusText: getUserFacingStatusText({ forceLongRunning: true }),
+          });
+        }, LONG_RUNNING_THRESHOLD_MS);
+      };
+
       const updateAssistantState = (overrides: Partial<ChatMessage>) => {
         updateAssistantMessage(targetSessionId, assistantPlaceholder.id, (prev) => ({
           ...prev,
           ...overrides,
+          displayState: overrides.displayState ?? prev.displayState,
           timestamp: Date.now(),
         }));
       };
@@ -636,7 +676,8 @@ export function useChatSessions(): UseChatSessionsResult {
 
         updateAssistantState({
           isThinking: true,
-          statusText: '已连接 OpenCode，等待响应...',
+          displayState,
+          statusText: '正在准备回答',
         });
 
         const promptResponse = await fetch(`${baseUrl}${sessionMessageEndpoint(upstreamSessionId)}`, {
@@ -659,9 +700,11 @@ export function useChatSessions(): UseChatSessionsResult {
 
         updateAssistantState({
           isThinking: true,
-          statusText: '正在思考...',
+          displayState,
+          statusText: getUserFacingStatusText(),
         });
 
+        scheduleLongRunningState();
         timeoutTimer = window.setTimeout(() => {
           timeoutAbort = true;
           controller.abort();
@@ -708,10 +751,12 @@ export function useChatSessions(): UseChatSessionsResult {
             processOverview = parsedProcessOverview ?? processOverview;
             completionState = parsedCompletionState ?? completionState;
             evidence = parsedEvidence ?? evidence;
+            displayState = parsedCompletionState ?? 'completed';
 
             updateAssistantState({
               isThinking: false,
               statusText: '',
+              displayState: parsedCompletionState ?? 'completed',
               sourceRefs: buildSourceRefs(),
               finalizedEventVersion,
               ...(parsedDecisionSummary ? { decisionSummary: parsedDecisionSummary } : {}),
@@ -756,12 +801,14 @@ export function useChatSessions(): UseChatSessionsResult {
             }
 
             clearCompletionTimer();
+            clearLongRunningTimer();
             autoCompletedAbort = false;
             assistantContent += delta;
             updateAssistantState({
               content: assistantContent,
               isThinking: true,
-              statusText: '',
+              displayState,
+              statusText: getUserFacingStatusText(),
               sourceRefs: buildSourceRefs(),
             });
             return;
@@ -815,7 +862,8 @@ export function useChatSessions(): UseChatSessionsResult {
             updateAssistantState({
               content: assistantContent,
               isThinking: true,
-              statusText: '',
+              displayState,
+              statusText: getUserFacingStatusText(),
               sourceRefs: buildSourceRefs(),
             });
             return;
@@ -840,7 +888,8 @@ export function useChatSessions(): UseChatSessionsResult {
             if (status === 'pending' || status === 'running') {
               updateAssistantState({
                 isThinking: true,
-                statusText: `正在调用工具：${toolName}`,
+                displayState,
+                statusText: getUserFacingStatusText({ isToolWork: true }),
               });
 
               if (!toolStep) {
@@ -874,7 +923,8 @@ export function useChatSessions(): UseChatSessionsResult {
               mergeSourceRefs(extractSourceRefs(state?.metadata));
               updateAssistantState({
                 isThinking: true,
-                statusText: activeToolCount() > 0 ? '等待其他工具完成...' : '',
+                displayState,
+                statusText: activeToolCount() > 0 ? getUserFacingStatusText({ isToolWork: true }) : getUserFacingStatusText(),
                 sourceRefs: buildSourceRefs(),
               });
 
@@ -896,7 +946,8 @@ export function useChatSessions(): UseChatSessionsResult {
               const message = asString(state?.error) ?? '工具执行失败';
               updateAssistantState({
                 isThinking: true,
-                statusText: `${toolName} 失败：${message}`,
+                displayState,
+                statusText: '正在整理依据',
               });
 
               if (toolStep) {
@@ -921,7 +972,8 @@ export function useChatSessions(): UseChatSessionsResult {
             }
             updateAssistantState({
               isThinking: true,
-              statusText: assistantContent.trim() ? '' : '正在思考...',
+              displayState,
+              statusText: getUserFacingStatusText(),
             });
 
             const stepId = asString(part.stepID) || createId();
@@ -952,6 +1004,7 @@ export function useChatSessions(): UseChatSessionsResult {
           content: safeFinalText,
           isThinking: false,
           statusText: '',
+          displayState: completionState ?? 'completed',
           sourceRefs: buildSourceRefs(),
         };
 
@@ -993,6 +1046,7 @@ export function useChatSessions(): UseChatSessionsResult {
 	              content: safeFinalText,
 	              isThinking: false,
 	              statusText: '',
+                displayState: completionState ?? 'completed',
 	              sourceRefs: buildSourceRefs(),
 	            };
               if (finalizedEventVersion === undefined) {
@@ -1013,8 +1067,9 @@ export function useChatSessions(): UseChatSessionsResult {
             updateAssistantState({
               content: timeoutContent,
               isThinking: false,
-              isError: true,
+              isError: !normalizedAssistant,
               statusText: '',
+              displayState: normalizedAssistant ? 'partial_completed' : 'failed',
               sourceRefs: buildSourceRefs(),
             });
             return;
@@ -1024,6 +1079,7 @@ export function useChatSessions(): UseChatSessionsResult {
             content: assistantContent || '（请求已取消）',
             isThinking: false,
             statusText: '',
+            displayState: assistantContent.trim() ? 'partial_completed' : 'failed',
             sourceRefs: buildSourceRefs(),
           });
           return;
@@ -1035,11 +1091,15 @@ export function useChatSessions(): UseChatSessionsResult {
           isThinking: false,
           isError: true,
           statusText: '',
+          displayState: 'failed',
           sourceRefs: buildSourceRefs(),
         });
       } finally {
         if (completionTimer) {
           window.clearTimeout(completionTimer);
+        }
+        if (longRunningTimer) {
+          window.clearTimeout(longRunningTimer);
         }
         if (timeoutTimer) {
           window.clearTimeout(timeoutTimer);

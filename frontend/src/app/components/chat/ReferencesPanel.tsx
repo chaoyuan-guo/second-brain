@@ -1,15 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { CitationRef } from '../../lib/chat-types';
 import {
   deriveSourceTitle,
-  formatRetrievalDistance,
-  getReferenceKindLabel,
   getCitationSuperscript,
-  isWeakRetrievalScore,
-  normalizeCitationId,
-  sanitizeCitationSnippet,
+  selectDefaultReferences,
   shouldUsePrecisePreviewTarget,
 } from '../../lib/citation-utils';
 
@@ -20,12 +16,10 @@ interface ReferencesPanelProps {
 
 /**
  * 引用来源详情面板
- * 展示所有引用的详细信息，按相关性排序
+ * 默认只展示少量关键依据
  */
 export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [sortBy, setSortBy] = useState<'relevance' | 'order'>('relevance');
 
   if (!references || references.length === 0) {
     return (
@@ -40,66 +34,7 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
     );
   }
 
-  const normalizedReferences = useMemo(
-    () =>
-      references.map((ref) => ({
-        ...ref,
-        snippet: sanitizeCitationSnippet(ref.snippet),
-      })),
-    [references],
-  );
-
-  const citationOrder = (id: string) => Number.parseInt(normalizeCitationId(id), 10);
-
-  const sortedRefs = useMemo(() => {
-    return [...normalizedReferences].sort((a, b) => {
-      const kindPriority = (ref: CitationRef) => {
-        if (ref.kind === 'precise' && ref.provenance === 'native') return 0;
-        if (ref.kind === 'precise' && ref.provenance === 'synthetic_read') return 1;
-        if (ref.kind === 'file' && ref.provenance === 'native') return 2;
-        if (ref.kind === 'file' && ref.provenance === 'synthetic_read') return 3;
-        return 4;
-      };
-      const typeDiff = kindPriority(a) - kindPriority(b);
-      if (typeDiff !== 0) {
-        return typeDiff;
-      }
-      if (sortBy === 'relevance') {
-        const aHasScore = typeof a.retrievalScore === 'number';
-        const bHasScore = typeof b.retrievalScore === 'number';
-        if (aHasScore && bHasScore) {
-          // L2 距离：分数越小越相关
-          const diff = (a.retrievalScore as number) - (b.retrievalScore as number);
-          return diff !== 0 ? diff : citationOrder(a.id) - citationOrder(b.id);
-        }
-        if (aHasScore !== bHasScore) {
-          return aHasScore ? -1 : 1;
-        }
-      }
-      return citationOrder(a.id) - citationOrder(b.id);
-    });
-  }, [normalizedReferences, sortBy]);
-
-  const groupedRefs = useMemo(() => {
-    const groups = new Map<string, CitationRef[]>();
-    sortedRefs.forEach((ref) => {
-      const key = ref.sourcePath || '__unknown__';
-      const list = groups.get(key) || [];
-      list.push(ref);
-      groups.set(key, list);
-    });
-    return Array.from(groups.entries());
-  }, [sortedRefs]);
-
-  useEffect(() => {
-    const initial = new Set<string>();
-    groupedRefs.forEach(([sourcePath], index) => {
-      if (index > 0) {
-        initial.add(sourcePath);
-      }
-    });
-    setCollapsedGroups(initial);
-  }, [groupedRefs.length]);
+  const visibleReferences = useMemo(() => selectDefaultReferences(references, 4), [references]);
 
   const toggleExpand = (id: string) => {
     const newSet = new Set(expandedIds);
@@ -109,16 +44,6 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
       newSet.add(id);
     }
     setExpandedIds(newSet);
-  };
-
-  const toggleGroup = (sourcePath: string) => {
-    const next = new Set(collapsedGroups);
-    if (next.has(sourcePath)) {
-      next.delete(sourcePath);
-    } else {
-      next.add(sourcePath);
-    }
-    setCollapsedGroups(next);
   };
 
   const handleOpenSource = (ref: CitationRef) => {
@@ -133,14 +58,6 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
     }
   };
 
-  // 统计信息
-  const nativePreciseCount = normalizedReferences.filter(r => r.kind === 'precise' && r.provenance === 'native').length;
-  const syntheticPreciseCount = normalizedReferences.filter(r => r.kind === 'precise' && r.provenance === 'synthetic_read').length;
-  const fileLevelCount = normalizedReferences.filter(r => r.kind === 'file').length;
-  const strongMatches = normalizedReferences.filter(r => r.retrievalScore !== undefined && r.retrievalScore < 0.8).length;
-  const weakMatches = normalizedReferences.filter(r => r.retrievalScore !== undefined && r.retrievalScore >= 0.8).length;
-  const unscored = normalizedReferences.filter(r => r.retrievalScore === undefined).length;
-
   return (
     <div className="references-panel">
       <div className="panel-header">
@@ -149,63 +66,27 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
             <path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
           </svg>
           引用来源
-          <span className="ref-count">({normalizedReferences.length})</span>
+          <span className="ref-count">({visibleReferences.length})</span>
         </h3>
-        
-        <div className="sort-controls">
-          <button
-            className={`sort-btn ${sortBy === 'relevance' ? 'active' : ''}`}
-            onClick={() => setSortBy('relevance')}
-          >
-            按相关性
-          </button>
-          <button
-            className={`sort-btn ${sortBy === 'order' ? 'active' : ''}`}
-            onClick={() => setSortBy('order')}
-          >
-            按顺序
-          </button>
-        </div>
-      </div>
-
-      <div className="quality-summary">
-        {nativePreciseCount > 0 && (
-          <span className="quality-badge precise-native">{nativePreciseCount} 条原生精准</span>
-        )}
-        {syntheticPreciseCount > 0 && (
-          <span className="quality-badge precise-synthetic">{syntheticPreciseCount} 条补偿定位</span>
-        )}
-        {fileLevelCount > 0 && (
-          <span className="quality-badge file-level">{fileLevelCount} 条文件级来源</span>
-        )}
-        {strongMatches > 0 && (
-          <span className="quality-badge strong">{strongMatches} 条高相关</span>
-        )}
-        {weakMatches > 0 && (
-          <span className="quality-badge weak">{weakMatches} 条弱相关</span>
-        )}
-        {unscored > 0 && (
-          <span className="quality-badge unscored">{unscored} 条未评分</span>
-        )}
       </div>
 
       <div className="references-list">
-        {groupedRefs.map(([sourcePath, refs]) => {
-          const groupCollapsed = collapsedGroups.has(sourcePath);
-          const groupTitle = deriveSourceTitle(sourcePath, refs[0].sourceTitle, refs[0].heading);
-          const groupMeta = [refs[0].sourceDateLabel, `${refs.length} 条引用`].filter(Boolean).join(' · ');
+        {visibleReferences.map((ref) => {
+          const isExpanded = expandedIds.has(ref.id);
+          const itemTitle = deriveSourceTitle(ref.sourcePath, ref.sourceTitle, ref.heading);
+          const meta = [ref.sourceDateLabel, ref.heading].filter(Boolean).join(' · ');
 
           return (
-            <div key={sourcePath} className="ref-source-group">
-              <button
-                type="button"
-                className="ref-group-header"
-                onClick={() => toggleGroup(sourcePath)}
-              >
-                <span className="ref-group-title">{groupTitle}</span>
-                <span className="ref-group-meta">{groupMeta}</span>
+            <div
+              key={`${ref.sourcePath}-${ref.id}`}
+              className={`reference-item ${isExpanded ? 'expanded' : ''}`}
+            >
+              <div className="ref-header" onClick={() => toggleExpand(ref.id)}>
+                <span className="ref-index">{getCitationSuperscript(ref.id)}</span>
+                <span className="ref-title">{itemTitle}</span>
+                {meta && <span className="ref-date">{meta}</span>}
                 <svg
-                  className={`expand-icon ${groupCollapsed ? '' : 'expanded'}`}
+                  className="expand-icon"
                   width="16"
                   height="16"
                   viewBox="0 0 24 24"
@@ -213,85 +94,30 @@ export function ReferencesPanel({ references, onOpenPreview }: ReferencesPanelPr
                   stroke="currentColor"
                   strokeWidth="2"
                 >
-                  <path d="M6 9l6 6 6-6" />
+                  <path d={isExpanded ? "M18 15l-6-6-6 6" : "M6 9l6 6 6-6"} />
                 </svg>
-              </button>
+              </div>
 
-              {!groupCollapsed && refs.map((ref) => {
-                const isExpanded = expandedIds.has(ref.id);
-                const isWeak = isWeakRetrievalScore(ref.retrievalScore);
-                const hasScore = ref.retrievalScore !== undefined;
-                const distanceLabel = formatRetrievalDistance(ref.retrievalScore);
-                const itemTitle = deriveSourceTitle(ref.sourcePath, ref.sourceTitle, ref.heading);
-                const kindLabel = getReferenceKindLabel(ref);
-                const isPrecise = ref.kind === 'precise';
-
-                return (
-                  <div
-                    key={`${sourcePath}-${ref.id}`}
-                    className={`reference-item ${isWeak ? 'weak' : ''} ${isExpanded ? 'expanded' : ''}`}
-                  >
-                    <div className="ref-header" onClick={() => toggleExpand(ref.id)}>
-                      <span className="ref-index">{getCitationSuperscript(ref.id)}</span>
-                      <span className="ref-title">
-                        {itemTitle}
-                      </span>
-                      <span className={`ref-kind-badge ${ref.kind === 'precise' ? 'precise' : 'file'}`}>
-                        {kindLabel}
-                      </span>
-                      {ref.sourceDateLabel && (
-                        <span className="ref-date">{ref.sourceDateLabel}</span>
-                      )}
-                      {isWeak && (
-                        <span className="ref-weak-badge">弱匹配</span>
-                      )}
-                      {hasScore && (
-                        <span className={`ref-score ${isWeak ? 'weak' : 'strong'}`}>
-                          {distanceLabel}
-                        </span>
-                      )}
-                      <svg
-                        className="expand-icon"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path d={isExpanded ? "M18 15l-6-6-6 6" : "M6 9l6 6 6-6"} />
-                      </svg>
+              {isExpanded && (
+                <div className="ref-details">
+                  {ref.snippet && (
+                    <div className="ref-snippet">
+                      <blockquote>{ref.snippet}</blockquote>
                     </div>
-
-                    {isExpanded && (
-                      <div className="ref-details">
-                        {ref.heading && (
-                          <div className="ref-heading">章节：{ref.heading}</div>
-                        )}
-                        {ref.snippet && (
-                          <div className="ref-snippet">
-                            <div className="snippet-label">
-                              {isPrecise ? '支撑片段：' : '候选片段（非精确定位）：'}
-                            </div>
-                            <blockquote>{ref.snippet}</blockquote>
-                          </div>
-                        )}
-                        <div className="ref-path">路径：{ref.sourcePath}</div>
-                        <button
-                          className="open-source-btn"
-                          onClick={() => handleOpenSource(ref)}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
-                          {isPrecise ? '定位原文' : '查看文件'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                  )}
+                  <div className="ref-path">路径：{ref.sourcePath}</div>
+                  <button
+                    className="open-source-btn"
+                    onClick={() => handleOpenSource(ref)}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    {ref.kind === 'precise' ? '定位原文' : '查看文件'}
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import type { ChatMessage, ProcessStepSummary } from '../../lib/chat-types';
 import { ProcessOverviewBar } from './ProcessOverviewBar';
 import { ProcessGroupList } from './ProcessGroupList';
@@ -41,7 +41,7 @@ interface ProcessPanelProps {
  * 新增：支持语义化的 processSummary 展示
  */
 export function ProcessPanel({ message }: ProcessPanelProps) {
-  const [isExpanded, setIsExpanded] = useState(Boolean(message.isThinking));
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isDebugOpen, setIsDebugOpen] = useState(false);
   const { processOverview, thinkingSteps, processSummary } = message;
 
@@ -96,12 +96,6 @@ export function ProcessPanel({ message }: ProcessPanelProps) {
     return generateProcessSummary(completedCalls, errorCalls, activeCalls);
   }, [processSummary, thinkingSteps]);
 
-  useEffect(() => {
-    if (message.isThinking) {
-      setIsExpanded(true);
-    }
-  }, [message.isThinking]);
-
   if (!hasProcess) {
     return null;
   }
@@ -121,13 +115,6 @@ export function ProcessPanel({ message }: ProcessPanelProps) {
       {isExpanded && liveProcessSummary.length > 0 && (
         <>
           <SemanticProcessSummary steps={liveProcessSummary} />
-          <button
-            type="button"
-            className="debug-toggle-btn"
-            onClick={() => setIsDebugOpen(true)}
-          >
-            查看调试详情
-          </button>
         </>
       )}
 

@@ -35,7 +35,6 @@ describe('AnswerPanel', () => {
     expect(screen.queryByText('结构化数据暂不可用，以下为原始回答')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '回答' })).toBeInTheDocument();
     expect(screen.getByText('这是直接回答。')).toBeInTheDocument();
-    expect(screen.getByText('引用来源')).toBeInTheDocument();
     expect(screen.getByText('展开完整分析')).toBeInTheDocument();
   });
 
@@ -51,7 +50,7 @@ describe('AnswerPanel', () => {
     );
 
     expect(screen.queryByText('结构化数据暂不可用，以下为原始回答')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '完整回答' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '回答' })).toBeInTheDocument();
     expect(screen.getByText('完整回答', { selector: 'strong' })).toBeInTheDocument();
     expect(screen.getByText('第一条')).toBeInTheDocument();
     expect(screen.queryByText('**完整回答**')).not.toBeInTheDocument();
@@ -98,9 +97,6 @@ describe('AnswerPanel', () => {
       />,
     );
 
-    expect(screen.getByText('引用来源')).toBeInTheDocument();
-    expect(screen.getAllByText('动态规划.md').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('爬楼梯动态规划思路解析.md').length).toBeGreaterThan(0);
     expect(screen.getByText('当前仅拿到文件级来源，还没有稳定的精准片段证据。')).toBeInTheDocument();
   });
 
@@ -151,57 +147,6 @@ describe('AnswerPanel', () => {
 
     expect(screen.queryByRole('button', { name: /查看引用 01/ })).not.toBeInTheDocument();
     expect(screen.getByText('这里只拿到了文件级来源 [c01]。')).toBeInTheDocument();
-  });
-
-  it('sanitizes raw snippet wrappers in references panel', () => {
-    render(
-      <AnswerPanel
-        message={createMessage({
-          directAnswer: '结论见 [c01]。',
-          references: [
-            {
-              id: '01',
-              sourcePath: '/app/data/notes/my_markdowns/动态规划.md',
-              sourceTitle: '动态规划.md',
-              snippet: '<path>/app/data/notes/my_markdowns/动态规划.md</path><content>620: 动态规划的核心是状态转移。</content>',
-            },
-          ],
-        })}
-        copiedKey={null}
-        onCopyCode={() => {}}
-      />,
-    );
-
-    fireEvent.click(screen.getByText('动态规划.md', { selector: '.reference-item .ref-title' }));
-
-    expect(screen.getByText('动态规划的核心是状态转移。')).toBeInTheDocument();
-    expect(screen.queryByText(/<path>/)).not.toBeInTheDocument();
-  });
-
-  it('shows provenance labels for synthetic precise references', () => {
-    render(
-      <AnswerPanel
-        message={createMessage({
-          directAnswer: '结论见 [c01]。',
-          references: [
-            {
-              id: '01',
-              sourcePath: '/app/data/notes/my_markdowns/动态规划.md',
-              sourceTitle: '动态规划.md',
-              snippet: '动态规划的核心是状态转移。',
-              charOffsetStart: 620,
-              kind: 'precise',
-              provenance: 'synthetic_read',
-            },
-          ],
-        })}
-        copiedKey={null}
-        onCopyCode={() => {}}
-      />,
-    );
-
-    expect(screen.getByRole('button', { name: /查看引用 01/ })).toBeInTheDocument();
-    expect(screen.getByText('1 条补偿定位')).toBeInTheDocument();
   });
 
   it('renders inline citations inside markdown list items with mixed children', () => {

@@ -32,11 +32,13 @@ import {
   UserIcon,
 } from './components/icons';
 import { AnswerPanel, ProcessPanel } from './components/chat';
+import { ReferencesPanel } from './components/chat/ReferencesPanel';
 import { useChatSessions } from './hooks/useChatSessions';
 import {
   deriveSessionTimestamp,
   formatTimestamp,
 } from './lib/chat-helpers';
+import { buildDisplayReferences } from './lib/citation-utils';
 import {
   getApiBaseUrl,
   NOTE_CONTENT_ENDPOINT,
@@ -733,6 +735,17 @@ export default function HomePage() {
                       message.timestamp && !Number.isNaN(message.timestamp)
                         ? new Date(message.timestamp).toISOString()
                         : undefined;
+                    const displayReferences =
+                      message.role === 'assistant' ? buildDisplayReferences(message) : null;
+                    const hasRenderableAnswer =
+                      message.role === 'assistant'
+                      && Boolean(
+                        message.content.trim()
+                        || message.directAnswer?.trim()
+                        || message.fullAnalysis?.trim()
+                        || message.completionState === 'partial_completed'
+                        || message.completionState === 'failed'
+                      );
                     const sourceEntries: SourceRef[] =
                       message.sourceRefs ?? message.sources?.map((path) => ({ path, heading: '' })) ?? [];
                     const hasSources = sourceEntries.length > 0;
@@ -781,7 +794,7 @@ export default function HomePage() {
                           {/* Answer-first 渲染模式 */}
                           {FEATURE_ANSWER_FIRST_REDESIGN && message.role === 'assistant' ? (
                             <>
-                              {!message.isThinking && (
+                              {hasRenderableAnswer && (
                                 <AnswerPanel
                                   message={message}
                                   copiedKey={copiedKey}
@@ -797,8 +810,26 @@ export default function HomePage() {
                                   }}
                                 />
                               )}
+                              {displayReferences && displayReferences.length > 0 && !message.isThinking && (
+                                <section className="answer-section references-section">
+                                  <ReferencesPanel
+                                    references={displayReferences}
+                                    onOpenPreview={(path, title, ref) => {
+                                      const sourceRef: SourceRef | undefined = ref
+                                        ? {
+                                            path,
+                                            heading: '',
+                                            char_offset: ref.char_offset,
+                                            snippet: ref.snippet,
+                                          }
+                                        : undefined;
+                                      handleOpenPreview(path, title, sourceRef);
+                                    }}
+                                  />
+                                </section>
+                              )}
                               <ProcessPanel message={message} />
-                              {message.statusText && (
+                              {message.statusText && (!message.content.trim() || message.displayState === 'long_running') && (
                                 <div className="message-status" role="status" aria-live="polite">
                                   <span className="status-spinner" aria-hidden />
                                   <span>{message.statusText}</span>
@@ -991,13 +1022,10 @@ export default function HomePage() {
                   </div>
                   <textarea
                     ref={textareaRef}
-                    placeholder={
-                      isActivePendingFlag ? '等待当前回复完成...' : '输入你的问题，Shift+Enter 换行'
-                    }
+                    placeholder="输入你的问题，Shift+Enter 换行"
                     value={inputValue}
                     onChange={(event) => setInputValue(event.target.value)}
                     onKeyDown={handleInputKey}
-                    disabled={isActivePendingFlag && !inputValue}
                   />
                   {isActivePendingFlag && activeSession ? (
                     <button

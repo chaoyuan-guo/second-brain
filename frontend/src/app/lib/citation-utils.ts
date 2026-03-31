@@ -1,9 +1,11 @@
 import type {
+  ChatMessage,
   CitationKind,
   CitationProvenance,
   CitationRef,
   EvidenceRef,
   HonestySignals,
+  SourceRef,
 } from './chat-types';
 
 const DATE_PATTERNS: RegExp[] = [
@@ -212,6 +214,145 @@ export const extractFileLevelReferencesFromContent = (content: string): Citation
   }
 
   return refs;
+};
+
+const buildReferencesFromSourceRefs = (sourceRefs: SourceRef[]): CitationRef[] => (
+  sourceRefs.map((ref, idx) => ({
+    id: String(idx + 1).padStart(2, '0'),
+    sourcePath: ref.path,
+    sourceTitle: deriveSourceTitle(ref.path, undefined, ref.heading),
+    sourceDateLabel: inferSourceDateLabel(ref.path, ref.heading),
+    heading: ref.heading,
+    snippet: sanitizeCitationSnippet(ref.snippet),
+    charOffsetStart: undefined,
+    kind: 'file',
+    provenance: 'native',
+  }))
+);
+
+export const buildDisplayReferences = (
+  message: Pick<ChatMessage, 'references' | 'sourceRefs' | 'directAnswer' | 'fullAnalysis' | 'content'>,
+): CitationRef[] | null => {
+  if (message.references && message.references.length > 0) {
+    const refs = message.references
+      .filter((ref) => Boolean(ref.sourcePath && ref.sourcePath.trim()))
+      .map((ref) => ({
+        ...ref,
+        snippet: sanitizeCitationSnippet(ref.snippet),
+        kind: ref.kind ?? 'file',
+        provenance: ref.provenance ?? 'content_path',
+      }));
+    return refs.length > 0 ? refs : null;
+  }
+
+  if (message.sourceRefs && message.sourceRefs.length > 0) {
+    return buildReferencesFromSourceRefs(message.sourceRefs);
+  }
+
+  const contentPool = [message.directAnswer, message.fullAnalysis, message.content]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join('\n');
+
+  if (!contentPool) {
+    return null;
+  }
+
+  const refs = extractFileLevelReferencesFromContent(contentPool);
+  return refs.length > 0 ? refs : null;
+};
+
+const hasPrecisePreviewTarget = (ref: CitationRef): boolean => (
+  ref.kind === 'precise' &&
+  (typeof ref.charOffsetStart === 'number' || typeof ref.snippet === 'string')
+);
+
+const getDefaultReferencePriority = (ref: CitationRef): number => {
+  if (ref.kind === 'precise' && ref.provenance === 'native' && hasPrecisePreviewTarget(ref)) return 0;
+  if (ref.kind === 'precise' && ref.provenance === 'synthetic_read' && hasPrecisePreviewTarget(ref)) return 1;
+  if (ref.kind === 'file') return 2;
+  return 3;
+};
+
+const getReferenceDedupKey = (ref: CitationRef): string => (
+  `${ref.sourcePath}::${ref.charOffsetStart ?? ''}::${ref.snippet ?? ''}`
+);
+
+export const selectDefaultReferences = (
+  references: CitationRef[],
+  maxItems = 4,
+): CitationRef[] => {
+  if (!references.length) {
+    return [];
+  }
+
+  const uniqueRefs = new Map<string, CitationRef>();
+  references.forEach((ref) => {
+    if (!ref.sourcePath?.trim()) {
+      return;
+    }
+    const normalized = {
+      ...ref,
+      snippet: sanitizeCitationSnippet(ref.snippet),
+      kind: ref.kind ?? 'file',
+      provenance: ref.provenance ?? 'content_path',
+    };
+    const key = getReferenceDedupKey(normalized);
+    if (!uniqueRefs.has(key)) {
+      uniqueRefs.set(key, normalized);
+    }
+  });
+
+  const sorted = Array.from(uniqueRefs.values()).sort((a, b) => {
+    const priorityDiff = getDefaultReferencePriority(a) - getDefaultReferencePriority(b);
+    if (priorityDiff !== 0) {
+      return priorityDiff;
+    }
+
+    const aHasScore = typeof a.retrievalScore === 'number';
+    const bHasScore = typeof b.retrievalScore === 'number';
+    if (aHasScore !== bHasScore) {
+      return aHasScore ? -1 : 1;
+    }
+
+    if (aHasScore && bHasScore) {
+      const scoreDiff = (a.retrievalScore as number) - (b.retrievalScore as number);
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+    }
+
+    return Number.parseInt(normalizeCitationId(a.id), 10) - Number.parseInt(normalizeCitationId(b.id), 10);
+  });
+
+  const selected: CitationRef[] = [];
+  const seenSourcePaths = new Set<string>();
+
+  sorted.forEach((ref) => {
+    if (selected.length >= maxItems) {
+      return;
+    }
+    if (seenSourcePaths.has(ref.sourcePath)) {
+      return;
+    }
+    selected.push(ref);
+    seenSourcePaths.add(ref.sourcePath);
+  });
+
+  if (selected.length >= maxItems) {
+    return selected;
+  }
+
+  sorted.forEach((ref) => {
+    if (selected.length >= maxItems) {
+      return;
+    }
+    if (selected.some((item) => getReferenceDedupKey(item) === getReferenceDedupKey(ref))) {
+      return;
+    }
+    selected.push(ref);
+  });
+
+  return selected;
 };
 
 export const normalizeHonestySignalsWithReferences = (
