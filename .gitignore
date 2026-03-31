@@ -71,5 +71,6 @@ docs/features/*
 !docs/features/**/*.md
 
 .codex
+.worktrees/
 
 eval/reports
