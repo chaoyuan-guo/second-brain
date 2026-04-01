@@ -1,7 +1,8 @@
 # 溯源效果优化产品定义
 
+> feature 编号：`F02`
 > 当前范围：精准溯源效果优化
-> 上一阶段成果：`docs/features/precise_traceability/`
+> 上一阶段成果：`docs/features/01_precise_traceability/`
 
 ---
 

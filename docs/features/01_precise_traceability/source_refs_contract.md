@@ -1,7 +1,7 @@
 # `source_refs` 最小字段契约
 
 > 用途：为证据可追溯性主链路定义最低契约
-> 关联：`docs/features/precise_traceability/rd_plan.md`
+> 关联：`docs/features/01_precise_traceability/rd_plan.md`
 
 ## 1. 目标
 

@@ -1,7 +1,7 @@
 # Second Brain V2 研发设计方案
 
 > 用途：指导 Answer Engine 结果页重构实施  
-> 产品定义：`docs/features/answer_engine_rearchitecture/product_decision_memo.md`
+> 产品定义：`docs/features/03_answer_engine_rearchitecture/product_decision_memo.md`
 
 ---
 

@@ -1,7 +1,7 @@
 # 溯源效果优化研发计划
 
 > 用途：执行与阶段收口
-> 产品定义：`docs/features/traceability_effect_optimization/product_decision_memo.md`
+> 产品定义：`docs/features/02_traceability_effect_optimization/product_decision_memo.md`
 > 样本：`eval/testsets/evidence_traceability_smoke.json`
 
 ---

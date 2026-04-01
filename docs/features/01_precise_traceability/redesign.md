@@ -1,8 +1,9 @@
 # 精准回溯原文产品判断
 
+> feature 编号：`F01`
 > 当前范围：只讨论“精准回溯原文”
-> 关联执行：`docs/features/precise_traceability/rd_plan.md`
-> 关联契约：`docs/features/precise_traceability/source_refs_contract.md`
+> 关联执行：`docs/features/01_precise_traceability/rd_plan.md`
+> 关联契约：`docs/features/01_precise_traceability/source_refs_contract.md`
 
 ---
 

@@ -1,6 +1,8 @@
 # Second Brain V2 产品重构判断
 
+> feature 编号：`F03`
 > 当前范围：默认结果页重构  
+> 上一阶段成果：`docs/features/02_traceability_effect_optimization/`
 > 当前问题：信息过载，主次错位
 > 当前状态：本期范围已完成研发与验收，4 条验收口径已满足
 > 后续优化：引用质量与答案相关性仍可继续提升，但不属于当前 feature 验收范围
