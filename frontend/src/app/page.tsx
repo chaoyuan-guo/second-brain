@@ -718,8 +718,8 @@ export default function HomePage() {
             <div className="conversation-body">
               <section className="chat-feed" aria-live="polite">
                 {hasContent ? (
-                  messages.map((message) => {
-                    if (message.isError) {
+                  messages.map((message, index) => {
+                    if (message.isError && !(FEATURE_ANSWER_FIRST_REDESIGN && message.role === 'assistant')) {
                       return (
                         <div key={message.id} className="message-error" role="alert">
                           <span>{message.content}</span>
@@ -739,6 +739,10 @@ export default function HomePage() {
                     const displayReferences =
                       message.role === 'assistant' ? buildDisplayReferences(message) : null;
                     const hasRenderableAnswer = hasRenderableAssistantAnswer(message);
+                    const retryMessage =
+                      message.role === 'assistant'
+                        ? [...messages.slice(0, index)].reverse().find((item) => item.role === 'user')
+                        : undefined;
                     const sourceEntries: SourceRef[] =
                       message.sourceRefs ?? message.sources?.map((path) => ({ path, heading: '' })) ?? [];
                     const hasSources = sourceEntries.length > 0;
@@ -801,6 +805,14 @@ export default function HomePage() {
                                     } : undefined;
                                     handleOpenPreview(path, title, sourceRef);
                                   }}
+                                  onRetry={
+                                    retryMessage?.content
+                                      ? () => {
+                                          setInputValue(retryMessage.content);
+                                          textareaRef.current?.focus();
+                                        }
+                                      : undefined
+                                  }
                                 />
                               )}
                               {displayReferences && displayReferences.length > 0 && !message.isThinking && (

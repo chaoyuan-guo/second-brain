@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { vi } from 'vitest';
 
 import { AnswerPanel } from '../app/components/chat/AnswerPanel';
 import type { ChatMessage } from '../app/lib/chat-types';
@@ -176,6 +177,8 @@ describe('AnswerPanel', () => {
   });
 
   it('sanitizes internal failure reasons in failed state', () => {
+    const onRetry = vi.fn();
+
     render(
       <AnswerPanel
         message={createMessage({
@@ -200,11 +203,14 @@ describe('AnswerPanel', () => {
         })}
         copiedKey={null}
         onCopyCode={() => {}}
+        onRetry={onRetry}
       />,
     );
 
     expect(screen.getByText('未能形成可靠结论')).toBeInTheDocument();
     expect(screen.getAllByText('当前未能形成可靠结论，请重试或缩小问题范围')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: '重试这个问题' }));
+    expect(onRetry).toHaveBeenCalled();
     expect(screen.queryByText(/步骤上限/)).not.toBeInTheDocument();
     expect(screen.queryByText(/tool/i)).not.toBeInTheDocument();
   });

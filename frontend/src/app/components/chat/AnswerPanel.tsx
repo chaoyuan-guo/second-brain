@@ -104,6 +104,7 @@ interface AnswerPanelProps {
   copiedKey: string | null;
   onCopyCode: (value: string, key: string) => void;
   onOpenPreview?: (path: string, title: string, ref?: { char_offset?: number; snippet?: string }) => void;
+  onRetry?: () => void;
 }
 
 // ============================================================================
@@ -124,6 +125,7 @@ export function AnswerPanel({
   copiedKey,
   onCopyCode,
   onOpenPreview,
+  onRetry,
 }: AnswerPanelProps) {
   const [isAnalysisExpanded, setIsAnalysisExpanded] = useState(false);
   
@@ -173,6 +175,27 @@ export function AnswerPanel({
     () => normalizeHonestySignalsWithReferences(message.honestySignals, displayReferences),
     [displayReferences, message.honestySignals],
   );
+  const isFailedState = message.completionState === 'failed' || message.displayState === 'failed';
+
+  if (isFailedState) {
+    const safeFailureDetail = sanitizeFailureReason(message.content);
+    return (
+      <div className="answer-panel failed">
+        <div className="failure-card">
+          <p className="failure-title">未能形成可靠结论</p>
+          <p className="failure-reason">
+            {sanitizeFailureReason(message.decisionSummary?.failureReason ?? message.content)}
+          </p>
+          {onRetry && (
+            <button type="button" className="pill-btn primary" onClick={onRetry}>
+              重试这个问题
+            </button>
+          )}
+        </div>
+        <div className="direct-answer">{safeFailureDetail}</div>
+      </div>
+    );
+  }
 
   // 降级渲染：缺失结构化字段时，展示原始回答正文和降级提示
   if (!hasStructured) {
@@ -199,26 +222,9 @@ export function AnswerPanel({
 
   const {
     decisionSummary,
-    completionState,
     directAnswer,
     fullAnalysis,
   } = message;
-
-  // 失败状态渲染
-  if (completionState === 'failed') {
-    const safeFailureDetail = sanitizeFailureReason(message.content);
-    return (
-      <div className="answer-panel failed">
-        <div className="failure-card">
-          <p className="failure-title">未能形成可靠结论</p>
-          <p className="failure-reason">
-            {sanitizeFailureReason(decisionSummary?.failureReason)}
-          </p>
-        </div>
-        <div className="direct-answer">{safeFailureDetail}</div>
-      </div>
-    );
-  }
 
   // 使用直接回答或从完整内容中提取
   const answerContent = directAnswer || decisionSummary?.conclusion || message.content.split('\n')[0];

@@ -57,7 +57,7 @@ export const getUserFacingAssistantStatusText = (options: {
 };
 
 export const hasRenderableAssistantAnswer = (
-  message: Pick<ChatMessage, 'role' | 'content' | 'directAnswer' | 'fullAnalysis' | 'completionState'>,
+  message: Pick<ChatMessage, 'role' | 'content' | 'directAnswer' | 'fullAnalysis' | 'completionState' | 'displayState'>,
 ) =>
   message.role === 'assistant'
   && Boolean(
@@ -66,6 +66,8 @@ export const hasRenderableAssistantAnswer = (
     || message.fullAnalysis?.trim()
     || message.completionState === 'partial_completed'
     || message.completionState === 'failed'
+    || message.displayState === 'partial_completed'
+    || message.displayState === 'failed'
   );
 
 export const sanitizeFailureReason = (failureReason?: string) => {
@@ -73,7 +75,7 @@ export const sanitizeFailureReason = (failureReason?: string) => {
   if (!value) {
     return '请重试或缩小问题范围';
   }
-  if (/步骤上限|tool|工具失败|调用工具|prompt_async|session/i.test(value)) {
+  if (/步骤上限|tool|工具失败|调用工具|prompt_async|session|OpenCode|ECONNREFUSED|5\d{2}|会话失败/i.test(value)) {
     return '当前未能形成可靠结论，请重试或缩小问题范围';
   }
   return value;

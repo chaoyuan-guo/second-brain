@@ -1076,6 +1076,7 @@ export function useChatSessions(): UseChatSessionsResult {
               isError: !normalizedAssistant,
               statusText: '',
               displayState: normalizedAssistant ? 'partial_completed' : 'failed',
+              completionState: normalizedAssistant ? 'partial_completed' : 'failed',
               sourceRefs: buildSourceRefs(),
             });
             return;
@@ -1086,6 +1087,7 @@ export function useChatSessions(): UseChatSessionsResult {
             isThinking: false,
             statusText: '',
             displayState: assistantContent.trim() ? 'partial_completed' : 'failed',
+            completionState: assistantContent.trim() ? 'partial_completed' : 'failed',
             sourceRefs: buildSourceRefs(),
           });
           return;
@@ -1098,6 +1100,7 @@ export function useChatSessions(): UseChatSessionsResult {
           isError: true,
           statusText: '',
           displayState: 'failed',
+          completionState: 'failed',
           sourceRefs: buildSourceRefs(),
         });
       } finally {
