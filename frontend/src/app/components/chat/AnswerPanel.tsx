@@ -2,6 +2,7 @@
 
 import { useState, useMemo, type ReactNode } from 'react';
 import type { ChatMessage, CitationRef } from '../../lib/chat-types';
+import { sanitizeFailureReason } from '../../lib/chat-helpers';
 import { FullResponseMarkdown } from './FullResponseMarkdown';
 import { HonestyBanner } from './HonestyBanner';
 import { InlineCitation } from './InlineCitation';
@@ -205,17 +206,16 @@ export function AnswerPanel({
 
   // 失败状态渲染
   if (completionState === 'failed') {
+    const safeFailureDetail = sanitizeFailureReason(message.content);
     return (
       <div className="answer-panel failed">
         <div className="failure-card">
           <p className="failure-title">未能形成可靠结论</p>
           <p className="failure-reason">
-            {decisionSummary?.failureReason || '请重试或缩小问题范围'}
+            {sanitizeFailureReason(decisionSummary?.failureReason)}
           </p>
         </div>
-        <div className="direct-answer">
-          {renderCitedContent(message.content, citationMap, onOpenPreview)}
-        </div>
+        <div className="direct-answer">{safeFailureDetail}</div>
       </div>
     );
   }

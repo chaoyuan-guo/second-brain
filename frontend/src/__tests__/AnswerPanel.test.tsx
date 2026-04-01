@@ -174,4 +174,38 @@ describe('AnswerPanel', () => {
     expect(screen.getByRole('button', { name: /查看引用 01/ })).toBeInTheDocument();
     expect(screen.queryByText('[c01]')).not.toBeInTheDocument();
   });
+
+  it('sanitizes internal failure reasons in failed state', () => {
+    render(
+      <AnswerPanel
+        message={createMessage({
+          content: '步骤上限导致失败',
+          completionState: 'failed',
+          decisionSummary: {
+            conclusion: '',
+            actions: [],
+            confidence: 'low',
+            assumptions: [],
+            risks: [],
+            failureReason: '步骤上限已耗尽，tool 调用失败',
+          },
+          processOverview: {
+            phase: 'completed',
+            durationMs: 0,
+            warningCount: 0,
+            blockingErrorCount: 0,
+            impact: 'none',
+          },
+          evidence: [],
+        })}
+        copiedKey={null}
+        onCopyCode={() => {}}
+      />,
+    );
+
+    expect(screen.getByText('未能形成可靠结论')).toBeInTheDocument();
+    expect(screen.getAllByText('当前未能形成可靠结论，请重试或缩小问题范围')).toHaveLength(2);
+    expect(screen.queryByText(/步骤上限/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/tool/i)).not.toBeInTheDocument();
+  });
 });

@@ -36,6 +36,7 @@ import { ReferencesPanel } from './components/chat/ReferencesPanel';
 import { useChatSessions } from './hooks/useChatSessions';
 import {
   deriveSessionTimestamp,
+  hasRenderableAssistantAnswer,
   formatTimestamp,
 } from './lib/chat-helpers';
 import { buildDisplayReferences } from './lib/citation-utils';
@@ -737,15 +738,7 @@ export default function HomePage() {
                         : undefined;
                     const displayReferences =
                       message.role === 'assistant' ? buildDisplayReferences(message) : null;
-                    const hasRenderableAnswer =
-                      message.role === 'assistant'
-                      && Boolean(
-                        message.content.trim()
-                        || message.directAnswer?.trim()
-                        || message.fullAnalysis?.trim()
-                        || message.completionState === 'partial_completed'
-                        || message.completionState === 'failed'
-                      );
+                    const hasRenderableAnswer = hasRenderableAssistantAnswer(message);
                     const sourceEntries: SourceRef[] =
                       message.sourceRefs ?? message.sources?.map((path) => ({ path, heading: '' })) ?? [];
                     const hasSources = sourceEntries.length > 0;

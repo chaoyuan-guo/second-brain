@@ -26,6 +26,7 @@ import {
   createEmptySession,
   createId,
   deriveTitle,
+  getUserFacingAssistantStatusText,
   shouldIgnoreComposerSubmitAfterAbort,
 } from '../lib/chat-helpers';
 import { isPreciseCitationRef, normalizeCitationId } from '../lib/citation-utils';
@@ -627,18 +628,13 @@ export function useChatSessions(): UseChatSessionsResult {
       const getUserFacingStatusText = (options?: {
         forceLongRunning?: boolean;
         isToolWork?: boolean;
-      }): string => {
-        if (options?.forceLongRunning || displayState === 'long_running') {
-          return assistantContent.trim() ? '正在继续整理依据' : '正在整理依据';
-        }
-        if (options?.isToolWork) {
-          return '正在整理依据';
-        }
-        if (!assistantContent.trim()) {
-          return '正在整理回答';
-        }
-        return '';
-      };
+      }): string =>
+        getUserFacingAssistantStatusText({
+          assistantContent,
+          displayState,
+          forceLongRunning: options?.forceLongRunning,
+          isToolWork: options?.isToolWork,
+        });
 
       const scheduleLongRunningState = () => {
         clearLongRunningTimer();
